@@ -1,0 +1,60 @@
+import { apiGet, apiPut } from '../../api.js';
+
+export async function renderThresholdsTab(container) {
+  container.innerHTML = '<div class="text-muted p-3">Loading...</div>';
+  const data = await apiGet('/settings/thresholds');
+
+  container.innerHTML = `
+    <div class="card">
+      <div class="card-header"><i class="bi bi-sliders me-2"></i>Alert Thresholds</div>
+      <div class="card-body">
+        <div id="thresh-msg" class="alert" style="display:none"></div>
+        <form id="thresholds-form">
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Wind Speed Threshold (mph)</label>
+              <input type="number" step="0.1" min="1" class="form-control" id="wind-mph" value="${data.wind_mph ?? 35}" />
+              <div class="form-text">Trigger shutdown if wind exceeds this speed.</div>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Lightning Distance Threshold (miles)</label>
+              <input type="number" step="0.1" min="1" class="form-control" id="lightning-miles" value="${data.lightning_miles ?? 10}" />
+              <div class="form-text">Trigger shutdown if lightning closer than this distance.</div>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Poll Interval (seconds)</label>
+              <input type="number" step="1" min="60" max="3600" class="form-control" id="poll-interval" value="${data.poll_interval_sec ?? 300}" />
+              <div class="form-text">How often to check weather. Min 60s.</div>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Shutdown Cooldown (minutes)</label>
+              <input type="number" step="1" min="1" class="form-control" id="cooldown-min" value="${data.cooldown_min ?? 30}" />
+              <div class="form-text">Wait this long before allowing another shutdown.</div>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </form>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('thresholds-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('thresh-msg');
+    try {
+      await apiPut('/settings/thresholds', {
+        wind_mph: parseFloat(document.getElementById('wind-mph').value),
+        lightning_miles: parseFloat(document.getElementById('lightning-miles').value),
+        poll_interval_sec: parseInt(document.getElementById('poll-interval').value),
+        cooldown_min: parseInt(document.getElementById('cooldown-min').value),
+      });
+      msg.className = 'alert alert-success';
+      msg.textContent = 'Thresholds saved. Poll interval updated.';
+      msg.style.display = '';
+    } catch (err) {
+      msg.className = 'alert alert-danger';
+      msg.textContent = err.message;
+      msg.style.display = '';
+    }
+  });
+}

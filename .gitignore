@@ -1,0 +1,11 @@
+.env
+data/*.db
+data/*.db-shm
+data/*.db-wal
+ssl/*.pem
+ssl/*.crt
+ssl/*.key
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store

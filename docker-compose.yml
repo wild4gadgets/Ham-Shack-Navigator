@@ -1,0 +1,35 @@
+services:
+  app:
+    build: ./app
+    container_name: shack-weather-app
+    restart: unless-stopped
+    environment:
+      - JWT_SECRET=${JWT_SECRET}
+      - DATABASE_URL=sqlite+aiosqlite:////data/shack_weather.db
+    volumes:
+      - ./data:/data
+    networks:
+      - internal
+    expose:
+      - "8000"
+
+  nginx:
+    build: ./nginx
+    container_name: shack-weather-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./ssl:/etc/ssl/shack-weather
+    environment:
+      - APP_HOST=app
+      - APP_PORT=8000
+    depends_on:
+      - app
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge

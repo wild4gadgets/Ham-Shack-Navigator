@@ -1,0 +1,69 @@
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
+from fastapi.staticfiles import StaticFiles
+
+from database import init_db
+from ws_manager import manager
+from auth import verify_token
+from scheduler import start_scheduler, shutdown_scheduler
+
+from routers import (
+    setup as setup_router,
+    auth as auth_router,
+    users as users_router,
+    settings as settings_router,
+    weather as weather_router,
+    monitoring as monitoring_router,
+    kasa as kasa_router,
+    shutdown as shutdown_router,
+    events as events_router,
+)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_db()
+    await start_scheduler()
+    yield
+    await shutdown_scheduler()
+
+
+app = FastAPI(title="Shack Weather Monitor", lifespan=lifespan)
+
+# API routers
+prefix = "/api/v1"
+app.include_router(setup_router.router, prefix=prefix)
+app.include_router(auth_router.router, prefix=prefix)
+app.include_router(users_router.router, prefix=prefix)
+app.include_router(settings_router.router, prefix=prefix)
+app.include_router(weather_router.router, prefix=prefix)
+app.include_router(monitoring_router.router, prefix=prefix)
+app.include_router(kasa_router.router, prefix=prefix)
+app.include_router(shutdown_router.router, prefix=prefix)
+app.include_router(events_router.router, prefix=prefix)
+
+
+@app.get("/api/v1/health")
+async def health():
+    return {"status": "ok"}
+
+
+@app.websocket("/ws/dashboard")
+async def websocket_dashboard(websocket: WebSocket, token: str = Query(...)):
+    try:
+        verify_token(token)
+    except Exception:
+        await websocket.close(code=4001)
+        return
+
+    await manager.connect(websocket)
+    try:
+        while True:
+            # Keep alive — clients send pings
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+
+
+# Serve static files (SPA)
+app.mount("/", StaticFiles(directory="static", html=True), name="static")

@@ -1,0 +1,68 @@
+"""
+Shutdown service: executes the configured shutdown sequence with delays.
+"""
+import asyncio
+import json
+import logging
+from datetime import datetime, timezone
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+
+from models import ShutdownStep, KasaPort, KasaDevice, Event
+from services.kasa_service import control_port
+from services.monitoring_service import log_event
+
+logger = logging.getLogger(__name__)
+
+
+async def execute_shutdown(db: AsyncSession, reason: str = "Manual trigger") -> list[str]:
+    """
+    Execute shutdown sequence in order. Returns list of step descriptions executed.
+    """
+    result = await db.execute(
+        select(ShutdownStep)
+        .options(selectinload(ShutdownStep.kasa_port).selectinload(KasaPort.device))
+        .order_by(ShutdownStep.step_order)
+    )
+    steps = result.scalars().all()
+
+    if not steps:
+        logger.warning("Shutdown triggered but no steps configured")
+        await log_event(db, "shutdown_triggered", "warning",
+                       f"Shutdown triggered ({reason}) but no steps configured",
+                       {"reason": reason})
+        return []
+
+    await log_event(db, "shutdown_triggered", "critical",
+                   f"Shutdown sequence started: {reason}",
+                   {"reason": reason, "step_count": len(steps)})
+
+    executed = []
+    for step in steps:
+        port = step.kasa_port
+        device = port.device
+        label = port.label or f"Port {port.port_index}"
+        action_desc = f"Step {step.step_order}: {step.action.upper()} {label} ({device.ip_address})"
+
+        try:
+            await control_port(device.ip_address, device.device_type, port.port_index, step.action)
+            executed.append(action_desc + " ✓")
+            await log_event(db, "kasa_action", "info",
+                           f"{step.action.upper()} {label}",
+                           {"device": device.name, "port": label, "action": step.action})
+            logger.info("Shutdown step %d: %s %s", step.step_order, step.action, label)
+        except Exception as e:
+            error_desc = action_desc + f" FAILED: {e}"
+            executed.append(error_desc)
+            await log_event(db, "error", "critical",
+                           f"Kasa action failed: {step.action} {label}: {e}",
+                           {"device": device.name, "port": label, "action": step.action, "error": str(e)})
+            logger.error("Shutdown step %d failed: %s", step.step_order, e)
+
+        if step.delay_after_sec > 0:
+            logger.info("Waiting %d seconds after step %d", step.delay_after_sec, step.step_order)
+            await asyncio.sleep(step.delay_after_sec)
+
+    return executed
