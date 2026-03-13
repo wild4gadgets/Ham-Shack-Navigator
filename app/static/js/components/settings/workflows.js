@@ -1,9 +1,10 @@
-import { apiGet, apiPost, apiDelete, apiPut } from '../../api.js';
+import { apiGet, apiPost, apiDelete, apiPut, apiPatch } from '../../api.js';
 
 let workflows = [];
 let ports = [];
 let activeWorkflowId = null;
 let steps = [];
+let originalSteps = [];
 let editIndex = null;
 
 export async function renderWorkflowsTab(container) {
@@ -173,11 +174,14 @@ function renderWfList() {
     return;
   }
   list.innerHTML = workflows.map(wf => `
-    <div class="d-flex align-items-center px-3 py-2" style="border-bottom:1px solid #2a2a4a">
+    <div class="d-flex align-items-center px-3 py-2" style="border-bottom:1px solid #2a2a4a" id="wf-row-${wf.id}">
       <span class="flex-grow-1" style="color:#e0e0e0">
         ${wf.name}
         ${wf.is_system ? '<span class="badge bg-secondary ms-2">System</span>' : ''}
       </span>
+      <button class="btn btn-sm btn-outline-secondary btn-rename-wf me-1" data-id="${wf.id}" data-name="${wf.name.replace(/"/g, '&quot;')}" title="Rename">
+        <i class="bi bi-pen"></i>
+      </button>
       <button class="btn btn-sm btn-outline-secondary btn-edit-wf me-1" data-id="${wf.id}" title="Edit steps">
         <i class="bi bi-pencil"></i>
       </button>
@@ -188,6 +192,10 @@ function renderWfList() {
       ` : '<span style="width:31px;display:inline-block"></span>'}
     </div>
   `).join('');
+
+  list.querySelectorAll('.btn-rename-wf').forEach(btn => {
+    btn.addEventListener('click', () => openRenameRow(parseInt(btn.dataset.id), btn.dataset.name));
+  });
 
   list.querySelectorAll('.btn-edit-wf').forEach(btn => {
     btn.addEventListener('click', () => openWorkflow(parseInt(btn.dataset.id)));
@@ -203,6 +211,7 @@ function renderWfList() {
         if (activeWorkflowId === id) {
           activeWorkflowId = null;
           steps = [];
+          originalSteps = [];
           const editor = document.getElementById('step-editor');
           if (editor) editor.style.display = 'none';
         }
@@ -214,11 +223,51 @@ function renderWfList() {
   });
 }
 
+function openRenameRow(id, currentName) {
+  const row = document.getElementById(`wf-row-${id}`);
+  if (!row) return;
+  row.innerHTML = `
+    <div class="input-group input-group-sm flex-grow-1">
+      <input type="text" class="form-control" id="rename-input-${id}" value="${currentName.replace(/"/g, '&quot;')}" />
+      <button class="btn btn-primary btn-save-rename" data-id="${id}">Save</button>
+      <button class="btn btn-secondary btn-cancel-rename" data-id="${id}">Cancel</button>
+    </div>
+  `;
+  const input = document.getElementById(`rename-input-${id}`);
+  input.focus();
+  input.select();
+
+  const save = async () => {
+    const name = input.value.trim();
+    if (!name) return;
+    try {
+      const updated = await apiPatch(`/workflows/${id}`, { name });
+      const wf = workflows.find(w => w.id === id);
+      if (wf) wf.name = updated.name;
+      if (activeWorkflowId === id) {
+        const header = document.querySelector('#step-editor .card-header span');
+        if (header) header.innerHTML = `<i class="bi bi-list-ol me-2"></i>${updated.name} \u2014 Steps`;
+      }
+      renderWfList();
+    } catch (err) {
+      showMsg(err.message, 'danger');
+    }
+  };
+
+  row.querySelector('.btn-save-rename').addEventListener('click', save);
+  row.querySelector('.btn-cancel-rename').addEventListener('click', renderWfList);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') save();
+    if (e.key === 'Escape') renderWfList();
+  });
+}
+
 async function openWorkflow(id) {
   activeWorkflowId = id;
   editIndex = null;
   const seq = await apiGet(`/workflows/${id}/steps`);
   steps = seq.map(s => ({ ...s }));
+  originalSteps = steps.map(s => ({ ...s }));
   const wf = workflows.find(w => w.id === id);
   renderStepEditor(wf);
 }
@@ -237,8 +286,9 @@ function renderStepEditor(wf) {
         <div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>Drag steps to reorder. Steps execute top-to-bottom with configured delays.</div>
         <div id="step-msg" class="alert" style="display:none"></div>
         <div id="step-list"></div>
-        <div class="mt-3">
+        <div class="mt-3 d-flex gap-2">
           <button class="btn btn-primary" id="btn-save-steps">Save Steps</button>
+          <button class="btn btn-outline-secondary" id="btn-cancel-edit">Cancel</button>
         </div>
       </div>
     </div>
@@ -265,6 +315,7 @@ function renderStepEditor(wf) {
     const msg = document.getElementById('step-msg');
     try {
       await apiPut(`/workflows/${activeWorkflowId}/steps`, { steps });
+      originalSteps = steps.map(s => ({ ...s }));
       msg.className = 'alert alert-success';
       msg.textContent = 'Steps saved.';
       msg.style.display = '';
@@ -274,6 +325,15 @@ function renderStepEditor(wf) {
       msg.textContent = err.message;
       msg.style.display = '';
     }
+  });
+
+  document.getElementById('btn-cancel-edit').addEventListener('click', () => {
+    const hasChanges = JSON.stringify(steps) !== JSON.stringify(originalSteps);
+    if (hasChanges && !confirm('Discard unsaved changes?')) return;
+    activeWorkflowId = null;
+    steps = [];
+    originalSteps = [];
+    document.getElementById('step-editor').style.display = 'none';
   });
 }
 

@@ -36,6 +36,29 @@ async def create_workflow(
     return wf
 
 
+@router.patch("/{workflow_id}", response_model=WorkflowResponse)
+async def rename_workflow(
+    workflow_id: int,
+    body: WorkflowCreate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    result = await db.execute(select(Workflow).where(Workflow.id == workflow_id))
+    wf = result.scalar_one_or_none()
+    if not wf:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Workflow name cannot be empty")
+    clash = await db.execute(select(Workflow).where(Workflow.name == name, Workflow.id != workflow_id))
+    if clash.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="A workflow with that name already exists")
+    wf.name = name
+    await db.commit()
+    await db.refresh(wf)
+    return wf
+
+
 @router.delete("/{workflow_id}", status_code=204)
 async def delete_workflow(
     workflow_id: int,

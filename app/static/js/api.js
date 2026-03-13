@@ -31,4 +31,5 @@ export async function apiFetch(path, options = {}) {
 export function apiGet(path) { return apiFetch(path); }
 export function apiPost(path, data) { return apiFetch(path, { method: 'POST', body: JSON.stringify(data) }); }
 export function apiPut(path, data) { return apiFetch(path, { method: 'PUT', body: JSON.stringify(data) }); }
+export function apiPatch(path, data) { return apiFetch(path, { method: 'PATCH', body: JSON.stringify(data) }); }
 export function apiDelete(path) { return apiFetch(path, { method: 'DELETE' }); }
