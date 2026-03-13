@@ -72,6 +72,8 @@ This builds both containers and starts them in the background. First build takes
 
 Navigate to: **https://localhost:5000**
 
+> **macOS note:** Safari may block self-signed certificates more aggressively. If you can't proceed, try Chrome or Firefox.
+
 Your browser will warn about a self-signed certificate — click through to proceed (this is expected).
 
 **4. Create your account**
