@@ -1,5 +1,5 @@
 import { apiGet, apiPost } from '../api.js';
-import { getToken, state } from '../state.js';
+import { getToken } from '../state.js';
 
 let ws = null;
 let pingInterval = null;
@@ -33,10 +33,8 @@ export async function renderDashboard(container) {
       <div class="col-md-4">
         <div class="card h-100">
           <div class="card-header"><i class="bi bi-wind me-2"></i>Wind</div>
-          <div class="card-body text-center" id="wind-card">
-            <div class="weather-value" id="wind-speed">--</div>
-            <div class="weather-unit">mph</div>
-            <div class="mt-2 text-muted" id="wind-gust"></div>
+          <div class="card-body p-2" id="wind-card">
+            <div class="text-muted text-center pt-3">Loading...</div>
           </div>
         </div>
       </div>
@@ -44,10 +42,8 @@ export async function renderDashboard(container) {
       <div class="col-md-4">
         <div class="card h-100">
           <div class="card-header"><i class="bi bi-thermometer-half me-2"></i>Temperature</div>
-          <div class="card-body text-center" id="temp-card">
-            <div class="weather-value" id="temp-value">--</div>
-            <div class="weather-unit">°F</div>
-            <div class="mt-2 text-muted" id="temp-desc"></div>
+          <div class="card-body p-2" id="temp-card">
+            <div class="text-muted text-center pt-3">Loading...</div>
           </div>
         </div>
       </div>
@@ -55,9 +51,9 @@ export async function renderDashboard(container) {
       <div class="col-md-4">
         <div class="card h-100">
           <div class="card-header"><i class="bi bi-lightning-charge me-2"></i>Lightning</div>
-          <div class="card-body text-center" id="lightning-card">
+          <div class="card-body d-flex flex-column justify-content-center align-items-center" id="lightning-card">
             <div class="weather-value" id="lightning-value">--</div>
-            <div class="weather-unit">miles</div>
+            <div class="weather-unit" id="lightning-unit">miles</div>
             <div class="mt-2 text-muted" id="lightning-desc"></div>
           </div>
         </div>
@@ -129,7 +125,7 @@ async function loadMonitoringStatus() {
     }
     let html = `<span class="badge ${s.enabled ? 'bg-success' : 'bg-secondary'} me-2">${s.enabled ? 'Armed' : 'Disarmed'}</span>`;
     if (s.in_cooldown) {
-      html += `<span class="badge bg-info text-dark me-2">Cooldown: ${s.cooldown_remaining_min.toFixed(0)} min remaining</span>`;
+      html += `<span class="badge bg-info me-2">Cooldown: ${s.cooldown_remaining_min.toFixed(0)} min remaining</span>`;
     }
     if (s.last_shutdown_at) {
       html += `<small class="text-muted">Last shutdown: ${new Date(s.last_shutdown_at).toLocaleString()}</small>`;
@@ -140,42 +136,208 @@ async function loadMonitoringStatus() {
   }
 }
 
+// ── Gauge rendering ──────────────────────────────────────────────────────────
+
+/**
+ * Draw an SVG analog gauge.
+ * @param {object} opts
+ *   min, max        – value range
+ *   value           – primary value (white needle)
+ *   markers         – [{value, color, label}] colored tick marks on the rim
+ *   unit            – string shown below the center value
+ *   tickValues      – array of numbers for major tick labels
+ *   legend          – [{color, label}] shown at the bottom
+ */
+function drawGauge({ min, max, value, markers = [], unit, tickValues = [], legend = [] }) {
+  const cx = 100, cy = 105, r = 78;
+  // Arc: 135° → 45° going clockwise (270° sweep). In SVG, 0°=east, +ve=clockwise.
+  const START = 135, SWEEP = 270;
+
+  const toRad = d => d * Math.PI / 180;
+  const toXY = (deg, radius) => [
+    cx + radius * Math.cos(toRad(deg)),
+    cy + radius * Math.sin(toRad(deg)),
+  ];
+  const valToDeg = v => START + (Math.max(min, Math.min(max, v)) - min) / (max - min) * SWEEP;
+  const f = n => n.toFixed(2);
+
+  // Background track arc
+  const [bx1, by1] = toXY(START, r);
+  const [bx2, by2] = toXY(START + SWEEP, r);
+  const bgArc = `M ${f(bx1)} ${f(by1)} A ${r} ${r} 0 1 1 ${f(bx2)} ${f(by2)}`;
+
+  // Major ticks + labels
+  let ticksSVG = '';
+  for (const tv of tickValues) {
+    const deg = valToDeg(tv);
+    const [ox, oy] = toXY(deg, r);
+    const [ix, iy] = toXY(deg, r - 14);
+    const [lx, ly] = toXY(deg, r - 27);
+    ticksSVG += `<line x1="${f(ox)}" y1="${f(oy)}" x2="${f(ix)}" y2="${f(iy)}" stroke="#4a5568" stroke-width="2.5"/>`;
+    ticksSVG += `<text x="${f(lx)}" y="${f(ly)}" text-anchor="middle" dominant-baseline="middle" fill="#8899bb" font-size="9">${tv}</text>`;
+  }
+
+  // Minor ticks (between major ticks)
+  const minorCount = 40;
+  for (let i = 0; i <= minorCount; i++) {
+    const deg = START + (i / minorCount) * SWEEP;
+    // Skip positions that are very close to a major tick
+    const close = tickValues.some(tv => Math.abs(valToDeg(tv) - deg) < (SWEEP / minorCount) * 0.4);
+    if (close) continue;
+    const [ox, oy] = toXY(deg, r);
+    const [ix, iy] = toXY(deg, r - 7);
+    ticksSVG += `<line x1="${f(ox)}" y1="${f(oy)}" x2="${f(ix)}" y2="${f(iy)}" stroke="#2d3748" stroke-width="1.2"/>`;
+  }
+
+  // Colored markers (forecast min/max, gust, etc.)
+  let markersSVG = '';
+  for (const m of markers) {
+    if (m.value == null || isNaN(m.value)) continue;
+    const deg = valToDeg(m.value);
+    const [ox, oy] = toXY(deg, r + 5);
+    const [ix, iy] = toXY(deg, r - 18);
+    markersSVG += `<line x1="${f(ix)}" y1="${f(iy)}" x2="${f(ox)}" y2="${f(oy)}" stroke="${m.color}" stroke-width="4" stroke-linecap="round"/>`;
+  }
+
+  // Needle (triangle pointing east at 0°, rotated to value angle)
+  let needleSVG = '';
+  if (value != null && !isNaN(value)) {
+    const deg = valToDeg(value);
+    const nLen = r - 8, nTail = 16, nW = 4;
+    const pts = `${cx + nLen},${cy} ${cx - nTail},${cy - nW} ${cx - nTail},${cy + nW}`;
+    needleSVG = `
+      <g transform="rotate(${f(deg)}, ${cx}, ${cy})">
+        <polygon points="${pts}" fill="white"/>
+      </g>
+      <circle cx="${cx}" cy="${cy}" r="7" fill="#16213e" stroke="white" stroke-width="2"/>`;
+  }
+
+  // Legend: each item rendered inline as [dot][text], group centered at cx
+  let legendSVG = '';
+  if (legend.length) {
+    const charW = 5.2, dotR = 4, dotTextGap = 5, itemGap = 12;
+    const widths = legend.map(item => dotR * 2 + dotTextGap + item.label.length * charW);
+    const totalW = widths.reduce((a, b) => a + b, 0) + itemGap * (legend.length - 1);
+    let lx = cx - totalW / 2;
+    legend.forEach((item, i) => {
+      legendSVG += `
+        <circle cx="${(lx + dotR).toFixed(1)}" cy="196" r="${dotR}" fill="${item.color}"/>
+        <text x="${(lx + dotR * 2 + dotTextGap).toFixed(1)}" y="196" fill="#aabbcc" font-size="11" dominant-baseline="middle">${item.label}</text>`;
+      lx += widths[i] + (i < legend.length - 1 ? itemGap : 0);
+    });
+  }
+
+  // Unit label centered in the bottom gap of the arc
+  const unitSVG = unit
+    ? `<text x="${cx}" y="168" text-anchor="middle" fill="#8899bb" font-size="11">${unit}</text>`
+    : '';
+
+  return `<svg viewBox="0 0 200 205" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-height:230px">
+    <path d="${bgArc}" fill="none" stroke="#1e2a3a" stroke-width="10"/>
+    ${ticksSVG}
+    ${markersSVG}
+    ${needleSVG}
+    ${unitSVG}
+    ${legendSVG}
+  </svg>`;
+}
+
+// ── Weather loading ──────────────────────────────────────────────────────────
+
 async function loadWeather() {
   try {
-    const [current, realtime] = await Promise.all([
+    const [current, forecast, realtime, loc] = await Promise.all([
       apiGet('/weather/current'),
+      apiGet('/weather/forecast'),
       apiGet('/weather/realtime'),
+      apiGet('/settings/location'),
     ]);
 
-    if (current.data) {
-      const d = current.data;
-      const windEl = document.getElementById('wind-speed');
-      const gustEl = document.getElementById('wind-gust');
-      const tempEl = document.getElementById('temp-value');
-      const descEl = document.getElementById('temp-desc');
-      if (windEl) windEl.textContent = d.wind?.speed?.toFixed(1) ?? '--';
-      if (gustEl && d.wind?.gust) gustEl.textContent = `Gust: ${d.wind.gust.toFixed(1)} mph`;
-      if (tempEl) tempEl.textContent = d.main?.temp?.toFixed(0) ?? '--';
-      if (descEl) descEl.textContent = d.weather?.[0]?.description ?? '';
+    const metric = (loc.units || 'imperial') === 'metric';
 
-      // Check wind alert threshold
-      const alerts = document.getElementById('alerts-area');
-      if (alerts) alerts.innerHTML = '';
+    // ── Temperature gauge ──
+    const tempCard = document.getElementById('temp-card');
+    if (tempCard && current.data) {
+      const d = current.data;
+      let currentTemp = d.main?.temp;
+
+      // Forecast min/max from the 24h forecast list
+      const fList = forecast.data?.list || [];
+      const fTemps = fList.flatMap(e => [e.main?.temp_min, e.main?.temp_max]).filter(t => t != null);
+      const forecastMin = fTemps.length ? Math.min(...fTemps) : null;
+      const forecastMax = fTemps.length ? Math.max(...fTemps) : null;
+
+      const tempUnit = metric ? '°C' : '°F';
+      const tMin = metric ? -30 : -20;
+      const tMax = metric ? 50 : 120;
+      const tTicks = metric ? [-30, -20, -10, 0, 10, 20, 30, 40, 50]
+                            : [-20, 0, 20, 40, 60, 80, 100, 120];
+
+      tempCard.innerHTML = drawGauge({
+        min: tMin, max: tMax,
+        value: currentTemp,
+        unit: tempUnit,
+        tickValues: tTicks,
+        markers: [
+          { value: forecastMin, color: '#60a5fa', label: `Low ${forecastMin != null ? Math.round(forecastMin) + tempUnit : '--'}` },
+          { value: forecastMax, color: '#f87171', label: `High ${forecastMax != null ? Math.round(forecastMax) + tempUnit : '--'}` },
+        ],
+        legend: [
+          { color: '#60a5fa', label: `Low ${forecastMin != null ? Math.round(forecastMin) + tempUnit : '--'}` },
+          { color: 'white',   label: `Now ${currentTemp != null ? Math.round(currentTemp) + tempUnit : '--'}` },
+          { color: '#f87171', label: `High ${forecastMax != null ? Math.round(forecastMax) + tempUnit : '--'}` },
+        ],
+      });
     }
 
+    // ── Wind gauge ──
+    const windCard = document.getElementById('wind-card');
+    if (windCard && current.data) {
+      const d = current.data;
+      // OWM metric returns m/s; convert to km/h
+      const windSpeed = metric ? (d.wind?.speed != null ? d.wind.speed * 3.6 : null) : d.wind?.speed ?? null;
+      const gustSpeed = metric ? (d.wind?.gust != null ? d.wind.gust * 3.6 : null) : d.wind?.gust ?? null;
+      const windUnit = metric ? 'km/h' : 'mph';
+      const wMax = metric ? 120 : 80;
+      const wTicks = metric ? [0, 20, 40, 60, 80, 100, 120] : [0, 10, 20, 30, 40, 50, 60, 70, 80];
+
+      windCard.innerHTML = drawGauge({
+        min: 0, max: wMax,
+        value: windSpeed,
+        unit: windUnit,
+        tickValues: wTicks,
+        markers: [
+          { value: gustSpeed, color: '#fb923c', label: `Gust ${gustSpeed != null ? gustSpeed.toFixed(1) + windUnit : '--'}` },
+        ],
+        legend: [
+          { color: 'white',   label: `Wind ${windSpeed != null ? Math.round(windSpeed) + ' ' + windUnit : '--'}` },
+          ...(gustSpeed != null ? [{ color: '#fb923c', label: `Gust ${Math.round(gustSpeed) + ' ' + windUnit}` }] : []),
+        ],
+      });
+    }
+
+    // ── Lightning (keep text display) ──
     if (realtime.data) {
       const values = realtime.data?.data?.values || {};
       const lightEl = document.getElementById('lightning-value');
+      const lightUnit = document.getElementById('lightning-unit');
       const lightDesc = document.getElementById('lightning-desc');
+      if (lightUnit) lightUnit.textContent = metric ? 'km' : 'miles';
       if (lightEl && values.lightningDistance != null) {
-        const miles = (values.lightningDistance * 0.621371).toFixed(1);
-        lightEl.textContent = miles;
+        const dist = metric
+          ? values.lightningDistance.toFixed(1)
+          : (values.lightningDistance * 0.621371).toFixed(1);
+        lightEl.textContent = dist;
         if (lightDesc) lightDesc.textContent = `Updated: ${new Date(realtime.fetched_at).toLocaleTimeString()}`;
       } else if (lightEl) {
-        lightEl.textContent = 'None';
+        lightEl.textContent = '∞';
         if (lightDesc) lightDesc.textContent = 'No lightning detected';
       }
     }
+
+    const alerts = document.getElementById('alerts-area');
+    if (alerts) alerts.innerHTML = '';
+
   } catch (e) {
     console.error('Weather load failed:', e);
   }
@@ -235,11 +397,9 @@ function connectWS() {
   };
 
   ws.onclose = () => {
-    // Attempt reconnect after 5s only if page still active
     if (!destroyed) setTimeout(() => { if (!destroyed) connectWS(); }, 5000);
   };
 
-  // Ping every 30s to keep connection alive
   if (pingInterval) clearInterval(pingInterval);
   pingInterval = setInterval(() => { if (ws?.readyState === WebSocket.OPEN) ws.send('ping'); }, 30000);
 }
