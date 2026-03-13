@@ -50,7 +50,7 @@ async def lifespan(app: FastAPI):
     await shutdown_scheduler()
 
 
-app = FastAPI(title="Shack Cockpit", lifespan=lifespan)
+app = FastAPI(title="Ham Shack Cockpit", lifespan=lifespan)
 
 # API routers
 prefix = "/api/v1"

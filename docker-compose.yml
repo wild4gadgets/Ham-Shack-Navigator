@@ -1,7 +1,7 @@
 services:
   app:
     build: ./app
-    container_name: shack-weather-app
+    container_name: ham-shack-cockpit-app
     restart: unless-stopped
     environment:
       - JWT_SECRET=${JWT_SECRET}
@@ -16,13 +16,13 @@ services:
 
   nginx:
     build: ./nginx
-    container_name: shack-weather-nginx
+    container_name: ham-shack-cockpit-nginx
     restart: unless-stopped
     ports:
       - "80:80"
       - "5000:5000"
     volumes:
-      - ./ssl:/etc/ssl/shack-weather
+      - ./ssl:/etc/ssl/ham-shack-cockpit
     environment:
       - APP_HOST=app
       - APP_PORT=8000

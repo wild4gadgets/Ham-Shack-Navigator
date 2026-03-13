@@ -12,8 +12,8 @@ server {
     listen 5000 ssl;
     server_name _;
 
-    ssl_certificate /etc/ssl/shack-weather/cert.pem;
-    ssl_certificate_key /etc/ssl/shack-weather/key.pem;
+    ssl_certificate /etc/ssl/ham-shack-cockpit/cert.pem;
+    ssl_certificate_key /etc/ssl/ham-shack-cockpit/key.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
 

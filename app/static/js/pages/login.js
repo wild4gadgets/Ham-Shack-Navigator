@@ -7,7 +7,7 @@ export function renderLogin(container) {
       <div class="col-md-4">
         <div class="card">
           <div class="card-header text-center">
-            <h4><i class="bi bi-broadcast-pin me-2"></i>Shack Cockpit</h4>
+            <h4><i class="bi bi-broadcast-pin me-2"></i>Ham Shack Cockpit</h4>
           </div>
           <div class="card-body">
             <div id="login-error" class="alert alert-danger" style="display:none"></div>
