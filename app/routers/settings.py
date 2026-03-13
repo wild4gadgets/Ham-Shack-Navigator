@@ -7,7 +7,8 @@ from sqlalchemy import select
 from dependencies import get_db, get_current_user
 from models import User, Setting
 from schemas import (
-    LocationSettings, ApiKeySettings, ThresholdSettings, SmtpSettings, NotificationSettings, KasaSettings
+    LocationSettings, ApiKeySettings, ThresholdSettings, SmtpSettings, NotificationSettings, KasaSettings,
+    IftttSettings, TelegramSettings, HomeAssistantSettings,
 )
 import scheduler as sched
 
@@ -124,13 +125,131 @@ async def test_smtp(db: AsyncSession = Depends(get_db), _: User = Depends(get_cu
 @router.get("/notifications")
 async def get_notifications(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     data = await _get_setting(db, "notifications")
-    return data or {"shutdown_email": True, "digest_email": True}
+    return data or {
+        "shutdown_email": True, "digest_email": True,
+        "shutdown_ifttt": True, "threshold_ifttt": True,
+        "shutdown_telegram": True, "threshold_telegram": True,
+    }
 
 
 @router.put("/notifications")
 async def put_notifications(body: NotificationSettings, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     await _save_setting(db, "notifications", body.model_dump())
     return {"detail": "Saved"}
+
+
+# --- IFTTT ---
+@router.get("/ifttt")
+async def get_ifttt(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    data = await _get_setting(db, "ifttt")
+    if not data:
+        return {"webhook_key": None, "event_name_shutdown": "ham_shack_shutdown",
+                "event_name_threshold": "ham_shack_alert", "enabled": False, "incoming_secret": None}
+    if data.get("webhook_key"):
+        data["webhook_key"] = _mask_key(data["webhook_key"])
+    if data.get("incoming_secret"):
+        data["incoming_secret"] = MASKED
+    return data
+
+
+@router.put("/ifttt")
+async def put_ifttt(body: IftttSettings, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    existing = await _get_setting(db, "ifttt")
+    update = body.model_dump()
+    if update.get("webhook_key") and update["webhook_key"].startswith(MASKED):
+        update["webhook_key"] = existing.get("webhook_key", "")
+    if update.get("incoming_secret") == MASKED:
+        update["incoming_secret"] = existing.get("incoming_secret", "")
+    await _save_setting(db, "ifttt", update)
+    return {"detail": "Saved"}
+
+
+@router.post("/ifttt/test")
+async def test_ifttt(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    from services.ifttt_service import send_ifttt_test
+    try:
+        await send_ifttt_test(db)
+        return {"detail": "Test event sent"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Telegram ---
+@router.get("/telegram")
+async def get_telegram(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    data = await _get_setting(db, "telegram")
+    if not data:
+        return {"bot_token": None, "chat_id": None, "enabled": False}
+    if data.get("bot_token"):
+        data["bot_token"] = _mask_key(data["bot_token"])
+    return data
+
+
+@router.put("/telegram")
+async def put_telegram(body: TelegramSettings, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    existing = await _get_setting(db, "telegram")
+    update = body.model_dump()
+    if update.get("bot_token") and update["bot_token"].startswith(MASKED):
+        update["bot_token"] = existing.get("bot_token", "")
+    await _save_setting(db, "telegram", update)
+    return {"detail": "Saved"}
+
+
+@router.post("/telegram/test")
+async def test_telegram(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    from services.telegram_service import send_telegram_test
+    try:
+        await send_telegram_test(db)
+        return {"detail": "Test message sent"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Home Assistant ---
+@router.get("/home-assistant")
+async def get_home_assistant(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    data = await _get_setting(db, "home_assistant")
+    if not data:
+        return {"ha_url": "", "ha_token": None, "enabled_push": False, "enabled_pull": True, "ha_poll_token": None}
+    if data.get("ha_token"):
+        data["ha_token"] = MASKED
+    # ha_poll_token is shown to user (they need it for HA config), never masked
+    return data
+
+
+@router.put("/home-assistant")
+async def put_home_assistant(body: HomeAssistantSettings, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    import secrets as _secrets
+    existing = await _get_setting(db, "home_assistant")
+    update = body.model_dump()
+    if update.get("ha_token") == MASKED or not update.get("ha_token"):
+        update["ha_token"] = existing.get("ha_token", "")
+    # Auto-generate poll token if not already set
+    if not existing.get("ha_poll_token"):
+        update["ha_poll_token"] = _secrets.token_hex(32)
+    else:
+        update["ha_poll_token"] = existing["ha_poll_token"]
+    await _save_setting(db, "home_assistant", update)
+    return {"detail": "Saved"}
+
+
+@router.post("/home-assistant/regenerate-token")
+async def regenerate_ha_token(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    import secrets as _secrets
+    existing = await _get_setting(db, "home_assistant")
+    existing["ha_poll_token"] = _secrets.token_hex(32)
+    await _save_setting(db, "home_assistant", existing)
+    return {"ha_poll_token": existing["ha_poll_token"]}
+
+
+@router.post("/home-assistant/test")
+async def test_home_assistant(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    from services.ha_service import push_ha_test
+    try:
+        await push_ha_test(db)
+        return {"detail": "Test state pushed to Home Assistant"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # --- Kasa Settings ---

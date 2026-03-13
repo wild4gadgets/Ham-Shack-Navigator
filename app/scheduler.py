@@ -17,6 +17,9 @@ from services.weather_service import fetch_all
 from services.monitoring_service import check_conditions, is_in_cooldown, set_last_shutdown, log_event
 from services.shutdown_service import execute_shutdown
 from services.email_service import send_shutdown_notification, send_digest
+from services.ifttt_service import send_ifttt_shutdown
+from services.telegram_service import send_telegram_shutdown
+from services.ha_service import push_state_to_ha, post_ha_event
 from ws_manager import manager
 
 logger = logging.getLogger(__name__)
@@ -58,6 +61,12 @@ async def _monitoring_poll():
         await manager.broadcast({"type": "weather_update", "source": "poll"})
         await manager.broadcast({"type": "monitoring_status", "triggered": should_trigger, "reason": reason})
 
+        # Push state to HA after every poll (keeps HA sensors fresh)
+        try:
+            await push_state_to_ha(db)
+        except Exception as e:
+            logger.error("HA state push failed: %s", e)
+
         if should_trigger:
             # Set last_shutdown_at BEFORE launching task (prevents re-trigger)
             await set_last_shutdown(db)
@@ -80,6 +89,10 @@ async def _run_shutdown(reason: str):
             if notifications.get("shutdown_email", True):
                 await send_shutdown_notification(db, reason, steps)
                 await log_event(db, "email_sent", "info", "Shutdown notification email sent")
+            await send_ifttt_shutdown(db, reason, steps)
+            await send_telegram_shutdown(db, reason, steps)
+            await push_state_to_ha(db)
+            await post_ha_event(db, "shutdown", reason)
         except Exception as e:
             logger.error("Shutdown sequence error: %s", e)
             await log_event(db, "error", "critical", f"Shutdown sequence error: {e}")

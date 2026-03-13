@@ -96,6 +96,32 @@ class SmtpSettings(BaseModel):
 class NotificationSettings(BaseModel):
     shutdown_email: bool = True
     digest_email: bool = True
+    shutdown_ifttt: bool = True
+    threshold_ifttt: bool = True
+    shutdown_telegram: bool = True
+    threshold_telegram: bool = True
+
+
+class IftttSettings(BaseModel):
+    webhook_key: Optional[str] = None
+    event_name_shutdown: str = "ham_shack_shutdown"
+    event_name_threshold: str = "ham_shack_alert"
+    enabled: bool = False
+    incoming_secret: Optional[str] = None
+
+
+class TelegramSettings(BaseModel):
+    bot_token: Optional[str] = None
+    chat_id: Optional[str] = None
+    enabled: bool = False
+
+
+class HomeAssistantSettings(BaseModel):
+    ha_url: str = ""
+    ha_token: Optional[str] = None
+    enabled_push: bool = False
+    enabled_pull: bool = True
+    ha_poll_token: Optional[str] = None
 
 
 class KasaSettings(BaseModel):

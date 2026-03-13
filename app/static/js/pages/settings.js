@@ -5,6 +5,9 @@ import { renderKasaTab } from '../components/settings/kasa.js';
 import { renderWorkflowsTab } from '../components/settings/workflows.js';
 import { renderSmtpTab } from '../components/settings/smtp.js';
 import { renderNotificationsTab } from '../components/settings/notifications.js';
+import { renderIftttTab } from '../components/settings/ifttt.js';
+import { renderTelegramTab } from '../components/settings/telegram.js';
+import { renderHomeAssistantTab } from '../components/settings/home-assistant.js';
 import { renderAccountTab } from '../components/settings/account.js';
 
 const TABS = [
@@ -15,6 +18,9 @@ const TABS = [
   { id: 'workflows', label: 'Workflows', icon: 'diagram-3' },
   { id: 'smtp', label: 'SMTP / Email', icon: 'envelope' },
   { id: 'notifications', label: 'Notifications', icon: 'bell' },
+  { id: 'ifttt', label: 'IFTTT', icon: 'arrow-left-right' },
+  { id: 'telegram', label: 'Telegram', icon: 'telegram' },
+  { id: 'home-assistant', label: 'Home Assistant', icon: 'house-gear' },
   { id: 'account', label: 'Account', icon: 'person' },
 ];
 
@@ -26,6 +32,9 @@ const RENDERERS = {
   workflows: renderWorkflowsTab,
   smtp: renderSmtpTab,
   notifications: renderNotificationsTab,
+  ifttt: renderIftttTab,
+  telegram: renderTelegramTab,
+  'home-assistant': renderHomeAssistantTab,
   account: renderAccountTab,
 };
 

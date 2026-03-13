@@ -39,6 +39,7 @@ from routers import (
     shutdown as shutdown_router,
     events as events_router,
     workflows as workflows_router,
+    ha_state as ha_state_router,
 )
 
 
@@ -64,6 +65,7 @@ app.include_router(kasa_router.router, prefix=prefix)
 app.include_router(shutdown_router.router, prefix=prefix)
 app.include_router(events_router.router, prefix=prefix)
 app.include_router(workflows_router.router, prefix=prefix)
+app.include_router(ha_state_router.router, prefix=prefix)
 
 
 @app.get("/api/v1/health")

@@ -1,12 +1,14 @@
+import asyncio
 import json
+import secrets
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from dependencies import get_db, get_current_user
 from models import User, Setting
-from services.monitoring_service import is_in_cooldown, log_event
+from services.monitoring_service import is_in_cooldown, log_event, set_last_shutdown
 from ws_manager import manager
 
 router = APIRouter(prefix="/monitoring", tags=["monitoring"])
@@ -73,3 +75,53 @@ async def disable_monitoring(db: AsyncSession = Depends(get_db), _: User = Depen
     await log_event(db, "monitoring_disarmed", "info", "Monitoring disabled")
     await manager.broadcast({"type": "monitoring_status", "enabled": False})
     return {"detail": "Monitoring disabled"}
+
+
+@router.post("/webhook/trigger")
+async def webhook_trigger(request: Request, db: AsyncSession = Depends(get_db)):
+    """Public endpoint: IFTTT or any external system can call this to arm, disarm, or trigger shutdown."""
+    # Load IFTTT config for the incoming secret
+    result = await db.execute(select(Setting).where(Setting.key == "ifttt"))
+    row = result.scalar_one_or_none()
+    cfg = json.loads(row.value) if row else {}
+    stored_secret = cfg.get("incoming_secret")
+
+    if not stored_secret:
+        raise HTTPException(status_code=403, detail="Webhook not enabled — configure an incoming secret in IFTTT settings first")
+
+    provided = request.headers.get("X-Webhook-Secret") or request.query_params.get("secret")
+    if not provided or not secrets.compare_digest(provided.encode(), stored_secret.encode()):
+        raise HTTPException(status_code=403, detail="Invalid webhook secret")
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    action = body.get("action", "trigger_shutdown")
+
+    if action == "arm":
+        monitoring = await _get_monitoring(db)
+        monitoring["enabled"] = True
+        await _save_monitoring(db, monitoring)
+        await log_event(db, "monitoring_armed", "info", "Monitoring armed via webhook")
+        await manager.broadcast({"type": "monitoring_status", "enabled": True})
+
+    elif action == "disarm":
+        monitoring = await _get_monitoring(db)
+        monitoring["enabled"] = False
+        await _save_monitoring(db, monitoring)
+        await log_event(db, "monitoring_disarmed", "info", "Monitoring disarmed via webhook")
+        await manager.broadcast({"type": "monitoring_status", "enabled": False})
+
+    elif action == "trigger_shutdown":
+        await set_last_shutdown(db)
+        from routers.shutdown import _run_shutdown_bg
+        asyncio.create_task(_run_shutdown_bg("Webhook trigger"))
+        await manager.broadcast({"type": "shutdown_alert", "reason": "Webhook trigger"})
+
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
+
+    await log_event(db, "webhook_received", "info", f"Webhook action: {action}")
+    return {"detail": "OK", "action": action}

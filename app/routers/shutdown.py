@@ -66,6 +66,22 @@ async def trigger_shutdown(db: AsyncSession = Depends(get_db), _: User = Depends
 async def _run_shutdown_bg(reason: str):
     from database import AsyncSessionLocal
     from ws_manager import manager
+    from services.email_service import send_shutdown_notification
+    from services.ifttt_service import send_ifttt_shutdown
+    from services.telegram_service import send_telegram_shutdown
+    from services.ha_service import push_state_to_ha, post_ha_event
+    import json
+    from sqlalchemy import select
+    from models import Setting
     async with AsyncSessionLocal() as db:
         steps = await execute_shutdown(db, reason)
         await manager.broadcast({"type": "shutdown_alert", "reason": reason, "steps": steps})
+        result = await db.execute(select(Setting).where(Setting.key == "notifications"))
+        row = result.scalar_one_or_none()
+        notifications = json.loads(row.value) if row else {}
+        if notifications.get("shutdown_email", True):
+            await send_shutdown_notification(db, reason, steps)
+        await send_ifttt_shutdown(db, reason, steps)
+        await send_telegram_shutdown(db, reason, steps)
+        await push_state_to_ha(db)
+        await post_ha_event(db, "shutdown", reason)
