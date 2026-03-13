@@ -67,6 +67,36 @@ class ShutdownStep(Base):
     kasa_port: Mapped["KasaPort | None"] = relationship("KasaPort", back_populates="shutdown_steps")
 
 
+class Workflow(Base):
+    __tablename__ = "workflows"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    steps: Mapped[list["WorkflowStep"]] = relationship(
+        "WorkflowStep", back_populates="workflow", cascade="all, delete-orphan"
+    )
+
+
+class WorkflowStep(Base):
+    __tablename__ = "workflow_steps"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workflow_id: Mapped[int] = mapped_column(Integer, ForeignKey("workflows.id", ondelete="CASCADE"), nullable=False)
+    step_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    kasa_port_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("kasa_ports.id"), nullable=True)
+    action: Mapped[str] = mapped_column(String, nullable=False)
+    delay_after_sec: Mapped[int] = mapped_column(Integer, default=0)
+    description: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    workflow: Mapped["Workflow"] = relationship("Workflow", back_populates="steps")
+    kasa_port: Mapped["KasaPort | None"] = relationship("KasaPort")
+
+    __table_args__ = (UniqueConstraint("workflow_id", "step_order"),)
+
+
 class Event(Base):
     __tablename__ = "events"
 

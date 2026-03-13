@@ -44,6 +44,71 @@ async def _migrate_db():
     async with engine.begin() as conn:
         await conn.run_sync(_migrate_shutdown_steps_nullable_port)
         await conn.run_sync(_migrate_shutdown_steps_add_description)
+        await conn.run_sync(_migrate_add_workflows)
+
+
+def _migrate_add_workflows(conn):
+    """Create workflows/workflow_steps tables and seed/migrate from shutdown_steps."""
+    sa = __import__("sqlalchemy")
+
+    conn.execute(sa.text("""
+        CREATE TABLE IF NOT EXISTS workflows (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name VARCHAR NOT NULL UNIQUE,
+            is_system BOOLEAN NOT NULL DEFAULT 0,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+    conn.execute(sa.text("""
+        CREATE TABLE IF NOT EXISTS workflow_steps (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            workflow_id INTEGER NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+            step_order INTEGER NOT NULL,
+            kasa_port_id INTEGER REFERENCES kasa_ports(id),
+            action VARCHAR NOT NULL,
+            delay_after_sec INTEGER NOT NULL DEFAULT 0,
+            description VARCHAR,
+            UNIQUE (workflow_id, step_order)
+        )
+    """))
+
+    existing = conn.execute(sa.text(
+        "SELECT id FROM workflows WHERE is_system = 1"
+    )).fetchone()
+    if not existing:
+        conn.execute(sa.text(
+            "INSERT INTO workflows (name, is_system, created_at) VALUES ('Shutdown', 1, datetime('now'))"
+        ))
+        existing = conn.execute(sa.text(
+            "SELECT id FROM workflows WHERE is_system = 1"
+        )).fetchone()
+
+    workflow_id = existing[0]
+
+    count = conn.execute(sa.text(
+        "SELECT COUNT(*) FROM workflow_steps WHERE workflow_id = :wid"
+    ), {"wid": workflow_id}).fetchone()[0]
+
+    if count == 0:
+        tbl = conn.execute(sa.text(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='shutdown_steps'"
+        )).fetchone()
+        if tbl:
+            old = conn.execute(sa.text(
+                "SELECT step_order, kasa_port_id, action, delay_after_sec, description FROM shutdown_steps ORDER BY step_order"
+            )).fetchall()
+            for row in old:
+                conn.execute(sa.text("""
+                    INSERT INTO workflow_steps (workflow_id, step_order, kasa_port_id, action, delay_after_sec, description)
+                    VALUES (:wid, :ord, :port, :action, :delay, :desc)
+                """), {
+                    "wid": workflow_id,
+                    "ord": row[0],
+                    "port": row[1],
+                    "action": row[2],
+                    "delay": row[3],
+                    "desc": row[4],
+                })
 
 
 def _migrate_shutdown_steps_add_description(conn):

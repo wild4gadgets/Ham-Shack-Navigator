@@ -1,3 +1,24 @@
+# Patch zoneinfo before python-kasa is imported so Kasa devices that report
+# POSIX timezone strings (e.g. "MST7MDT") don't crash on ZoneInfoNotFoundError.
+import zoneinfo as _zi
+
+_POSIX_TZ_MAP = {
+    "MST7MDT": "America/Denver",
+    "EST5EDT": "America/New_York",
+    "CST6CDT": "America/Chicago",
+    "PST8PDT": "America/Los_Angeles",
+    "MST": "America/Phoenix",
+    "HST": "Pacific/Honolulu",
+    "AST4ADT": "America/Halifax",
+}
+_OrigZoneInfo = _zi.ZoneInfo
+
+class _ZoneInfoCompat(_OrigZoneInfo):
+    def __new__(cls, key):
+        return _OrigZoneInfo(_POSIX_TZ_MAP.get(key, key))
+
+_zi.ZoneInfo = _ZoneInfoCompat
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.staticfiles import StaticFiles
@@ -17,6 +38,7 @@ from routers import (
     kasa as kasa_router,
     shutdown as shutdown_router,
     events as events_router,
+    workflows as workflows_router,
 )
 
 
@@ -28,7 +50,7 @@ async def lifespan(app: FastAPI):
     await shutdown_scheduler()
 
 
-app = FastAPI(title="Shack Weather Monitor", lifespan=lifespan)
+app = FastAPI(title="Shack Cockpit", lifespan=lifespan)
 
 # API routers
 prefix = "/api/v1"
@@ -41,6 +63,7 @@ app.include_router(monitoring_router.router, prefix=prefix)
 app.include_router(kasa_router.router, prefix=prefix)
 app.include_router(shutdown_router.router, prefix=prefix)
 app.include_router(events_router.router, prefix=prefix)
+app.include_router(workflows_router.router, prefix=prefix)
 
 
 @app.get("/api/v1/health")

@@ -2,7 +2,7 @@ import { renderLocationTab } from '../components/settings/location.js';
 import { renderApiKeysTab } from '../components/settings/api-keys.js';
 import { renderThresholdsTab } from '../components/settings/thresholds.js';
 import { renderKasaTab } from '../components/settings/kasa.js';
-import { renderShutdownTab } from '../components/settings/shutdown.js';
+import { renderWorkflowsTab } from '../components/settings/workflows.js';
 import { renderSmtpTab } from '../components/settings/smtp.js';
 import { renderNotificationsTab } from '../components/settings/notifications.js';
 import { renderAccountTab } from '../components/settings/account.js';
@@ -12,7 +12,7 @@ const TABS = [
   { id: 'api-keys', label: 'API Keys', icon: 'key' },
   { id: 'thresholds', label: 'Thresholds', icon: 'sliders' },
   { id: 'kasa', label: 'Kasa Devices', icon: 'plug' },
-  { id: 'shutdown', label: 'Shutdown Sequence', icon: 'power' },
+  { id: 'workflows', label: 'Workflows', icon: 'diagram-3' },
   { id: 'smtp', label: 'SMTP / Email', icon: 'envelope' },
   { id: 'notifications', label: 'Notifications', icon: 'bell' },
   { id: 'account', label: 'Account', icon: 'person' },
@@ -23,7 +23,7 @@ const RENDERERS = {
   'api-keys': renderApiKeysTab,
   thresholds: renderThresholdsTab,
   kasa: renderKasaTab,
-  shutdown: renderShutdownTab,
+  workflows: renderWorkflowsTab,
   smtp: renderSmtpTab,
   notifications: renderNotificationsTab,
   account: renderAccountTab,

@@ -176,6 +176,44 @@ class ShutdownStepResponse(BaseModel):
         from_attributes = True
 
 
+# --- Workflows ---
+class WorkflowCreate(BaseModel):
+    name: str
+
+
+class WorkflowResponse(BaseModel):
+    id: int
+    name: str
+    is_system: bool
+
+    class Config:
+        from_attributes = True
+
+
+class WorkflowStepRequest(BaseModel):
+    kasa_port_id: int | None = None
+    action: str
+    delay_after_sec: int = 0
+    description: Optional[str] = None
+
+
+class WorkflowStepsRequest(BaseModel):
+    steps: list[WorkflowStepRequest]
+
+
+class WorkflowStepResponse(BaseModel):
+    id: int
+    workflow_id: int
+    step_order: int
+    kasa_port_id: int | None
+    action: str
+    delay_after_sec: int
+    description: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 # --- Events ---
 class EventResponse(BaseModel):
     id: int
