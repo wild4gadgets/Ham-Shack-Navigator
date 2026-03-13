@@ -4,6 +4,12 @@ import { getToken } from '../state.js';
 let ws = null;
 let pingInterval = null;
 let destroyed = false;
+let radarMap = null;
+let radarLayer = null;
+let radarFrames = [];
+let radarFrameIndex = 0;
+let radarAnimInterval = null;
+let radarPlaying = false;
 
 export async function renderDashboard(container) {
   destroyed = false;
@@ -59,6 +65,22 @@ export async function renderDashboard(container) {
         </div>
       </div>
 
+      <!-- Radar -->
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-broadcast me-2"></i>Local Radar</span>
+            <div class="d-flex align-items-center gap-2">
+              <span id="radar-timestamp" class="text-muted" style="font-size:0.8rem"></span>
+              <button id="btn-radar-prev" class="btn btn-sm btn-outline-light" title="Previous frame">&#8249;</button>
+              <button id="btn-radar-play" class="btn btn-sm btn-outline-light" title="Play/Pause">&#9654;</button>
+              <button id="btn-radar-next" class="btn btn-sm btn-outline-light" title="Next frame">&#8250;</button>
+            </div>
+          </div>
+          <div id="radar-map" style="height:400px;background:#1a1a2e"></div>
+        </div>
+      </div>
+
       <!-- Alerts -->
       <div class="col-12" id="alerts-area"></div>
 
@@ -107,10 +129,15 @@ function cleanup() {
   destroyed = true;
   if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
   if (ws) { ws.close(); ws = null; }
+  if (radarAnimInterval) { clearInterval(radarAnimInterval); radarAnimInterval = null; }
+  if (radarMap) { radarMap.remove(); radarMap = null; }
+  radarLayer = null;
+  radarFrames = [];
+  radarPlaying = false;
 }
 
 async function loadAll() {
-  await Promise.all([loadMonitoringStatus(), loadWeather(), loadRecentEvents()]);
+  await Promise.all([loadMonitoringStatus(), loadWeather(), loadRecentEvents(), loadRadar()]);
 }
 
 async function loadMonitoringStatus() {
@@ -341,6 +368,88 @@ async function loadWeather() {
   } catch (e) {
     console.error('Weather load failed:', e);
   }
+}
+
+async function loadRadar() {
+  try {
+    const loc = await apiGet('/settings/location');
+    const lat = loc.lat ?? 39.5;
+    const lon = loc.lon ?? -98.35;
+
+    // Init map only once
+    if (!radarMap) {
+      radarMap = L.map('radar-map', { zoomControl: true, attributionControl: true }).setView([lat, lon], 7);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        opacity: 0.5,
+      }).addTo(radarMap);
+    } else {
+      radarMap.setView([lat, lon], 7);
+    }
+
+    // Fetch RainViewer timestamps
+    const rv = await fetch('https://api.rainviewer.com/public/weather-maps.json').then(r => r.json());
+    const host = rv.host;
+    const past = rv.radar?.past ?? [];
+    const nowcast = rv.radar?.nowcast ?? [];
+    radarFrames = [...past, ...nowcast];
+    if (!radarFrames.length) return;
+
+    radarFrameIndex = radarFrames.length - 1;
+    showRadarFrame(host, radarFrameIndex);
+
+    // Wire up controls
+    document.getElementById('btn-radar-prev').onclick = () => {
+      stopRadarAnim();
+      radarFrameIndex = (radarFrameIndex - 1 + radarFrames.length) % radarFrames.length;
+      showRadarFrame(host, radarFrameIndex);
+    };
+    document.getElementById('btn-radar-next').onclick = () => {
+      stopRadarAnim();
+      radarFrameIndex = (radarFrameIndex + 1) % radarFrames.length;
+      showRadarFrame(host, radarFrameIndex);
+    };
+    document.getElementById('btn-radar-play').onclick = () => {
+      if (radarPlaying) {
+        stopRadarAnim();
+      } else {
+        radarPlaying = true;
+        document.getElementById('btn-radar-play').innerHTML = '&#9646;&#9646;';
+        radarAnimInterval = setInterval(() => {
+          radarFrameIndex = (radarFrameIndex + 1) % radarFrames.length;
+          showRadarFrame(host, radarFrameIndex);
+        }, 600);
+      }
+    };
+  } catch (e) {
+    console.error('Radar load failed:', e);
+  }
+}
+
+function showRadarFrame(host, index) {
+  const frame = radarFrames[index];
+  if (!frame || !radarMap) return;
+
+  if (radarLayer) { radarMap.removeLayer(radarLayer); radarLayer = null; }
+
+  radarLayer = L.tileLayer(`${host}${frame.path}/256/{z}/{x}/{y}/4/1_1.png`, {
+    opacity: 0.6,
+    attribution: 'RainViewer',
+  }).addTo(radarMap);
+
+  const ts = document.getElementById('radar-timestamp');
+  if (ts) {
+    const d = new Date(frame.time * 1000);
+    const isNowcast = radarFrames.indexOf(frame) >= (radarFrames.length - (radarFrames.filter(f => f.time > radarFrames[radarFrames.length - 1].time - 1).length));
+    ts.textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+}
+
+function stopRadarAnim() {
+  radarPlaying = false;
+  if (radarAnimInterval) { clearInterval(radarAnimInterval); radarAnimInterval = null; }
+  const btn = document.getElementById('btn-radar-play');
+  if (btn) btn.innerHTML = '&#9654;';
 }
 
 async function loadRecentEvents() {
