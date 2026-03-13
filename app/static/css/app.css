@@ -93,7 +93,7 @@ body {
 .status-dot.off { background: #6c757d; }
 
 #radar-map { border-radius: 0 0 4px 4px; }
-#radar-map .leaflet-tile { filter: brightness(0.7) saturate(0.8); }
+#radar-map .osm-tiles { filter: brightness(0.5) saturate(0.6); }
 
 .page-link { background-color: var(--card-bg); border-color: #444; color: #ccc; }
 .page-link:hover { background-color: var(--accent); color: #fff; }

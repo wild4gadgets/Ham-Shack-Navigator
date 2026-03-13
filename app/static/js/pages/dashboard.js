@@ -381,7 +381,7 @@ async function loadRadar() {
       radarMap = L.map('radar-map', { zoomControl: true, attributionControl: true }).setView([lat, lon], 7);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors',
-        opacity: 0.5,
+        className: 'osm-tiles',
       }).addTo(radarMap);
     } else {
       radarMap.setView([lat, lon], 7);
@@ -432,8 +432,8 @@ function showRadarFrame(host, index) {
 
   if (radarLayer) { radarMap.removeLayer(radarLayer); radarLayer = null; }
 
-  radarLayer = L.tileLayer(`${host}${frame.path}/256/{z}/{x}/{y}/4/1_1.png`, {
-    opacity: 0.6,
+  radarLayer = L.tileLayer(`${host}${frame.path}/256/{z}/{x}/{y}/6/1_1.png`, {
+    opacity: 0.85,
     attribution: 'RainViewer',
   }).addTo(radarMap);
 
