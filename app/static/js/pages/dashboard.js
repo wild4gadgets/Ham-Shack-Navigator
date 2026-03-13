@@ -53,7 +53,7 @@ export async function renderDashboard(container) {
           <div class="card-header"><i class="bi bi-lightning-charge me-2"></i>Lightning</div>
           <div class="card-body d-flex flex-column justify-content-center align-items-center" id="lightning-card">
             <div class="weather-value" id="lightning-value">--</div>
-            <div class="weather-unit" id="lightning-unit">miles</div>
+            <div class="weather-unit" id="lightning-unit">miles away</div>
             <div class="mt-2 text-muted" id="lightning-desc"></div>
           </div>
         </div>
@@ -322,7 +322,7 @@ async function loadWeather() {
       const lightEl = document.getElementById('lightning-value');
       const lightUnit = document.getElementById('lightning-unit');
       const lightDesc = document.getElementById('lightning-desc');
-      if (lightUnit) lightUnit.textContent = metric ? 'km' : 'miles';
+      if (lightUnit) lightUnit.textContent = metric ? 'km away' : 'miles away';
       if (lightEl && values.lightningDistance != null) {
         const dist = metric
           ? values.lightningDistance.toFixed(1)
