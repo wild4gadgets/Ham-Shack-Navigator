@@ -21,6 +21,27 @@ body {
 .card-header {
   background-color: var(--accent);
   border-bottom: 1px solid #2a2a4a;
+  color: #fff !important;
+}
+
+.card-header .text-muted { color: rgba(255,255,255,0.65) !important; }
+
+.port-switch {
+  width: 2.5em !important;
+  height: 1.25em !important;
+  cursor: pointer;
+  background-color: #6c757d !important;
+  border-color: #888 !important;
+}
+
+.port-switch:checked {
+  background-color: #198754 !important;
+  border-color: #198754 !important;
+}
+
+.port-switch:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .table-dark { --bs-table-bg: var(--card-bg); }
@@ -35,13 +56,16 @@ body {
   font-size: 2.5rem;
   font-weight: 700;
   line-height: 1;
+  color: #fff;
 }
 
 .weather-unit {
-  font-size: 1rem;
+  font-size: 1.25rem;
   opacity: 0.7;
+  color: #fff;
 }
 
+.alert-info { background-color: #0f3460; border-color: #1a4a80; color: #fff; }
 .alert-danger { border-left: 4px solid #dc3545; }
 .alert-warning { border-left: 4px solid #fd7e14; }
 
@@ -86,3 +110,5 @@ input:focus, select:focus, textarea:focus {
 }
 
 .form-check-input:checked { background-color: #0d6efd; border-color: #0d6efd; }
+
+label, .form-label, .form-text, .form-check-label { color: #e0e0e0 !important; }
