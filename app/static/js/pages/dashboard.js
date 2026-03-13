@@ -10,6 +10,9 @@ let radarFrames = [];
 let radarFrameIndex = 0;
 let radarAnimInterval = null;
 let radarPlaying = false;
+let radarHomeLat = null;
+let radarHomeLon = null;
+let radarHomeZoom = 7;
 
 export async function renderDashboard(container) {
   destroyed = false;
@@ -375,16 +378,34 @@ async function loadRadar() {
     const loc = await apiGet('/settings/location');
     const lat = loc.lat ?? 39.5;
     const lon = loc.lon ?? -98.35;
+    radarHomeLat = lat;
+    radarHomeLon = lon;
 
     // Init map only once
     if (!radarMap) {
-      radarMap = L.map('radar-map', { zoomControl: true, attributionControl: true }).setView([lat, lon], 7);
+      radarMap = L.map('radar-map', { zoomControl: true, attributionControl: true }).setView([lat, lon], radarHomeZoom);
+
+      // Home button control
+      const HomeControl = L.Control.extend({
+        onAdd() {
+          const btn = L.DomUtil.create('button', 'leaflet-bar leaflet-control');
+          btn.innerHTML = '<i class="bi bi-house-fill"></i>';
+          btn.style.cssText = 'width:30px;height:30px;background:#fff;border:none;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;';
+          btn.title = 'Recenter map';
+          L.DomEvent.on(btn, 'click', (e) => {
+            L.DomEvent.stopPropagation(e);
+            radarMap.setView([radarHomeLat, radarHomeLon], radarHomeZoom);
+          });
+          return btn;
+        },
+      });
+      new HomeControl({ position: 'topleft' }).addTo(radarMap);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         maxZoom: 19,
       }).addTo(radarMap);
     } else {
-      radarMap.setView([lat, lon], 7);
+      radarMap.setView([lat, lon], radarHomeZoom);
     }
 
     // Fetch RainViewer timestamps
