@@ -1,10 +1,14 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
+from sqlalchemy.orm import selectinload
 
 from dependencies import get_db, get_current_user
 from models import User, Workflow, WorkflowStep, KasaPort
 from schemas import WorkflowCreate, WorkflowResponse, WorkflowStepsRequest, WorkflowStepResponse
+from services import kasa_service
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
 
@@ -134,3 +138,40 @@ async def put_steps(
         .order_by(WorkflowStep.step_order)
     )
     return result.scalars().all()
+
+
+@router.post("/{workflow_id}/run")
+async def run_workflow(
+    workflow_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    result = await db.execute(select(Workflow).where(Workflow.id == workflow_id))
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    steps_result = await db.execute(
+        select(WorkflowStep)
+        .options(selectinload(WorkflowStep.kasa_port).selectinload(KasaPort.device))
+        .where(WorkflowStep.workflow_id == workflow_id)
+        .order_by(WorkflowStep.step_order)
+    )
+    steps = steps_result.scalars().all()
+
+    for step in steps:
+        if step.action == "pause":
+            await asyncio.sleep(step.delay_after_sec)
+        else:
+            try:
+                await kasa_service.control_port(
+                    step.kasa_port.device.ip_address,
+                    step.kasa_port.device.device_type,
+                    step.kasa_port.port_index,
+                    step.action,
+                )
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Step {step.step_order} failed: {e}")
+            if step.delay_after_sec > 0:
+                await asyncio.sleep(step.delay_after_sec)
+
+    return {"success": True}

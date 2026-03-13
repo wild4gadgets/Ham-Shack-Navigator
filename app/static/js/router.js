@@ -3,6 +3,7 @@ import { renderSetup } from './pages/setup.js';
 import { renderDashboard } from './pages/dashboard.js';
 import { renderSettings } from './pages/settings.js';
 import { renderEvents } from './pages/events.js';
+import { renderWorkflows } from './pages/workflows.js';
 import { getToken } from './state.js';
 import { apiGet } from './api.js';
 
@@ -55,6 +56,8 @@ export async function navigate(forceHash) {
     renderSettings(app);
   } else if (hash === '#/events') {
     await renderEvents(app);
+  } else if (hash === '#/workflows') {
+    await renderWorkflows(app);
   } else {
     app.innerHTML = '<div class="text-center mt-5"><h3>Page not found</h3><a href="#/dashboard">Go home</a></div>';
   }

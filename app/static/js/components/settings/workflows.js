@@ -183,11 +183,29 @@ function renderWfList() {
         ${wf.name}
         ${wf.is_system ? '<span class="badge bg-secondary ms-2">System</span>' : ''}
       </span>
+      <button class="btn btn-sm btn-outline-success btn-run-wf me-1" data-id="${wf.id}" data-name="${wf.name.replace(/"/g, '&quot;')}">Run</button>
       <button class="btn btn-sm btn-outline-secondary btn-rename-wf me-1" data-id="${wf.id}" data-name="${wf.name.replace(/"/g, '&quot;')}">Rename</button>
       <button class="btn btn-sm btn-outline-secondary btn-edit-wf me-1" data-id="${wf.id}">Edit</button>
       <button class="btn btn-sm btn-outline-danger btn-del-wf" data-id="${wf.id}" data-name="${wf.name.replace(/"/g, '&quot;')}" ${wf.is_system ? 'disabled title="System workflows cannot be deleted"' : ''}>Delete</button>
     </div>
   `).join('');
+
+  list.querySelectorAll('.btn-run-wf').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = parseInt(btn.dataset.id);
+      btn.disabled = true;
+      btn.textContent = 'Running…';
+      try {
+        await apiPost(`/workflows/${id}/run`, {});
+        showMsg(`Workflow "${btn.dataset.name}" completed.`, 'success');
+      } catch (err) {
+        showMsg(err.message, 'danger');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Run';
+      }
+    });
+  });
 
   list.querySelectorAll('.btn-rename-wf').forEach(btn => {
     btn.addEventListener('click', () => openRenameRow(parseInt(btn.dataset.id), btn.dataset.name));
