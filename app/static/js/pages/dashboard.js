@@ -447,7 +447,7 @@ async function loadRadar() {
   }
 }
 
-const RADAR_MAX_ZOOM = 8;
+const RADAR_MAX_ZOOM = 6;
 
 function makeRadarLayer(host, path) {
   return L.GridLayer.extend({
