@@ -451,21 +451,21 @@ function showRadarFrame(host, index) {
   const frame = radarFrames[index];
   if (!frame || !radarMap) return;
 
-  if (radarLayer) { radarMap.removeLayer(radarLayer); radarLayer = null; }
+  const url = `${host}${frame.path}/256/{z}/{x}/{y}/6/1_1.png`;
 
-  radarLayer = L.tileLayer(`${host}${frame.path}/256/{z}/{x}/{y}/6/1_1.png`, {
-    opacity: 0.85,
-    maxNativeZoom: 8,
-    maxZoom: 19,
-    attribution: 'RainViewer',
-  }).addTo(radarMap);
+  if (!radarLayer) {
+    radarLayer = L.tileLayer(url, {
+      opacity: 0.85,
+      maxNativeZoom: 8,
+      maxZoom: 19,
+      attribution: 'RainViewer',
+    }).addTo(radarMap);
+  } else {
+    radarLayer.setUrl(url);
+  }
 
   const ts = document.getElementById('radar-timestamp');
-  if (ts) {
-    const d = new Date(frame.time * 1000);
-    const isNowcast = radarFrames.indexOf(frame) >= (radarFrames.length - (radarFrames.filter(f => f.time > radarFrames[radarFrames.length - 1].time - 1).length));
-    ts.textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  }
+  if (ts) ts.textContent = new Date(frame.time * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 function stopRadarAnim() {
