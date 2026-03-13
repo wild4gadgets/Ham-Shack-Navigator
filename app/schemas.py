@@ -47,6 +47,11 @@ class UserResponse(BaseModel):
         from_attributes = True
 
 
+class ChangeEmailRequest(BaseModel):
+    current_password: str
+    new_email: str
+
+
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
@@ -62,6 +67,7 @@ class LocationSettings(BaseModel):
     lat: float
     lon: float
     city: str = ""
+    units: str = "imperial"  # "imperial" or "metric"
 
 
 class ApiKeySettings(BaseModel):
@@ -92,6 +98,10 @@ class NotificationSettings(BaseModel):
     digest_email: bool = True
 
 
+class KasaSettings(BaseModel):
+    poll_interval_sec: int = 30
+
+
 # --- Kasa ---
 class KasaDeviceCreate(BaseModel):
     name: str
@@ -107,6 +117,13 @@ class KasaDeviceUpdate(BaseModel):
 
 class KasaPortUpdate(BaseModel):
     label: Optional[str] = None
+
+    @field_validator("label")
+    @classmethod
+    def label_max_length(cls, v):
+        if v is not None and len(v) > 15:
+            raise ValueError("Port label must be 15 characters or fewer")
+        return v
 
 
 class KasaPortControl(BaseModel):
@@ -137,9 +154,10 @@ class KasaDeviceResponse(BaseModel):
 
 # --- Shutdown ---
 class ShutdownStepRequest(BaseModel):
-    kasa_port_id: int
-    action: str  # "on" or "off"
+    kasa_port_id: int | None = None
+    action: str  # "on", "off", or "pause"
     delay_after_sec: int = 0
+    description: Optional[str] = None
 
 
 class ShutdownSequenceRequest(BaseModel):
@@ -149,9 +167,10 @@ class ShutdownSequenceRequest(BaseModel):
 class ShutdownStepResponse(BaseModel):
     id: int
     step_order: int
-    kasa_port_id: int
+    kasa_port_id: int | None
     action: str
     delay_after_sec: int
+    description: Optional[str] = None
 
     class Config:
         from_attributes = True

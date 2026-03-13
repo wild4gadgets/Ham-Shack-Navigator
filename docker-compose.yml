@@ -8,6 +8,7 @@ services:
       - DATABASE_URL=sqlite+aiosqlite:////data/shack_weather.db
     volumes:
       - ./data:/data
+      - ./app/static:/app/static:ro
     networks:
       - internal
     expose:
@@ -19,7 +20,7 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
-      - "443:443"
+      - "5000:5000"
     volumes:
       - ./ssl:/etc/ssl/shack-weather
     environment:

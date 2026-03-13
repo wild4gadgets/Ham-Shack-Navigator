@@ -59,11 +59,12 @@ class ShutdownStep(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     step_order: Mapped[int] = mapped_column(Integer, nullable=False, unique=True)
-    kasa_port_id: Mapped[int] = mapped_column(Integer, ForeignKey("kasa_ports.id"), nullable=False)
-    action: Mapped[str] = mapped_column(String, nullable=False)  # "on" or "off"
+    kasa_port_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("kasa_ports.id"), nullable=True)
+    action: Mapped[str] = mapped_column(String, nullable=False)  # "on", "off", or "pause"
     delay_after_sec: Mapped[int] = mapped_column(Integer, default=0)
+    description: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    kasa_port: Mapped["KasaPort"] = relationship("KasaPort", back_populates="shutdown_steps")
+    kasa_port: Mapped["KasaPort | None"] = relationship("KasaPort", back_populates="shutdown_steps")
 
 
 class Event(Base):

@@ -182,37 +182,32 @@ function renderStepList() {
   }
 
   list.innerHTML = steps.map((step, i) => {
-    let rightContent;
+    let mainContent;
+    let subContent;
     if (step.action === 'pause') {
-      rightContent = `
-        <span class="badge bg-secondary me-2">PAUSE</span>
-        <span>${step.delay_after_sec}s</span>
-      `;
+      mainContent = `<span class="badge bg-secondary me-2">PAUSE</span><span style="color:#e0e0e0">${step.delay_after_sec}s</span>`;
+      subContent = step.description ? `<span style="color:#a0b0c8">${step.description}</span>` : '';
     } else {
       const port = ports.find(p => p.id === step.kasa_port_id);
       const portLabel = port ? (port.label || `Port ${port.port_index + 1}`) : `Port ID ${step.kasa_port_id}`;
-      const delayText = step.delay_after_sec > 0 ? `<small class="text-muted ms-3">${step.delay_after_sec}s delay</small>` : '';
-      rightContent = `
+      mainContent = `
         <span class="badge ${step.action === 'on' ? 'bg-success' : 'bg-danger'} me-2">${step.action.toUpperCase()}</span>
-        <span>${portLabel}</span>
-        ${delayText}
+        <span style="color:#e0e0e0">${portLabel}</span>
       `;
+      const delayPart = step.delay_after_sec > 0 ? `<span style="color:#a0b0c8">delay ${step.delay_after_sec}s</span>` : '';
+      const descPart = step.description ? `<span style="color:#a0b0c8">${step.description}</span>` : '';
+      const sep = delayPart && descPart ? '<span style="color:#555"> &mdash; </span>' : '';
+      subContent = descPart + sep + delayPart;
     }
-
-    const descText = step.description
-      ? `<div class="text-muted small mt-1">${step.description}</div>`
-      : '';
 
     return `
       <div class="card mb-2 step-item" draggable="true" data-index="${i}">
         <div class="card-body d-flex align-items-center py-2 px-3">
-          <span class="text-muted me-2" style="cursor:grab"><i class="bi bi-grip-vertical"></i></span>
+          <span style="color:#888;cursor:grab" class="me-2"><i class="bi bi-grip-vertical"></i></span>
           <span class="badge bg-secondary me-3" style="min-width:28px">${i + 1}</span>
           <span class="flex-grow-1">
-            <div class="d-flex align-items-center">
-              ${rightContent}
-            </div>
-            ${descText}
+            <div class="d-flex align-items-center">${mainContent}</div>
+            ${subContent ? `<div class="small mt-1">${subContent}</div>` : ''}
           </span>
           <button class="btn btn-sm btn-outline-secondary btn-edit-step me-1" data-index="${i}" title="Edit">
             <i class="bi bi-pencil"></i>
