@@ -181,9 +181,7 @@ function renderWfList() {
       </span>
       <button class="btn btn-sm btn-outline-secondary btn-rename-wf me-1" data-id="${wf.id}" data-name="${wf.name.replace(/"/g, '&quot;')}">Rename</button>
       <button class="btn btn-sm btn-outline-secondary btn-edit-wf me-1" data-id="${wf.id}">Edit</button>
-      ${!wf.is_system ? `
-        <button class="btn btn-sm btn-outline-danger btn-del-wf" data-id="${wf.id}" data-name="${wf.name.replace(/"/g, '&quot;')}">Delete</button>
-      ` : ''}
+      <button class="btn btn-sm btn-outline-danger btn-del-wf" data-id="${wf.id}" data-name="${wf.name.replace(/"/g, '&quot;')}" ${wf.is_system ? 'disabled title="System workflows cannot be deleted"' : ''}>Delete</button>
     </div>
   `).join('');
 
