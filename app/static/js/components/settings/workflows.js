@@ -9,6 +9,10 @@ let editIndex = null;
 
 export async function renderWorkflowsTab(container) {
   container.innerHTML = '<div class="text-muted p-3">Loading...</div>';
+  activeWorkflowId = null;
+  steps = [];
+  originalSteps = [];
+  editIndex = null;
   [ports, workflows] = await Promise.all([apiGet('/kasa/ports'), apiGet('/workflows')]);
   render(container);
 }
