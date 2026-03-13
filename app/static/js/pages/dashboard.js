@@ -379,8 +379,8 @@ async function loadRadar() {
     // Init map only once
     if (!radarMap) {
       radarMap = L.map('radar-map', { zoomControl: true, attributionControl: true }).setView([lat, lon], 7);
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         maxZoom: 19,
       }).addTo(radarMap);
     } else {
@@ -434,7 +434,8 @@ function showRadarFrame(host, index) {
 
   radarLayer = L.tileLayer(`${host}${frame.path}/256/{z}/{x}/{y}/6/1_1.png`, {
     opacity: 0.85,
-    maxNativeZoom: 12,
+    maxNativeZoom: 8,
+    maxZoom: 19,
     attribution: 'RainViewer',
   }).addTo(radarMap);
 
