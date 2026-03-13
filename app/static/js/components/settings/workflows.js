@@ -179,17 +179,11 @@ function renderWfList() {
         ${wf.name}
         ${wf.is_system ? '<span class="badge bg-secondary ms-2">System</span>' : ''}
       </span>
-      <button class="btn btn-sm btn-outline-secondary btn-rename-wf me-1" data-id="${wf.id}" data-name="${wf.name.replace(/"/g, '&quot;')}" title="Rename">
-        <i class="bi bi-pen"></i>
-      </button>
-      <button class="btn btn-sm btn-outline-secondary btn-edit-wf me-1" data-id="${wf.id}" title="Edit steps">
-        <i class="bi bi-pencil"></i>
-      </button>
+      <button class="btn btn-sm btn-outline-secondary btn-rename-wf me-1" data-id="${wf.id}" data-name="${wf.name.replace(/"/g, '&quot;')}">Rename</button>
+      <button class="btn btn-sm btn-outline-secondary btn-edit-wf me-1" data-id="${wf.id}">Edit</button>
       ${!wf.is_system ? `
-        <button class="btn btn-sm btn-outline-danger btn-del-wf" data-id="${wf.id}" data-name="${wf.name.replace(/"/g, '&quot;')}" title="Delete">
-          <i class="bi bi-trash"></i>
-        </button>
-      ` : '<span style="width:31px;display:inline-block"></span>'}
+        <button class="btn btn-sm btn-outline-danger btn-del-wf" data-id="${wf.id}" data-name="${wf.name.replace(/"/g, '&quot;')}">Delete</button>
+      ` : ''}
     </div>
   `).join('');
 
