@@ -2,6 +2,7 @@ import { apiGet, apiPut } from '../../api.js';
 
 let steps = [];
 let ports = [];
+let editIndex = null; // null = add mode, number = edit mode
 
 export async function renderShutdownTab(container) {
   container.innerHTML = '<div class="text-muted p-3">Loading...</div>';
@@ -34,29 +35,48 @@ function render(container) {
       </div>
     </div>
 
-    <!-- Add Step Modal -->
+    <!-- Add/Edit Step Modal -->
     <div class="modal fade" id="step-modal" tabindex="-1">
       <div class="modal-dialog">
         <div class="modal-content bg-dark text-light">
           <div class="modal-header">
-            <h5 class="modal-title">Add Step</h5>
+            <h5 class="modal-title" id="step-modal-title">Add Step</h5>
             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body">
             <div class="mb-3">
-              <label class="form-label">Kasa Port</label>
-              <select class="form-select" id="step-port">${portOptions}</select>
+              <label class="form-label">Description <small class="text-muted">(optional)</small></label>
+              <input type="text" class="form-control" id="step-description" placeholder="e.g. Power off amplifier" />
             </div>
             <div class="mb-3">
-              <label class="form-label">Action</label>
-              <select class="form-select" id="step-action">
-                <option value="off">Turn OFF</option>
-                <option value="on">Turn ON</option>
+              <label class="form-label">Step Type</label>
+              <select class="form-select" id="step-type">
+                <option value="kasa">Kasa Action</option>
+                <option value="pause">Pause</option>
               </select>
             </div>
-            <div class="mb-3">
-              <label class="form-label">Delay After (seconds)</label>
-              <input type="number" min="0" class="form-control" id="step-delay" value="0" />
+            <div id="step-kasa-fields">
+              <div class="mb-3">
+                <label class="form-label">Kasa Port</label>
+                <select class="form-select" id="step-port">${portOptions}</select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Action</label>
+                <select class="form-select" id="step-action">
+                  <option value="off">Turn OFF</option>
+                  <option value="on">Turn ON</option>
+                </select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Delay After (seconds)</label>
+                <input type="number" min="0" class="form-control" id="step-delay" value="0" />
+              </div>
+            </div>
+            <div id="step-pause-fields" style="display:none">
+              <div class="mb-3">
+                <label class="form-label">Pause Duration (seconds)</label>
+                <input type="number" min="1" class="form-control" id="step-pause-sec" value="5" />
+              </div>
             </div>
           </div>
           <div class="modal-footer">
@@ -71,14 +91,44 @@ function render(container) {
   renderStepList();
 
   document.getElementById('btn-add-step').addEventListener('click', () => {
+    editIndex = null;
+    document.getElementById('step-modal-title').textContent = 'Add Step';
+    document.getElementById('step-modal-save').textContent = 'Add';
+    document.getElementById('step-description').value = '';
+    document.getElementById('step-type').value = 'kasa';
+    document.getElementById('step-kasa-fields').style.display = '';
+    document.getElementById('step-pause-fields').style.display = 'none';
+    document.getElementById('step-action').value = 'off';
+    document.getElementById('step-delay').value = '0';
+    document.getElementById('step-pause-sec').value = '5';
+    if (ports.length) document.getElementById('step-port').value = ports[0].id;
     new bootstrap.Modal(document.getElementById('step-modal')).show();
   });
 
+  document.getElementById('step-type').addEventListener('change', (e) => {
+    const isPause = e.target.value === 'pause';
+    document.getElementById('step-kasa-fields').style.display = isPause ? 'none' : '';
+    document.getElementById('step-pause-fields').style.display = isPause ? '' : 'none';
+  });
+
   document.getElementById('step-modal-save').addEventListener('click', () => {
-    const portId = parseInt(document.getElementById('step-port').value);
-    const action = document.getElementById('step-action').value;
-    const delay = parseInt(document.getElementById('step-delay').value) || 0;
-    steps.push({ kasa_port_id: portId, action, delay_after_sec: delay });
+    const type = document.getElementById('step-type').value;
+    const description = document.getElementById('step-description').value.trim() || null;
+    let newStep;
+    if (type === 'pause') {
+      const dur = parseInt(document.getElementById('step-pause-sec').value) || 5;
+      newStep = { action: 'pause', kasa_port_id: null, delay_after_sec: dur, description };
+    } else {
+      const portId = parseInt(document.getElementById('step-port').value);
+      const action = document.getElementById('step-action').value;
+      const delay = parseInt(document.getElementById('step-delay').value) || 0;
+      newStep = { kasa_port_id: portId, action, delay_after_sec: delay, description };
+    }
+    if (editIndex !== null) {
+      steps[editIndex] = newStep;
+    } else {
+      steps.push(newStep);
+    }
     bootstrap.Modal.getInstance(document.getElementById('step-modal')).hide();
     renderStepList();
   });
@@ -98,6 +148,30 @@ function render(container) {
   });
 }
 
+function openEditModal(index) {
+  const step = steps[index];
+  editIndex = index;
+  document.getElementById('step-modal-title').textContent = 'Edit Step';
+  document.getElementById('step-modal-save').textContent = 'Save';
+  document.getElementById('step-description').value = step.description || '';
+
+  if (step.action === 'pause') {
+    document.getElementById('step-type').value = 'pause';
+    document.getElementById('step-kasa-fields').style.display = 'none';
+    document.getElementById('step-pause-fields').style.display = '';
+    document.getElementById('step-pause-sec').value = step.delay_after_sec;
+  } else {
+    document.getElementById('step-type').value = 'kasa';
+    document.getElementById('step-kasa-fields').style.display = '';
+    document.getElementById('step-pause-fields').style.display = 'none';
+    document.getElementById('step-port').value = step.kasa_port_id;
+    document.getElementById('step-action').value = step.action;
+    document.getElementById('step-delay').value = step.delay_after_sec;
+  }
+
+  new bootstrap.Modal(document.getElementById('step-modal')).show();
+}
+
 function renderStepList() {
   const list = document.getElementById('shutdown-steps-list');
   if (!list) return;
@@ -108,19 +182,42 @@ function renderStepList() {
   }
 
   list.innerHTML = steps.map((step, i) => {
-    const port = ports.find(p => p.id === step.kasa_port_id);
-    const portLabel = port ? (port.label || `Port ${port.port_index}`) : `Port ID ${step.kasa_port_id}`;
+    let rightContent;
+    if (step.action === 'pause') {
+      rightContent = `
+        <span class="badge bg-secondary me-2">PAUSE</span>
+        <span>${step.delay_after_sec}s</span>
+      `;
+    } else {
+      const port = ports.find(p => p.id === step.kasa_port_id);
+      const portLabel = port ? (port.label || `Port ${port.port_index + 1}`) : `Port ID ${step.kasa_port_id}`;
+      const delayText = step.delay_after_sec > 0 ? `<small class="text-muted ms-3">${step.delay_after_sec}s delay</small>` : '';
+      rightContent = `
+        <span class="badge ${step.action === 'on' ? 'bg-success' : 'bg-danger'} me-2">${step.action.toUpperCase()}</span>
+        <span>${portLabel}</span>
+        ${delayText}
+      `;
+    }
+
+    const descText = step.description
+      ? `<div class="text-muted small mt-1">${step.description}</div>`
+      : '';
+
     return `
       <div class="card mb-2 step-item" draggable="true" data-index="${i}">
-        <div class="card-body d-flex align-items-center gap-3 py-2">
-          <span class="text-muted" style="cursor:grab"><i class="bi bi-grip-vertical"></i></span>
-          <span class="badge bg-secondary">${i + 1}</span>
+        <div class="card-body d-flex align-items-center py-2 px-3">
+          <span class="text-muted me-2" style="cursor:grab"><i class="bi bi-grip-vertical"></i></span>
+          <span class="badge bg-secondary me-3" style="min-width:28px">${i + 1}</span>
           <span class="flex-grow-1">
-            <span class="badge ${step.action === 'on' ? 'bg-success' : 'bg-danger'}">${step.action.toUpperCase()}</span>
-            ${portLabel}
+            <div class="d-flex align-items-center">
+              ${rightContent}
+            </div>
+            ${descText}
           </span>
-          <small class="text-muted">${step.delay_after_sec}s delay</small>
-          <button class="btn btn-sm btn-outline-danger btn-remove-step" data-index="${i}">
+          <button class="btn btn-sm btn-outline-secondary btn-edit-step me-1" data-index="${i}" title="Edit">
+            <i class="bi bi-pencil"></i>
+          </button>
+          <button class="btn btn-sm btn-outline-danger btn-remove-step" data-index="${i}" title="Remove">
             <i class="bi bi-trash"></i>
           </button>
         </div>
@@ -150,6 +247,14 @@ function renderStepList() {
         steps.splice(dropIdx, 0, moved);
         renderStepList();
       }
+    });
+  });
+
+  // Edit buttons
+  list.querySelectorAll('.btn-edit-step').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openEditModal(parseInt(btn.dataset.index));
     });
   });
 
