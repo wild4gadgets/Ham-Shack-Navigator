@@ -447,35 +447,24 @@ async function loadRadar() {
   }
 }
 
-const RADAR_MAX_ZOOM = 6;
-
-function makeRadarLayer(host, path) {
-  return L.GridLayer.extend({
-    options: { tileSize: 256, opacity: 0.85, attribution: 'RainViewer' },
-    createTile(coords) {
-      const img = document.createElement('img');
-      img.style.opacity = this.options.opacity;
-      // Cap zoom and adjust tile coordinates to match the capped zoom
-      const dz = Math.max(0, coords.z - RADAR_MAX_ZOOM);
-      const z = coords.z - dz;
-      const x = Math.floor(coords.x / Math.pow(2, dz));
-      const y = Math.floor(coords.y / Math.pow(2, dz));
-      img.src = `${host}${path}/256/${z}/${x}/${y}/6/1_1.png`;
-      img.onerror = () => { img.style.display = 'none'; };
-      return img;
-    },
-  });
-}
+const RADAR_MAX_NATIVE_ZOOM = 6;
 
 function showRadarFrame(host, index) {
   const frame = radarFrames[index];
   if (!frame || !radarMap) return;
 
-  if (radarLayer) { radarMap.removeLayer(radarLayer); radarLayer = null; }
+  const url = `${host}${frame.path}/256/{z}/{x}/{y}/6/1_1.png`;
 
-  const Layer = makeRadarLayer(host, frame.path);
-  radarLayer = new Layer();
-  radarLayer.addTo(radarMap);
+  if (!radarLayer) {
+    radarLayer = L.tileLayer(url, {
+      opacity: 0.85,
+      maxNativeZoom: RADAR_MAX_NATIVE_ZOOM,
+      maxZoom: 19,
+      attribution: 'RainViewer',
+    }).addTo(radarMap);
+  } else {
+    radarLayer.setUrl(url);
+  }
 
   const ts = document.getElementById('radar-timestamp');
   if (ts) ts.textContent = new Date(frame.time * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });

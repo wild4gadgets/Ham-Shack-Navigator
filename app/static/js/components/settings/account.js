@@ -1,11 +1,31 @@
-import { apiPut } from '../../api.js';
+import { apiGet, apiPut } from '../../api.js';
 
-export function renderAccountTab(container) {
+export async function renderAccountTab(container) {
+  const me = await apiGet('/users/me');
+
   container.innerHTML = `
-    <div class="card">
-      <div class="card-header"><i class="bi bi-person me-2"></i>Account Settings</div>
+    <div class="card mb-3">
+      <div class="card-header"><i class="bi bi-envelope me-2"></i>Change Email</div>
       <div class="card-body">
-        <h6>Change Password</h6>
+        <p class="text-muted mb-3">Current email: <strong>${me.email}</strong></p>
+        <div id="email-msg" class="alert" style="display:none"></div>
+        <form id="email-form">
+          <div class="mb-3">
+            <label class="form-label">New Email Address</label>
+            <input type="email" class="form-control" id="new-email" required />
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Current Password</label>
+            <input type="password" class="form-control" id="email-cur-password" required />
+          </div>
+          <button type="submit" class="btn btn-primary">Change Email</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><i class="bi bi-key me-2"></i>Change Password</div>
+      <div class="card-body">
         <div id="account-msg" class="alert" style="display:none"></div>
         <form id="password-form">
           <div class="mb-3">
@@ -26,6 +46,28 @@ export function renderAccountTab(container) {
       </div>
     </div>
   `;
+
+  document.getElementById('email-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('email-msg');
+    msg.style.display = 'none';
+    try {
+      await apiPut('/users/me/email', {
+        new_email: document.getElementById('new-email').value,
+        current_password: document.getElementById('email-cur-password').value,
+      });
+      msg.className = 'alert alert-success';
+      msg.textContent = 'Email updated successfully.';
+      msg.style.display = '';
+      document.getElementById('email-form').reset();
+      // Refresh to show new email
+      await renderAccountTab(container);
+    } catch (err) {
+      msg.className = 'alert alert-danger';
+      msg.textContent = err.message;
+      msg.style.display = '';
+    }
+  });
 
   document.getElementById('password-form').addEventListener('submit', async (e) => {
     e.preventDefault();

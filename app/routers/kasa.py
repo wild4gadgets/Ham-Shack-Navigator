@@ -81,6 +81,19 @@ async def delete_device(device_id: int, db: AsyncSession = Depends(get_db), _: U
     await db.commit()
 
 
+@router.get("/devices/{device_id}/states")
+async def get_device_states(device_id: int, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    result = await db.execute(select(KasaDevice).where(KasaDevice.id == device_id))
+    device = result.scalar_one_or_none()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    try:
+        states = await kasa_service.get_port_states(device.ip_address, device.device_type)
+        return {"success": True, "port_states": states}
+    except Exception as e:
+        return {"success": False, "error": str(e), "port_states": []}
+
+
 @router.post("/devices/{device_id}/test")
 async def test_device(device_id: int, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     result = await db.execute(select(KasaDevice).where(KasaDevice.id == device_id))

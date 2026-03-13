@@ -7,7 +7,7 @@ from sqlalchemy import select
 from dependencies import get_db, get_current_user
 from models import User, Setting
 from schemas import (
-    LocationSettings, ApiKeySettings, ThresholdSettings, SmtpSettings, NotificationSettings
+    LocationSettings, ApiKeySettings, ThresholdSettings, SmtpSettings, NotificationSettings, KasaSettings
 )
 import scheduler as sched
 
@@ -43,7 +43,7 @@ async def _save_setting(db: AsyncSession, key: str, value: dict):
 # --- Location ---
 @router.get("/location")
 async def get_location(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    return await _get_setting(db, "location") or {"lat": 0.0, "lon": 0.0, "city": ""}
+    return await _get_setting(db, "location") or {"lat": 0.0, "lon": 0.0, "city": "", "units": "imperial"}
 
 
 @router.put("/location")
@@ -130,4 +130,17 @@ async def get_notifications(db: AsyncSession = Depends(get_db), _: User = Depend
 @router.put("/notifications")
 async def put_notifications(body: NotificationSettings, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     await _save_setting(db, "notifications", body.model_dump())
+    return {"detail": "Saved"}
+
+
+# --- Kasa Settings ---
+@router.get("/kasa")
+async def get_kasa_settings(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    data = await _get_setting(db, "kasa_settings")
+    return data or {"poll_interval_sec": 30}
+
+
+@router.put("/kasa")
+async def put_kasa_settings(body: KasaSettings, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    await _save_setting(db, "kasa_settings", body.model_dump())
     return {"detail": "Saved"}

@@ -26,13 +26,13 @@ async def _get_api_keys(db: AsyncSession) -> tuple[str | None, str | None]:
     return data.get("owm_key"), data.get("tomorrow_key")
 
 
-async def _get_location(db: AsyncSession) -> tuple[float | None, float | None]:
+async def _get_location(db: AsyncSession) -> tuple[float | None, float | None, str]:
     result = await db.execute(select(Setting).where(Setting.key == "location"))
     row = result.scalar_one_or_none()
     if not row:
-        return None, None
+        return None, None, "imperial"
     data = json.loads(row.value)
-    return data.get("lat"), data.get("lon")
+    return data.get("lat"), data.get("lon"), data.get("units", "imperial")
 
 
 async def _save_cache(db: AsyncSession, source: str, data: dict):
@@ -50,11 +50,11 @@ async def _save_cache(db: AsyncSession, source: str, data: dict):
 
 async def fetch_owm_current(db: AsyncSession) -> dict | None:
     owm_key, _ = await _get_api_keys(db)
-    lat, lon = await _get_location(db)
+    lat, lon, units = await _get_location(db)
     if not owm_key or lat is None:
         return None
 
-    url = f"{OWM_BASE}/weather?lat={lat}&lon={lon}&appid={owm_key}&units=imperial"
+    url = f"{OWM_BASE}/weather?lat={lat}&lon={lon}&appid={owm_key}&units={units}"
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
@@ -72,12 +72,12 @@ async def fetch_owm_current(db: AsyncSession) -> dict | None:
 
 async def fetch_owm_forecast(db: AsyncSession) -> dict | None:
     owm_key, _ = await _get_api_keys(db)
-    lat, lon = await _get_location(db)
+    lat, lon, units = await _get_location(db)
     if not owm_key or lat is None:
         return None
 
     # 5-day/3h forecast; cnt=8 gives 24h worth
-    url = f"{OWM_BASE}/forecast?lat={lat}&lon={lon}&appid={owm_key}&units=imperial&cnt=8"
+    url = f"{OWM_BASE}/forecast?lat={lat}&lon={lon}&appid={owm_key}&units={units}&cnt=8"
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
@@ -95,15 +95,16 @@ async def fetch_owm_forecast(db: AsyncSession) -> dict | None:
 
 async def fetch_tomorrow_realtime(db: AsyncSession) -> dict | None:
     _, tomorrow_key = await _get_api_keys(db)
-    lat, lon = await _get_location(db)
+    lat, lon, units = await _get_location(db)
     if not tomorrow_key or lat is None:
         return None
 
+    # Tomorrow.io: lightningDistance is always returned in km regardless of units param
     url = (
         f"{TOMORROW_BASE}/weather/realtime"
         f"?location={lat},{lon}"
         f"&fields=lightningDistance,weatherCode,temperature,windSpeed"
-        f"&apikey={tomorrow_key}&units=imperial"
+        f"&apikey={tomorrow_key}&units={units}"
     )
     try:
         async with aiohttp.ClientSession() as session:

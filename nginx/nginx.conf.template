@@ -5,11 +5,11 @@ upstream app {
 server {
     listen 80;
     server_name _;
-    return 301 https://$host$request_uri;
+    return 301 https://$host:5000$request_uri;
 }
 
 server {
-    listen 443 ssl;
+    listen 5000 ssl;
     server_name _;
 
     ssl_certificate /etc/ssl/shack-weather/cert.pem;

@@ -49,9 +49,9 @@ async def send_shutdown_notification(db: AsyncSession, reason: str, steps_execut
     if not smtp or not smtp.get("host"):
         return
 
-    subject = f"[Shack Weather] Shutdown triggered - {reason}"
+    subject = f"[Shack Cockpit] Shutdown triggered - {reason}"
     steps_text = "\n".join(f"  {i+1}. {s}" for i, s in enumerate(steps_executed))
-    body = f"""Shack Weather Monitor has triggered an automatic shutdown.
+    body = f"""Shack Cockpit Monitor has triggered an automatic shutdown.
 
 Reason: {reason}
 Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}
@@ -59,7 +59,7 @@ Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}
 Steps Executed:
 {steps_text}
 
-This is an automated notification from your Shack Weather Monitor.
+This is an automated notification from your Shack Cockpit Monitor.
 """
     try:
         await _send_email(smtp, subject, body)
@@ -73,13 +73,13 @@ async def send_digest(db: AsyncSession, forecast_summary: str):
     if not smtp or not smtp.get("host"):
         return
 
-    subject = f"[Shack Weather] Daily Forecast Digest - {datetime.utcnow().strftime('%Y-%m-%d')}"
+    subject = f"[Shack Cockpit] Daily Forecast Digest - {datetime.utcnow().strftime('%Y-%m-%d')}"
     body = f"""Good morning! Here is your daily weather digest for your ham radio station.
 
 {forecast_summary}
 
 Stay safe and 73!
-- Shack Weather Monitor
+- Shack Cockpit Monitor
 """
     try:
         await _send_email(smtp, subject, body)
@@ -93,8 +93,8 @@ async def send_test_email(db: AsyncSession) -> bool:
     if not smtp or not smtp.get("host"):
         raise ValueError("SMTP not configured")
 
-    subject = "[Shack Weather] Test Email"
-    body = f"This is a test email from Shack Weather Monitor.\n\nSent at: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+    subject = "[Shack Cockpit] Test Email"
+    body = f"This is a test email from Shack Cockpit Monitor.\n\nSent at: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"
     try:
         await _send_email(smtp, subject, body)
         return True
