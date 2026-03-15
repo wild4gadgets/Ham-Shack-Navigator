@@ -42,7 +42,7 @@ def _compute_maidenhead(lat: float, lon: float) -> str:
 # Patterns for smart lookup input detection
 _GPS_RE = _re.compile(r'^([-+]?\d+(?:\.\d+)?)\s*,\s*([-+]?\d+(?:\.\d+)?)$')
 _MAIDEN_RE = _re.compile(r'^[A-Ra-r]{2}\d{2}(?:[A-Xa-x]{2})?$')
-_W3W_RE = _re.compile(r'^(?:///)?([a-zA-Z\u0080-\uFFFF']+\.[a-zA-Z\u0080-\uFFFF']+\.[a-zA-Z\u0080-\uFFFF']+)$')
+_W3W_RE = _re.compile(r"^(?:///)?([a-zA-Z\u0080-\uFFFF]+\.[a-zA-Z\u0080-\uFFFF]+\.[a-zA-Z\u0080-\uFFFF]+)$")
 
 
 def _maiden_to_latlon(grid: str) -> tuple[float, float]:
