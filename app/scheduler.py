@@ -48,6 +48,10 @@ async def _monitoring_poll():
             logger.error("Weather fetch failed: %s", e)
             await log_event(db, "error", "warning", f"Weather fetch failed: {e}")
 
+        # Broadcast weather update immediately after fetch so dashboard refreshes
+        # regardless of cooldown state or threshold outcome
+        await manager.broadcast({"type": "weather_update", "source": "poll"})
+
         # Check cooldown
         if await is_in_cooldown(db):
             logger.debug("In cooldown, skipping threshold check")
@@ -57,8 +61,6 @@ async def _monitoring_poll():
         # Check thresholds
         should_trigger, reason, meta = await check_conditions(db)
 
-        # Broadcast weather update
-        await manager.broadcast({"type": "weather_update", "source": "poll"})
         await manager.broadcast({"type": "monitoring_status", "triggered": should_trigger, "reason": reason})
 
         # Push state to HA after every poll (keeps HA sensors fresh)

@@ -1,20 +1,38 @@
 import json
+import uuid as _uuid
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException
+from urllib.parse import quote as _quote
+
+import aiohttp as _aiohttp
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from dependencies import get_db, get_current_user
 from models import User, Setting
 from schemas import (
-    LocationSettings, ApiKeySettings, ThresholdSettings, SmtpSettings, NotificationSettings, KasaSettings,
-    IftttSettings, TelegramSettings, HomeAssistantSettings,
+    LocationSettings, LocationProfile, ApiKeySettings, ThresholdSettings, SmtpSettings,
+    NotificationSettings, KasaSettings, IftttSettings, TelegramSettings, HomeAssistantSettings,
 )
 import scheduler as sched
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 MASKED = "****"
+
+
+def _compute_maidenhead(lat: float, lon: float) -> str:
+    """Compute 6-character Maidenhead grid locator from lat/lon."""
+    letters = "ABCDEFGHIJKLMNOPQRSTUVWX"
+    la = lat + 90.0
+    lo = lon + 180.0
+    grid = letters[int(lo / 20)]
+    grid += letters[int(la / 10)]
+    grid += str(int((lo % 20) / 2))
+    grid += str(int(la % 10))
+    grid += chr(ord('a') + int((lo % 2) * 12))
+    grid += chr(ord('a') + int((la % 1) * 24))
+    return grid
 
 
 def _mask_key(key: str | None) -> str | None:
@@ -53,6 +71,148 @@ async def put_location(body: LocationSettings, db: AsyncSession = Depends(get_db
     return {"detail": "Saved"}
 
 
+# --- Location Lookup ---
+@router.get("/location/lookup")
+async def lookup_location(
+    q: str = Query(..., min_length=1),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    nom_url = (
+        f"https://nominatim.openstreetmap.org/search"
+        f"?q={_quote(q)}&format=json&limit=1&addressdetails=1"
+    )
+    async with _aiohttp.ClientSession(headers={"User-Agent": "HamShackCockpit/1.0"}) as session:
+        async with session.get(nom_url, timeout=_aiohttp.ClientTimeout(total=10)) as resp:
+            if resp.status != 200:
+                raise HTTPException(status_code=502, detail="Geocoding service unavailable")
+            results = await resp.json()
+
+        if not results:
+            raise HTTPException(status_code=404, detail="Location not found")
+
+        r = results[0]
+        lat = float(r["lat"])
+        lon = float(r["lon"])
+
+        addr = r.get("address", {})
+        city_part = addr.get("city") or addr.get("town") or addr.get("village") or addr.get("county") or ""
+        state_part = addr.get("state", "")
+        if city_part and state_part:
+            city_display = f"{city_part}, {state_part}"
+        else:
+            city_display = city_part or state_part or r.get("display_name", "")
+
+        gridsquare = _compute_maidenhead(lat, lon)
+
+        what3words = ""
+        api_keys = await _get_setting(db, "api_keys")
+        w3w_key = api_keys.get("w3w_key", "")
+        if w3w_key and not w3w_key.startswith(MASKED):
+            w3w_url = (
+                f"https://api.what3words.com/v3/convert-to-3wa"
+                f"?coordinates={lat},{lon}&key={w3w_key}&language=en"
+            )
+            try:
+                async with session.get(w3w_url, timeout=_aiohttp.ClientTimeout(total=10)) as w3w_resp:
+                    if w3w_resp.status == 200:
+                        w3w_data = await w3w_resp.json()
+                        what3words = w3w_data.get("words", "")
+            except Exception:
+                pass  # w3w failure is non-fatal
+
+    return {
+        "lat": round(lat, 4),
+        "lon": round(lon, 4),
+        "city": city_display,
+        "gridsquare": gridsquare,
+        "what3words": what3words,
+    }
+
+
+# --- Location Profiles ---
+@router.get("/location/profiles")
+async def get_location_profiles(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    result = await _get_setting(db, "location_profiles")
+    return result if isinstance(result, list) else []
+
+
+@router.post("/location/profiles")
+async def create_location_profile(
+    body: LocationProfile,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    profiles = await _get_setting(db, "location_profiles")
+    if not isinstance(profiles, list):
+        profiles = []
+    new_profile = body.model_dump()
+    new_profile["id"] = str(_uuid.uuid4())
+    profiles.append(new_profile)
+    await _save_setting(db, "location_profiles", profiles)
+    return new_profile
+
+
+@router.put("/location/profiles/{profile_id}")
+async def update_location_profile(
+    profile_id: str,
+    body: LocationProfile,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    profiles = await _get_setting(db, "location_profiles")
+    if not isinstance(profiles, list):
+        profiles = []
+    for i, p in enumerate(profiles):
+        if p["id"] == profile_id:
+            updated = body.model_dump()
+            updated["id"] = profile_id
+            profiles[i] = updated
+            await _save_setting(db, "location_profiles", profiles)
+            # Keep active location in sync if this profile is currently active
+            location = await _get_setting(db, "location") or {}
+            if location.get("active_profile_id") == profile_id:
+                location.update({k: v for k, v in updated.items() if k != "id"})
+                location["active_profile_id"] = profile_id
+                await _save_setting(db, "location", location)
+            return updated
+    raise HTTPException(status_code=404, detail="Profile not found")
+
+
+@router.delete("/location/profiles/{profile_id}")
+async def delete_location_profile(
+    profile_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    profiles = await _get_setting(db, "location_profiles")
+    if not isinstance(profiles, list):
+        raise HTTPException(status_code=404, detail="Profile not found")
+    new_profiles = [p for p in profiles if p["id"] != profile_id]
+    if len(new_profiles) == len(profiles):
+        raise HTTPException(status_code=404, detail="Profile not found")
+    await _save_setting(db, "location_profiles", new_profiles)
+    return {"detail": "Deleted"}
+
+
+@router.post("/location/profiles/{profile_id}/activate")
+async def activate_location_profile(
+    profile_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    profiles = await _get_setting(db, "location_profiles")
+    if not isinstance(profiles, list):
+        raise HTTPException(status_code=404, detail="Profile not found")
+    for p in profiles:
+        if p["id"] == profile_id:
+            location = {k: v for k, v in p.items() if k != "id"}
+            location["active_profile_id"] = profile_id
+            await _save_setting(db, "location", location)
+            return {"detail": "Activated"}
+    raise HTTPException(status_code=404, detail="Profile not found")
+
+
 # --- API Keys ---
 @router.get("/api-keys")
 async def get_api_keys(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
@@ -60,6 +220,7 @@ async def get_api_keys(db: AsyncSession = Depends(get_db), _: User = Depends(get
     return {
         "owm_key": _mask_key(data.get("owm_key")),
         "tomorrow_key": _mask_key(data.get("tomorrow_key")),
+        "w3w_key": _mask_key(data.get("w3w_key")),
     }
 
 
@@ -71,6 +232,8 @@ async def put_api_keys(body: ApiKeySettings, db: AsyncSession = Depends(get_db),
         existing["owm_key"] = body.owm_key
     if body.tomorrow_key and not body.tomorrow_key.startswith(MASKED):
         existing["tomorrow_key"] = body.tomorrow_key
+    if body.w3w_key and not body.w3w_key.startswith(MASKED):
+        existing["w3w_key"] = body.w3w_key
     await _save_setting(db, "api_keys", existing)
     return {"detail": "Saved"}
 

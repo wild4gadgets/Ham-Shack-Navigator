@@ -21,6 +21,11 @@ export async function renderApiKeysTab(container) {
             <input type="text" class="form-control font-monospace" id="tomorrow-key" value="${data.tomorrow_key || ''}" placeholder="Enter new key or leave masked" />
             <div class="form-text">Get free key at <a href="https://tomorrow.io" target="_blank" class="text-info">tomorrow.io</a>. Free tier: 500 req/day.</div>
           </div>
+          <div class="mb-3">
+            <label class="form-label">What3Words API Key</label>
+            <input type="text" class="form-control font-monospace" id="w3w-key" value="${data.w3w_key || ''}" placeholder="Enter new key or leave masked" />
+            <div class="form-text">Optional. Enables What3Words auto-population on the Location settings page. Get a free key at <a href="https://accounts.what3words.com/register" target="_blank" class="text-info">what3words.com</a>.</div>
+          </div>
           <button type="submit" class="btn btn-primary">Save</button>
         </form>
       </div>
@@ -34,6 +39,7 @@ export async function renderApiKeysTab(container) {
       await apiPut('/settings/api-keys', {
         owm_key: document.getElementById('owm-key').value,
         tomorrow_key: document.getElementById('tomorrow-key').value,
+        w3w_key: document.getElementById('w3w-key').value,
       });
       msg.className = 'alert alert-success';
       msg.textContent = 'API keys saved.';

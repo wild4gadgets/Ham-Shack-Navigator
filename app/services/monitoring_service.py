@@ -61,16 +61,16 @@ async def check_conditions(db: AsyncSession) -> tuple[bool, str, dict]:
     wind_threshold = thresholds.get("wind_mph", 35.0)
     lightning_threshold = thresholds.get("lightning_miles", 10.0)
 
-    # Check wind from OWM current
+    # Check wind gusts from OWM current
     current = await _get_cache(db, "owm_current")
     if current:
-        wind_speed = current.get("wind", {}).get("speed", 0)  # mph (units=imperial)
-        if wind_speed >= wind_threshold:
-            meta = {"wind_mph": wind_speed, "threshold_mph": wind_threshold}
+        wind_gust = current.get("wind", {}).get("gust") or current.get("wind", {}).get("speed", 0)  # mph (units=imperial); fall back to speed if gust unavailable
+        if wind_gust >= wind_threshold:
+            meta = {"wind_gust_mph": wind_gust, "threshold_mph": wind_threshold}
             await log_event(db, "wind_alert", "warning",
-                          f"Wind speed {wind_speed:.1f} mph exceeds threshold {wind_threshold} mph",
+                          f"Wind gust {wind_gust:.1f} mph exceeds threshold {wind_threshold} mph",
                           meta)
-            return True, f"High wind: {wind_speed:.1f} mph", meta
+            return True, f"High wind gust: {wind_gust:.1f} mph", meta
 
     # Check lightning from Tomorrow.io
     realtime = await _get_cache(db, "tomorrow_realtime")

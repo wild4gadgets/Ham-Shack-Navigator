@@ -12,9 +12,9 @@ export async function renderThresholdsTab(container) {
         <form id="thresholds-form">
           <div class="row">
             <div class="col-md-6 mb-3">
-              <label class="form-label">Wind Speed Threshold (mph)</label>
+              <label class="form-label">Wind Gust Threshold (mph)</label>
               <input type="number" step="0.1" min="1" class="form-control" id="wind-mph" value="${data.wind_mph ?? 35}" />
-              <div class="form-text">Trigger shutdown if wind exceeds this speed.</div>
+              <div class="form-text">Trigger shutdown if wind gusts exceed this speed.</div>
             </div>
             <div class="col-md-6 mb-3">
               <label class="form-label">Lightning Distance Threshold (miles)</label>
