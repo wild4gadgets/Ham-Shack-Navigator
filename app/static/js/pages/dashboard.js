@@ -4,7 +4,6 @@ import { getToken } from '../state.js';
 let ws = null;
 let pingInterval = null;
 let destroyed = false;
-let lastWeatherFetchedAt = null;
 let radarMap = null;
 let radarLayer = null;
 let radarFrames = [];
@@ -33,8 +32,9 @@ export async function renderDashboard(container) {
               </button>
             </div>
           </div>
-          <div class="card-body" id="monitoring-status-area">
-            <div class="text-muted">Loading...</div>
+          <div class="card-body d-flex align-items-center flex-wrap gap-2">
+            <div id="monitoring-status-area"><span class="text-muted">Loading...</span></div>
+            <div class="ms-auto"><small id="weather-update-time" class="text-muted"></small></div>
           </div>
         </div>
       </div>
@@ -172,9 +172,6 @@ async function loadMonitoringStatus() {
     let html = `<span class="badge ${s.enabled ? 'bg-success' : 'bg-secondary'} me-2">${s.enabled ? 'Armed' : 'Disarmed'}</span>`;
     if (s.in_cooldown) {
       html += `<span class="badge bg-info me-2">Cooldown: ${s.cooldown_remaining_min.toFixed(0)} min remaining</span>`;
-    }
-    if (lastWeatherFetchedAt) {
-      html += `<small class="text-muted ms-2">Weather updated: ${new Date(lastWeatherFetchedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</small>`;
     }
     if (s.last_shutdown_at) {
       html += `<small class="text-muted ms-3">Last shutdown: ${new Date(s.last_shutdown_at).toLocaleString()}</small>`;
@@ -367,7 +364,10 @@ async function loadWeather() {
 
     const metric = (loc.units || 'imperial') === 'metric';
 
-    if (current.fetched_at) lastWeatherFetchedAt = current.fetched_at;
+    if (current.fetched_at) {
+      const el = document.getElementById('weather-update-time');
+      if (el) el.textContent = `Weather updated: ${new Date(current.fetched_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}`;
+    }
 
     // ── Temperature gauge ──
     const tempCard = document.getElementById('temp-card');
@@ -452,9 +452,6 @@ async function loadWeather() {
 
     const alerts = document.getElementById('alerts-area');
     if (alerts) alerts.innerHTML = '';
-
-    // Refresh monitoring status so weather timestamp appears
-    loadMonitoringStatus();
 
   } catch (e) {
     console.error('Weather load failed:', e);
