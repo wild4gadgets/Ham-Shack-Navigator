@@ -31,8 +31,6 @@ export async function renderDashboard(container) {
           <div class="card-header d-flex justify-content-between align-items-center">
             <span><i class="bi bi-shield-check me-2"></i>Monitoring</span>
             <div class="d-flex gap-2">
-              <button id="btn-enable" class="btn btn-sm btn-success">Enable</button>
-              <button id="btn-disable" class="btn btn-sm btn-warning">Disable</button>
               <button id="btn-trigger" class="btn btn-sm btn-danger">Manual Trigger</button>
               <button id="btn-refresh" class="btn btn-sm btn-outline-light">
                 <i class="bi bi-arrow-clockwise"></i> Refresh
@@ -126,14 +124,6 @@ export async function renderDashboard(container) {
   await loadAll();
   connectWS();
 
-  document.getElementById('btn-enable').addEventListener('click', async () => {
-    await apiPost('/monitoring/enable');
-    await loadMonitoringStatus();
-  });
-  document.getElementById('btn-disable').addEventListener('click', async () => {
-    await apiPost('/monitoring/disable');
-    await loadMonitoringStatus();
-  });
   document.getElementById('btn-trigger').addEventListener('click', async () => {
     if (!confirm('Trigger shutdown sequence now?')) return;
     await apiPost('/shutdown/trigger');
@@ -173,12 +163,7 @@ async function loadMonitoringStatus() {
     const s = await apiGet('/monitoring/status');
     const area = document.getElementById('monitoring-status-area');
     if (!area) return;
-    const badge = document.getElementById('monitoring-badge');
-    if (badge) {
-      badge.textContent = s.enabled ? 'Monitoring ON' : 'Monitoring OFF';
-      badge.className = `badge ${s.enabled ? 'bg-success' : 'bg-secondary'}`;
-    }
-    let html = `<span id="btn-armed-toggle" class="badge ${s.enabled ? 'bg-success' : 'bg-secondary'} me-2"
+let html = `<span id="btn-armed-toggle" class="badge ${s.enabled ? 'bg-success' : 'bg-secondary'} me-2"
       style="cursor:pointer" title="Click to ${s.enabled ? 'disarm' : 'arm'}">${s.enabled ? 'Armed' : 'Disarmed'}</span>`;
     if (s.in_cooldown) {
       html += `<span class="badge bg-info me-2">Cooldown: ${s.cooldown_remaining_min.toFixed(0)} min remaining</span>`;
