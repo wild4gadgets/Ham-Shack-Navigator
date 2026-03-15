@@ -89,13 +89,15 @@ function buildUI(container, active, profiles) {
             <label class="form-label fw-semibold">Location Lookup</label>
             <div class="input-group">
               <input type="text" class="form-control" id="loc-lookup"
-                placeholder="City/State or ZIP / postal code…" />
+                placeholder="City/ZIP, lat/lon, grid square, or word.word.word" />
               <button class="btn btn-outline-secondary" type="button" id="loc-lookup-btn">
                 <i class="bi bi-search me-1"></i>Search
               </button>
             </div>
             <div class="form-text">
-              Populates GPS coordinates, Maidenhead grid, and What3Words (if API key is set).
+              Accepts: city/ZIP (e.g. <em>Denver, CO</em>), GPS coords (e.g. <em>39.7392, -104.9847</em>),
+              Maidenhead grid (e.g. <em>DM79mr</em>), or What3Words address (e.g. <em>word.word.word</em>).
+              Populates all fields. W3W auto-fill requires a What3Words API key.
             </div>
           </div>
         </div>

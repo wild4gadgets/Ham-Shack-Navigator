@@ -1,10 +1,14 @@
 import json
+import logging
+import re as _re
 import uuid as _uuid
 from datetime import datetime, timezone
 from urllib.parse import quote as _quote
 
 import aiohttp as _aiohttp
 from fastapi import APIRouter, Depends, HTTPException, Query
+
+logger = logging.getLogger(__name__)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -33,6 +37,49 @@ def _compute_maidenhead(lat: float, lon: float) -> str:
     grid += chr(ord('a') + int((lo % 2) * 12))
     grid += chr(ord('a') + int((la % 1) * 24))
     return grid
+
+
+# Patterns for smart lookup input detection
+_GPS_RE = _re.compile(r'^([-+]?\d+(?:\.\d+)?)\s*,\s*([-+]?\d+(?:\.\d+)?)$')
+_MAIDEN_RE = _re.compile(r'^[A-Ra-r]{2}\d{2}(?:[A-Xa-x]{2})?$')
+_W3W_RE = _re.compile(r'^(?:///)?([a-zA-Z\u0080-\uFFFF']+\.[a-zA-Z\u0080-\uFFFF']+\.[a-zA-Z\u0080-\uFFFF']+)$')
+
+
+def _maiden_to_latlon(grid: str) -> tuple[float, float]:
+    """Convert Maidenhead grid locator (4 or 6 chars) to lat/lon center."""
+    g = grid.strip()
+    lon = (ord(g[0].upper()) - ord('A')) * 20 - 180
+    lat = (ord(g[1].upper()) - ord('A')) * 10 - 90
+    lon += int(g[2]) * 2
+    lat += int(g[3])
+    if len(g) >= 6:
+        lon += (ord(g[4].lower()) - ord('a')) * 2 / 24
+        lat += (ord(g[5].lower()) - ord('a')) / 24
+        lon += 1 / 24   # center of subsquare
+        lat += 0.5 / 24
+    else:
+        lon += 1        # center of square
+        lat += 0.5
+    return round(lat, 4), round(lon, 4)
+
+
+async def _reverse_geocode(session: _aiohttp.ClientSession, lat: float, lon: float) -> str:
+    """Return a 'City, State' string for coordinates via Nominatim reverse geocoding."""
+    url = f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lon}&format=json"
+    try:
+        async with session.get(url, timeout=_aiohttp.ClientTimeout(total=10)) as resp:
+            if resp.status != 200:
+                return ""
+            data = await resp.json()
+            addr = data.get("address", {})
+            city = addr.get("city") or addr.get("town") or addr.get("village") or addr.get("county") or ""
+            state = addr.get("state", "")
+            if city and state:
+                return f"{city}, {state}"
+            return city or state or data.get("display_name", "")
+    except Exception as exc:
+        logger.debug("Reverse geocode failed: %s", exc)
+        return ""
 
 
 def _mask_key(key: str | None) -> str | None:
@@ -78,54 +125,105 @@ async def lookup_location(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    nom_url = (
-        f"https://nominatim.openstreetmap.org/search"
-        f"?q={_quote(q)}&format=json&limit=1&addressdetails=1"
-    )
-    async with _aiohttp.ClientSession(headers={"User-Agent": "HamShackCockpit/1.0"}) as session:
-        async with session.get(nom_url, timeout=_aiohttp.ClientTimeout(total=10)) as resp:
-            if resp.status != 200:
-                raise HTTPException(status_code=502, detail="Geocoding service unavailable")
-            results = await resp.json()
+    q = q.strip()
+    lat: float | None = None
+    lon: float | None = None
+    city_display = ""
+    what3words = ""
 
-        if not results:
+    # Fetch W3W key before opening the HTTP session
+    api_keys = await _get_setting(db, "api_keys")
+    w3w_key = api_keys.get("w3w_key", "")
+    has_w3w = bool(w3w_key and not w3w_key.startswith(MASKED))
+
+    headers = {"User-Agent": "HamShackCockpit/1.0"}
+
+    async with _aiohttp.ClientSession(headers=headers) as session:
+
+        # ── 1. GPS coordinates: "lat, lon" ──────────────────────────────────
+        gps_m = _GPS_RE.match(q)
+        if gps_m:
+            lat = float(gps_m.group(1))
+            lon = float(gps_m.group(2))
+            city_display = await _reverse_geocode(session, lat, lon)
+
+        # ── 2. Maidenhead grid (4 or 6 chars) ───────────────────────────────
+        elif _MAIDEN_RE.match(q):
+            lat, lon = _maiden_to_latlon(q)
+            city_display = await _reverse_geocode(session, lat, lon)
+
+        # ── 3. What3Words address (word.word.word or ///word.word.word) ──────
+        elif _W3W_RE.match(q):
+            if not has_w3w:
+                raise HTTPException(
+                    status_code=400,
+                    detail="A What3Words API key is required to look up W3W addresses. Add one in API Keys settings."
+                )
+            words = _W3W_RE.match(q).group(1)  # strip leading ///
+            w3w_url = (
+                f"https://api.what3words.com/v3/convert-to-coordinates"
+                f"?words={_quote(words)}&key={w3w_key}"
+            )
+            async with session.get(w3w_url, timeout=_aiohttp.ClientTimeout(total=10)) as resp:
+                body = await resp.json()
+                if resp.status != 200:
+                    err = body.get("error", {}).get("message", "W3W lookup failed")
+                    raise HTTPException(status_code=502, detail=err)
+                coords = body.get("coordinates")
+                if not coords:
+                    raise HTTPException(status_code=404, detail="What3Words address not found")
+                lat = float(coords["lat"])
+                lon = float(coords["lng"])
+                what3words = words
+            city_display = await _reverse_geocode(session, lat, lon)
+
+        # ── 4. Address / place name via Nominatim ───────────────────────────
+        else:
+            nom_url = (
+                f"https://nominatim.openstreetmap.org/search"
+                f"?q={_quote(q)}&format=json&limit=1&addressdetails=1"
+            )
+            async with session.get(nom_url, timeout=_aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status != 200:
+                    raise HTTPException(status_code=502, detail="Geocoding service unavailable")
+                results = await resp.json()
+
+            if not results:
+                raise HTTPException(status_code=404, detail="Location not found")
+
+            r = results[0]
+            lat = float(r["lat"])
+            lon = float(r["lon"])
+            addr = r.get("address", {})
+            city_part = addr.get("city") or addr.get("town") or addr.get("village") or addr.get("county") or ""
+            state_part = addr.get("state", "")
+            city_display = f"{city_part}, {state_part}" if city_part and state_part else (city_part or state_part or r.get("display_name", ""))
+
+        if lat is None or lon is None:
             raise HTTPException(status_code=404, detail="Location not found")
 
-        r = results[0]
-        lat = float(r["lat"])
-        lon = float(r["lon"])
-
-        addr = r.get("address", {})
-        city_part = addr.get("city") or addr.get("town") or addr.get("village") or addr.get("county") or ""
-        state_part = addr.get("state", "")
-        if city_part and state_part:
-            city_display = f"{city_part}, {state_part}"
-        else:
-            city_display = city_part or state_part or r.get("display_name", "")
-
-        gridsquare = _compute_maidenhead(lat, lon)
-
-        what3words = ""
-        api_keys = await _get_setting(db, "api_keys")
-        w3w_key = api_keys.get("w3w_key", "")
-        if w3w_key and not w3w_key.startswith(MASKED):
-            w3w_url = (
+        # ── W3W reverse lookup for non-W3W inputs ───────────────────────────
+        if has_w3w and not what3words:
+            w3w_rev_url = (
                 f"https://api.what3words.com/v3/convert-to-3wa"
                 f"?coordinates={lat},{lon}&key={w3w_key}&language=en"
             )
             try:
-                async with session.get(w3w_url, timeout=_aiohttp.ClientTimeout(total=10)) as w3w_resp:
-                    if w3w_resp.status == 200:
-                        w3w_data = await w3w_resp.json()
-                        what3words = w3w_data.get("words", "")
-            except Exception:
-                pass  # w3w failure is non-fatal
+                async with session.get(w3w_rev_url, timeout=_aiohttp.ClientTimeout(total=10)) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        what3words = data.get("words", "")
+                    else:
+                        err_body = await resp.json()
+                        logger.warning("W3W reverse lookup failed (%s): %s", resp.status, err_body)
+            except Exception as exc:
+                logger.warning("W3W reverse lookup error: %s", exc)
 
     return {
         "lat": round(lat, 4),
         "lon": round(lon, 4),
         "city": city_display,
-        "gridsquare": gridsquare,
+        "gridsquare": _compute_maidenhead(lat, lon),
         "what3words": what3words,
     }
 
