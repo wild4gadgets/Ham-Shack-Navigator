@@ -11,17 +11,31 @@
 </head>
 <body>
   <nav class="navbar navbar-dark bg-dark" id="navbar" style="display:none">
-    <div class="container-fluid">
+    <div class="container-fluid d-flex align-items-center">
       <a class="navbar-brand" href="#/dashboard">
         <i class="bi bi-broadcast-pin me-2"></i>Ham Shack Cockpit
       </a>
+
+      <!-- Centered clocks -->
+      <div class="flex-grow-1 d-flex justify-content-center align-items-center gap-4">
+        <div class="seg-clock-group">
+          <div class="seg-clock" id="clock-local-display"></div>
+          <div class="seg-clock-label">Local</div>
+        </div>
+        <div class="seg-clock-group">
+          <div class="seg-clock" id="clock-utc-display"></div>
+          <div class="seg-clock-label">UTC</div>
+        </div>
+      </div>
+
+      <!-- Right nav -->
       <div class="d-flex gap-2 align-items-center">
         <span id="monitoring-badge" class="badge bg-secondary">Monitoring Off</span>
-        <a href="#/dashboard" class="btn btn-sm btn-outline-light">Dashboard</a>
-        <a href="#/workflows" class="btn btn-sm btn-outline-light">Workflows</a>
-        <a href="#/settings" class="btn btn-sm btn-outline-light">Settings</a>
-        <a href="#/events" class="btn btn-sm btn-outline-light">Events</a>
-        <button id="logout-btn" class="btn btn-sm btn-outline-danger">Logout</button>
+        <a href="#/dashboard" class="nav-pill badge rounded-pill bg-secondary">Dashboard</a>
+        <a href="#/workflows" class="nav-pill badge rounded-pill bg-secondary">Workflows</a>
+        <a href="#/settings" class="nav-pill badge rounded-pill bg-secondary">Settings</a>
+        <a href="#/events" class="nav-pill badge rounded-pill bg-secondary">Events</a>
+        <button id="logout-btn" class="nav-pill badge rounded-pill bg-danger border-0">Logout</button>
       </div>
     </div>
   </nav>
