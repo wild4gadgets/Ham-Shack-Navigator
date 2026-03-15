@@ -4,6 +4,7 @@ import { getToken } from '../state.js';
 let ws = null;
 let pingInterval = null;
 let destroyed = false;
+let lastWeatherFetchedAt = null;
 let radarMap = null;
 let radarLayer = null;
 let radarFrames = [];
@@ -167,8 +168,11 @@ async function loadMonitoringStatus() {
     if (s.in_cooldown) {
       html += `<span class="badge bg-info me-2">Cooldown: ${s.cooldown_remaining_min.toFixed(0)} min remaining</span>`;
     }
+    if (lastWeatherFetchedAt) {
+      html += `<small class="text-muted ms-2">Weather updated: ${new Date(lastWeatherFetchedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</small>`;
+    }
     if (s.last_shutdown_at) {
-      html += `<small class="text-muted">Last shutdown: ${new Date(s.last_shutdown_at).toLocaleString()}</small>`;
+      html += `<small class="text-muted ms-3">Last shutdown: ${new Date(s.last_shutdown_at).toLocaleString()}</small>`;
     }
     area.innerHTML = html;
   } catch (e) {
@@ -358,6 +362,8 @@ async function loadWeather() {
 
     const metric = (loc.units || 'imperial') === 'metric';
 
+    if (current.fetched_at) lastWeatherFetchedAt = current.fetched_at;
+
     // ── Temperature gauge ──
     const tempCard = document.getElementById('temp-card');
     if (tempCard && current.data) {
@@ -441,6 +447,9 @@ async function loadWeather() {
 
     const alerts = document.getElementById('alerts-area');
     if (alerts) alerts.innerHTML = '';
+
+    // Refresh monitoring status so weather timestamp appears
+    loadMonitoringStatus();
 
   } catch (e) {
     console.error('Weather load failed:', e);
