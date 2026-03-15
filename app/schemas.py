@@ -69,7 +69,6 @@ class LocationSettings(BaseModel):
     city: str = ""
     units: str = "imperial"  # "imperial" or "metric"
     gridsquare: str = ""
-    what3words: str = ""
     active_profile_id: str = ""
 
 
@@ -81,13 +80,11 @@ class LocationProfile(BaseModel):
     city: str = ""
     units: str = "imperial"
     gridsquare: str = ""
-    what3words: str = ""
 
 
 class ApiKeySettings(BaseModel):
     owm_key: Optional[str] = None
     tomorrow_key: Optional[str] = None
-    w3w_key: Optional[str] = None
 
 
 class ThresholdSettings(BaseModel):

@@ -42,7 +42,6 @@ def _compute_maidenhead(lat: float, lon: float) -> str:
 # Patterns for smart lookup input detection
 _GPS_RE = _re.compile(r'^([-+]?\d+(?:\.\d+)?)\s*,\s*([-+]?\d+(?:\.\d+)?)$')
 _MAIDEN_RE = _re.compile(r'^[A-Ra-r]{2}\d{2}(?:[A-Xa-x]{2})?$')
-_W3W_RE = _re.compile(r"^(?:///)?([a-zA-Z\u0080-\uFFFF]+\.[a-zA-Z\u0080-\uFFFF]+\.[a-zA-Z\u0080-\uFFFF]+)$")
 
 
 def _maiden_to_latlon(grid: str) -> tuple[float, float]:
@@ -129,12 +128,6 @@ async def lookup_location(
     lat: float | None = None
     lon: float | None = None
     city_display = ""
-    what3words = ""
-
-    # Fetch W3W key before opening the HTTP session
-    api_keys = await _get_setting(db, "api_keys")
-    w3w_key = api_keys.get("w3w_key", "")
-    has_w3w = bool(w3w_key and not w3w_key.startswith(MASKED))
 
     headers = {"User-Agent": "HamShackCockpit/1.0"}
 
@@ -152,32 +145,7 @@ async def lookup_location(
             lat, lon = _maiden_to_latlon(q)
             city_display = await _reverse_geocode(session, lat, lon)
 
-        # ── 3. What3Words address (word.word.word or ///word.word.word) ──────
-        elif _W3W_RE.match(q):
-            if not has_w3w:
-                raise HTTPException(
-                    status_code=400,
-                    detail="A What3Words API key is required to look up W3W addresses. Add one in API Keys settings."
-                )
-            words = _W3W_RE.match(q).group(1)  # strip leading ///
-            w3w_url = (
-                f"https://api.what3words.com/v3/convert-to-coordinates"
-                f"?words={_quote(words)}&key={w3w_key}"
-            )
-            async with session.get(w3w_url, timeout=_aiohttp.ClientTimeout(total=10)) as resp:
-                body = await resp.json()
-                if resp.status != 200:
-                    err = body.get("error", {}).get("message", "W3W lookup failed")
-                    raise HTTPException(status_code=502, detail=err)
-                coords = body.get("coordinates")
-                if not coords:
-                    raise HTTPException(status_code=404, detail="What3Words address not found")
-                lat = float(coords["lat"])
-                lon = float(coords["lng"])
-                what3words = words
-            city_display = await _reverse_geocode(session, lat, lon)
-
-        # ── 4. Address / place name via Nominatim ───────────────────────────
+        # ── 3. Address / place name via Nominatim ───────────────────────────
         else:
             nom_url = (
                 f"https://nominatim.openstreetmap.org/search"
@@ -202,34 +170,11 @@ async def lookup_location(
         if lat is None or lon is None:
             raise HTTPException(status_code=404, detail="Location not found")
 
-        # ── W3W reverse lookup for non-W3W inputs ───────────────────────────
-        w3w_warning = ""
-        if has_w3w and not what3words:
-            w3w_rev_url = (
-                f"https://api.what3words.com/v3/convert-to-3wa"
-                f"?coordinates={lat},{lon}&key={w3w_key}&language=en"
-            )
-            try:
-                async with session.get(w3w_rev_url, timeout=_aiohttp.ClientTimeout(total=10)) as resp:
-                    body = await resp.json()
-                    if resp.status == 200:
-                        what3words = body.get("words", "")
-                    else:
-                        err = body.get("error", {})
-                        msg = err.get("message") or f"HTTP {resp.status}"
-                        w3w_warning = f"What3Words: {msg}"
-                        logger.warning("W3W reverse lookup failed (%s): %s", resp.status, body)
-            except Exception as exc:
-                w3w_warning = f"What3Words lookup error: {exc}"
-                logger.warning("W3W reverse lookup error: %s", exc)
-
     return {
         "lat": round(lat, 4),
         "lon": round(lon, 4),
         "city": city_display,
         "gridsquare": _compute_maidenhead(lat, lon),
-        "what3words": what3words,
-        "w3w_warning": w3w_warning,
     }
 
 
@@ -323,7 +268,6 @@ async def get_api_keys(db: AsyncSession = Depends(get_db), _: User = Depends(get
     return {
         "owm_key": _mask_key(data.get("owm_key")),
         "tomorrow_key": _mask_key(data.get("tomorrow_key")),
-        "w3w_key": _mask_key(data.get("w3w_key")),
     }
 
 
@@ -335,8 +279,6 @@ async def put_api_keys(body: ApiKeySettings, db: AsyncSession = Depends(get_db),
         existing["owm_key"] = body.owm_key
     if body.tomorrow_key and not body.tomorrow_key.startswith(MASKED):
         existing["tomorrow_key"] = body.tomorrow_key
-    if body.w3w_key and not body.w3w_key.startswith(MASKED):
-        existing["w3w_key"] = body.w3w_key
     await _save_setting(db, "api_keys", existing)
     return {"detail": "Saved"}
 

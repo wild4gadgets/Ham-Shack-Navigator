@@ -89,15 +89,14 @@ function buildUI(container, active, profiles) {
             <label class="form-label fw-semibold">Location Lookup</label>
             <div class="input-group">
               <input type="text" class="form-control" id="loc-lookup"
-                placeholder="City/ZIP, lat/lon, grid square, or word.word.word" />
+                placeholder="City/ZIP, lat/lon, or grid square (e.g. DM79mr)" />
               <button class="btn btn-outline-secondary" type="button" id="loc-lookup-btn">
                 <i class="bi bi-search me-1"></i>Search
               </button>
             </div>
             <div class="form-text">
               Accepts: city/ZIP (e.g. <em>Denver, CO</em>), GPS coords (e.g. <em>39.7392, -104.9847</em>),
-              Maidenhead grid (e.g. <em>DM79mr</em>), or What3Words address (e.g. <em>word.word.word</em>).
-              Populates all fields. W3W auto-fill requires a What3Words API key.
+              or Maidenhead grid (e.g. <em>DM79mr</em>). Populates coordinates, city, and grid square.
             </div>
           </div>
         </div>
@@ -137,15 +136,6 @@ function buildUI(container, active, profiles) {
                 value="${escHtml(active.gridsquare || '')}"
                 placeholder="e.g. DM79mr" maxlength="6" style="text-transform:uppercase" />
               <div class="form-text">Auto-computed from coordinates. Override if needed.</div>
-            </div>
-            <div class="col-md-6 mb-3">
-              <label class="form-label">What3Words</label>
-              <input type="text" class="form-control" id="loc-w3w"
-                value="${escHtml(active.what3words || '')}"
-                placeholder="word.word.word" />
-              <div class="form-text">
-                Auto-populated via lookup when a What3Words API key is configured.
-              </div>
             </div>
           </div>
 
@@ -208,7 +198,6 @@ function attachHandlers(container, active, profiles) {
         city: document.getElementById('loc-city').value,
         units: document.querySelector('input[name="loc-units"]:checked')?.value || 'imperial',
         gridsquare: document.getElementById('loc-gridsquare').value,
-        what3words: document.getElementById('loc-w3w').value,
       });
       await apiPost(`/settings/location/profiles/${created.id}/activate`);
       const [newActive, newProfiles] = await Promise.all([
@@ -276,12 +265,7 @@ function attachHandlers(container, active, profiles) {
       document.getElementById('loc-lon').value = result.lon.toFixed(4);
       if (result.city) document.getElementById('loc-city').value = result.city;
       if (result.gridsquare) document.getElementById('loc-gridsquare').value = result.gridsquare;
-      if (result.what3words) document.getElementById('loc-w3w').value = result.what3words;
-      if (result.w3w_warning) {
-        showMsg('warning', `Found: ${result.city || result.lat + ', ' + result.lon} — ${result.w3w_warning}`);
-      } else {
-        showMsg('success', `Found: ${result.city || result.lat + ', ' + result.lon}`);
-      }
+      showMsg('success', `Found: ${result.city || result.lat + ', ' + result.lon}`);
     } catch (err) {
       showMsg('danger', `Lookup failed: ${err.message}`);
     } finally {
@@ -307,7 +291,6 @@ function attachHandlers(container, active, profiles) {
       lon: isNaN(lon) ? 0 : lon,
       units: document.querySelector('input[name="loc-units"]:checked')?.value || 'imperial',
       gridsquare: document.getElementById('loc-gridsquare').value.trim(),
-      what3words: document.getElementById('loc-w3w').value.trim(),
     };
     try {
       if (activeId) {
