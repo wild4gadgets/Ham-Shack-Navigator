@@ -202,11 +202,11 @@ function renderDevice(device) {
       <div class="card-body">
         <div id="test-result-${device.id}" class="mb-2" style="display:none"></div>
         <div class="d-flex align-items-center gap-2 mb-1 px-1" style="font-size:0.72rem;color:#6c757d">
-          <span style="min-width:54px">Port #</span>
-          <span style="max-width:160px;flex:1">Description</span>
-          <span style="min-width:60px"></span><!-- save btn -->
-          <span style="min-width:50px;text-align:center">On/Off</span>
-          <span style="white-space:nowrap">Pin to Dashboard</span>
+          <span style="width:54px;flex-shrink:0">Port #</span>
+          <span style="flex:1">Description</span>
+          <span style="width:34px;flex-shrink:0;text-align:center">Save</span>
+          <span style="flex-shrink:0;text-align:center;margin-left:0.5rem">On/Off</span>
+          <span style="flex-shrink:0;margin-left:0.25rem">Pin</span>
         </div>
         ${ports}
       </div>
