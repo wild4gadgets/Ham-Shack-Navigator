@@ -132,8 +132,13 @@ export async function renderDashboard(container) {
     setTimeout(loadRecentEvents, 2000);
   });
   document.getElementById('btn-refresh').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-refresh');
+    btn.disabled = true;
     await apiPost('/weather/refresh');
     await loadWeather();
+    btn.disabled = false;
+    btn.textContent = 'Refreshed';
+    setTimeout(() => { btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Refresh'; }, 2500);
   });
 
   return cleanup;
