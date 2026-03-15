@@ -1,6 +1,14 @@
 import { apiGet, apiPost } from '../api.js';
 import { getToken } from '../state.js';
 
+async function apiFetchXml(path) {
+  const token = getToken();
+  const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+  const resp = await fetch('/api/v1' + path, { headers });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return resp.text();
+}
+
 let ws = null;
 let pingInterval = null;
 let destroyed = false;
@@ -16,6 +24,7 @@ let radarHomeZoom = 7;
 let pinData = { kasa: [], shelly: [] };
 let pinStates = {};
 let pinPollTimer = null;
+let solarRefreshTimer = null;
 
 function escHtml(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -85,6 +94,19 @@ export async function renderDashboard(container) {
         </div>
       </div>
 
+      <!-- Solar Propagation -->
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-sun me-2"></i>Solar Propagation</span>
+            <small id="solar-updated" class="text-white-50"></small>
+          </div>
+          <div class="card-body p-2" id="solar-card">
+            <div class="text-muted text-center">Loading...</div>
+          </div>
+        </div>
+      </div>
+
       <!-- Radar -->
       <div class="col-12">
         <div class="card">
@@ -146,6 +168,7 @@ function cleanup() {
   destroyed = true;
   if (pinPollTimer) { clearInterval(pinPollTimer); pinPollTimer = null; }
   if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
+  if (solarRefreshTimer) { clearInterval(solarRefreshTimer); solarRefreshTimer = null; }
   if (ws) { ws.close(); ws = null; }
   if (radarAnimInterval) { clearInterval(radarAnimInterval); radarAnimInterval = null; }
   if (radarMap) { radarMap.remove(); radarMap = null; }
@@ -155,7 +178,9 @@ function cleanup() {
 }
 
 async function loadAll() {
-  await Promise.all([loadMonitoringStatus(), loadWeather(), loadRecentEvents(), loadRadar(), loadPins()]);
+  await Promise.all([loadMonitoringStatus(), loadWeather(), loadRecentEvents(), loadRadar(), loadPins(), loadSolarData()]);
+  if (solarRefreshTimer) clearInterval(solarRefreshTimer);
+  solarRefreshTimer = setInterval(() => { if (!destroyed) loadSolarData(); }, 30 * 60 * 1000);
 }
 
 async function loadMonitoringStatus() {
@@ -702,6 +727,141 @@ async function togglePin(type, id) {
     pinStates[key] = current;
   }
   renderPins();
+}
+
+// ── Solar Propagation ────────────────────────────────────────────────────────
+
+async function loadSolarData() {
+  try {
+    const text = await apiFetchXml('/solar/data');
+    const doc = new DOMParser().parseFromString(text, 'application/xml');
+    const get = tag => doc.querySelector(tag)?.textContent?.trim() ?? '--';
+
+    const bands = {};
+    doc.querySelectorAll('calculatedconditions band').forEach(el => {
+      const name = el.getAttribute('name');
+      const time = el.getAttribute('time');
+      if (!bands[name]) bands[name] = {};
+      bands[name][time] = el.textContent.trim();
+    });
+
+    renderSolarData({
+      sfi: get('solarflux'),
+      sunspots: get('sunspots'),
+      kIndex: get('kindex'),
+      aIndex: get('aindex'),
+      xray: get('xray'),
+      geoField: get('geomagfield'),
+      solarWind: get('solarwind'),
+      signalNoise: get('signalnoise'),
+      updated: get('updated'),
+      bands,
+    });
+  } catch (e) {
+    console.error('Solar data load failed:', e);
+    const card = document.getElementById('solar-card');
+    if (card) card.innerHTML = '<div class="text-muted text-center p-2">Solar data unavailable</div>';
+  }
+}
+
+function solarKColor(k) {
+  const n = parseInt(k);
+  if (isNaN(n)) return '#94a3b8';
+  if (n <= 1) return '#198754';
+  if (n <= 3) return '#fbbf24';
+  if (n <= 5) return '#fd7e14';
+  return '#dc3545';
+}
+
+function solarAColor(a) {
+  const n = parseInt(a);
+  if (isNaN(n)) return '#94a3b8';
+  if (n <= 7)  return '#198754';
+  if (n <= 15) return '#fbbf24';
+  if (n <= 29) return '#fd7e14';
+  return '#dc3545';
+}
+
+function solarXrayColor(x) {
+  if (!x || x === '--') return '#94a3b8';
+  const c = x[0].toUpperCase();
+  if (c === 'A' || c === 'B') return '#198754';
+  if (c === 'C') return '#fbbf24';
+  if (c === 'M') return '#fd7e14';
+  if (c === 'X') return '#dc3545';
+  return '#94a3b8';
+}
+
+function conditionColor(cond) {
+  if (!cond || cond === '--') return '#475569';
+  switch (cond.toLowerCase()) {
+    case 'good': return '#198754';
+    case 'fair': return '#fd7e14';
+    case 'poor': return '#dc3545';
+    default:     return '#475569';
+  }
+}
+
+function renderSolarData({ sfi, sunspots, kIndex, aIndex, xray, geoField, solarWind, signalNoise, updated, bands }) {
+  const card = document.getElementById('solar-card');
+  if (!card) return;
+
+  const updEl = document.getElementById('solar-updated');
+  if (updEl && updated !== '--') updEl.textContent = `Updated: ${updated}`;
+
+  const indices = [
+    { label: 'SFI',        value: sfi,       color: '#60a5fa' },
+    { label: 'Sunspots',   value: sunspots,  color: '#a78bfa' },
+    { label: 'K-index',    value: kIndex,    color: solarKColor(kIndex) },
+    { label: 'A-index',    value: aIndex,    color: solarAColor(aIndex) },
+    { label: 'X-ray',      value: xray,      color: solarXrayColor(xray) },
+    { label: 'Geomag',     value: geoField,  color: '#94a3b8' },
+    { label: 'Solar Wind', value: solarWind !== '--' ? solarWind + ' km/s' : '--', color: '#94a3b8' },
+    { label: 'Sig/Noise',  value: signalNoise, color: '#94a3b8' },
+  ];
+
+  const indexHTML = `
+    <div class="d-flex flex-wrap gap-2 mb-3">
+      ${indices.map(idx => `
+        <div style="background:#0f3460;border-radius:6px;padding:6px 14px;text-align:center;min-width:82px">
+          <div style="font-size:0.72rem;color:#b0c0d8;text-transform:uppercase;letter-spacing:0.05em">${idx.label}</div>
+          <div style="font-size:1.15rem;font-weight:700;color:${idx.color}">${escHtml(idx.value)}</div>
+        </div>`).join('')}
+    </div>`;
+
+  const bandOrder = ['80m-40m', '30m-20m', '17m-15m', '12m-10m'];
+  const bandLabel = { '80m-40m': '80-40m', '30m-20m': '30-20m', '17m-15m': '17-15m', '12m-10m': '12-10m' };
+
+  const bandRows = bandOrder.map(b => {
+    const day   = bands[b]?.day   ?? '--';
+    const night = bands[b]?.night ?? '--';
+    return `<tr>
+      <td style="color:#c8d8ee;font-size:0.88rem;padding:4px 12px 4px 0;white-space:nowrap">${bandLabel[b] ?? b}</td>
+      <td style="padding:4px 6px"><span style="background:${conditionColor(day)};color:#fff;font-size:0.8rem;padding:2px 9px;border-radius:4px;display:inline-block;font-weight:600">${escHtml(day)}</span></td>
+      <td style="padding:4px 6px"><span style="background:${conditionColor(night)};color:#fff;font-size:0.8rem;padding:2px 9px;border-radius:4px;display:inline-block;font-weight:600">${escHtml(night)}</span></td>
+    </tr>`;
+  }).join('');
+
+  const bandHTML = `
+    <div>
+      <div style="font-size:0.75rem;color:#b0c0d8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">HF Band Conditions</div>
+      <table style="border-collapse:collapse">
+        <thead>
+          <tr>
+            <th style="font-size:0.75rem;color:#b0c0d8;padding:1px 12px 5px 0;text-align:left">Band</th>
+            <th style="font-size:0.75rem;color:#b0c0d8;padding:1px 6px 5px;text-align:left">☀ Day</th>
+            <th style="font-size:0.75rem;color:#b0c0d8;padding:1px 6px 5px;text-align:left">☽ Night</th>
+          </tr>
+        </thead>
+        <tbody>${bandRows}</tbody>
+      </table>
+    </div>`;
+
+  card.innerHTML = `
+    ${indexHTML}
+    <div class="d-flex flex-wrap gap-4 align-items-start">
+      ${bandHTML}
+    </div>`;
 }
 
 function connectWS() {
