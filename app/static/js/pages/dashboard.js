@@ -366,7 +366,12 @@ async function loadWeather() {
 
     if (current.fetched_at) {
       const el = document.getElementById('weather-update-time');
-      if (el) el.textContent = `Weather updated: ${new Date(current.fetched_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}`;
+      if (el) {
+        // Slice to seconds and append Z so JS treats the stored UTC value as UTC,
+        // then toLocaleString converts it to the browser's local timezone.
+        const d = new Date(current.fetched_at.slice(0, 19) + 'Z');
+        el.textContent = `Weather updated: ${d.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}`;
+      }
     }
 
     // ── Temperature gauge ──
