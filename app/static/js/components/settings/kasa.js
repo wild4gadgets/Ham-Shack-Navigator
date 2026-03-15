@@ -205,8 +205,8 @@ function renderDevice(device) {
           <span style="min-width:54px">Port #</span>
           <span style="max-width:160px;flex:1">Description</span>
           <span style="min-width:60px"></span><!-- save btn -->
-          <span style="min-width:50px;text-align:center;margin-left:0.5rem">On/Off</span>
-          <span style="white-space:nowrap;margin-left:0.25rem">Pin to Dashboard</span>
+          <span style="min-width:50px;text-align:center">On/Off</span>
+          <span style="white-space:nowrap">Pin to Dashboard</span>
         </div>
         ${ports}
       </div>
