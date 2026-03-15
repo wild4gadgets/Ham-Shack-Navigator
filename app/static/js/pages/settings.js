@@ -10,33 +10,82 @@ import { renderTelegramTab } from '../components/settings/telegram.js';
 import { renderHomeAssistantTab } from '../components/settings/home-assistant.js';
 import { renderAccountTab } from '../components/settings/account.js';
 
-const TABS = [
-  { id: 'location', label: 'Location', icon: 'geo-alt' },
-  { id: 'api-keys', label: 'API Keys', icon: 'key' },
+// NAV definition — flat items or group objects
+const NAV = [
+  { id: 'location',  label: 'Location', icon: 'geo-alt' },
+  { id: 'api-keys',  label: 'API Keys', icon: 'key' },
   { id: 'thresholds', label: 'Thresholds', icon: 'sliders' },
-  { id: 'kasa', label: 'Kasa Devices', icon: 'plug' },
+  {
+    groupId: 'controls', label: 'Controls', icon: 'toggles',
+    children: [
+      { id: 'kasa',           label: 'Kasa Devices',   icon: 'plug' },
+      { id: 'home-assistant', label: 'Home Assistant', icon: 'house-gear' },
+      { id: 'ifttt',          label: 'IFTTT',          icon: 'arrow-left-right' },
+    ],
+  },
   { id: 'workflows', label: 'Workflows', icon: 'diagram-3' },
-  { id: 'smtp', label: 'SMTP / Email', icon: 'envelope' },
-  { id: 'notifications', label: 'Notifications', icon: 'bell' },
-  { id: 'ifttt', label: 'IFTTT', icon: 'arrow-left-right' },
-  { id: 'telegram', label: 'Telegram', icon: 'telegram' },
-  { id: 'home-assistant', label: 'Home Assistant', icon: 'house-gear' },
+  {
+    groupId: 'notifications', label: 'Notifications', icon: 'bell',
+    children: [
+      { id: 'smtp',          label: 'SMTP / Email', icon: 'envelope' },
+      { id: 'telegram',      label: 'Telegram',     icon: 'telegram' },
+      { id: 'notifications', label: 'Toggles',      icon: 'toggles' },
+    ],
+  },
   { id: 'account', label: 'Account', icon: 'person' },
 ];
 
 const RENDERERS = {
-  location: renderLocationTab,
-  'api-keys': renderApiKeysTab,
-  thresholds: renderThresholdsTab,
-  kasa: renderKasaTab,
-  workflows: renderWorkflowsTab,
-  smtp: renderSmtpTab,
-  notifications: renderNotificationsTab,
-  ifttt: renderIftttTab,
-  telegram: renderTelegramTab,
+  location:         renderLocationTab,
+  'api-keys':       renderApiKeysTab,
+  thresholds:       renderThresholdsTab,
+  kasa:             renderKasaTab,
+  workflows:        renderWorkflowsTab,
+  smtp:             renderSmtpTab,
+  notifications:    renderNotificationsTab,
+  ifttt:            renderIftttTab,
+  telegram:         renderTelegramTab,
   'home-assistant': renderHomeAssistantTab,
-  account: renderAccountTab,
+  account:          renderAccountTab,
 };
+
+const ITEM_STYLE = 'background:var(--card-bg);color:#e0e0e0;border-color:#2a2a4a';
+const GROUP_STYLE = 'background:#12122a;color:#94a3b8;border-color:#2a2a4a;cursor:pointer;user-select:none';
+
+function renderNavItem(entry, activeTab) {
+  if (entry.groupId) {
+    const hasActive = entry.children.some(c => c.id === activeTab);
+    const collapseId = `grp-${entry.groupId}`;
+    const children = entry.children.map(c => `
+      <a href="#/settings/${c.id}"
+         class="list-group-item list-group-item-action d-flex align-items-center gap-2 ps-4 ${c.id === activeTab ? 'active' : ''}"
+         style="${ITEM_STYLE}" data-tab="${c.id}">
+        <i class="bi bi-${c.icon}" style="font-size:0.85rem"></i>
+        <small>${c.label}</small>
+      </a>`).join('');
+
+    return `
+      <a class="list-group-item d-flex align-items-center gap-2 fw-semibold"
+         style="${GROUP_STYLE};font-size:0.72rem;text-transform:uppercase;letter-spacing:0.06em"
+         data-bs-toggle="collapse" data-bs-target="#${collapseId}"
+         aria-expanded="true" href="#">
+        <i class="bi bi-${entry.icon}" style="font-size:0.85rem"></i>
+        <small>${entry.label}</small>
+        <i class="bi bi-chevron-down ms-auto grp-chevron" style="font-size:0.6rem;transition:transform 0.2s"></i>
+      </a>
+      <div class="collapse show" id="${collapseId}">
+        ${children}
+      </div>`;
+  }
+
+  return `
+    <a href="#/settings/${entry.id}"
+       class="list-group-item list-group-item-action d-flex align-items-center gap-2 ${entry.id === activeTab ? 'active' : ''}"
+       style="${ITEM_STYLE}" data-tab="${entry.id}">
+      <i class="bi bi-${entry.icon}" style="font-size:0.85rem"></i>
+      <small>${entry.label}</small>
+    </a>`;
+}
 
 export function renderSettings(container) {
   const activeTab = window.location.hash.split('/')[2] || 'location';
@@ -47,11 +96,7 @@ export function renderSettings(container) {
         <div class="card h-100">
           <div class="card-header"><small>Settings</small></div>
           <div class="list-group list-group-flush" id="settings-nav">
-            ${TABS.map(t => `
-              <a href="#/settings/${t.id}" class="list-group-item list-group-item-action d-flex align-items-center gap-2 ${t.id === activeTab ? 'active' : ''}" style="background:var(--card-bg);color:#e0e0e0;border-color:#2a2a4a" data-tab="${t.id}">
-                <i class="bi bi-${t.icon}"></i> <small>${t.label}</small>
-              </a>
-            `).join('')}
+            ${NAV.map(entry => renderNavItem(entry, activeTab)).join('')}
           </div>
         </div>
       </div>
@@ -71,12 +116,24 @@ export function renderSettings(container) {
 
   renderTab(activeTab);
 
-  // Tab navigation
+  // Tab clicks (only items with data-tab, not group headers)
   document.getElementById('settings-nav').addEventListener('click', (e) => {
     const link = e.target.closest('[data-tab]');
     if (!link) return;
-    document.querySelectorAll('#settings-nav a').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('#settings-nav [data-tab]').forEach(a => a.classList.remove('active'));
     link.classList.add('active');
     renderTab(link.dataset.tab);
+  });
+
+  // Chevron rotation on collapse toggle
+  document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(toggle => {
+    const target = document.querySelector(toggle.dataset.bsTarget);
+    if (!target) return;
+    target.addEventListener('hide.bs.collapse', () => {
+      toggle.querySelector('.grp-chevron').style.transform = 'rotate(-90deg)';
+    });
+    target.addEventListener('show.bs.collapse', () => {
+      toggle.querySelector('.grp-chevron').style.transform = '';
+    });
   });
 }

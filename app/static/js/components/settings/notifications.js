@@ -6,7 +6,7 @@ export async function renderNotificationsTab(container) {
 
   container.innerHTML = `
     <div class="card">
-      <div class="card-header"><i class="bi bi-bell me-2"></i>Notification Settings</div>
+      <div class="card-header"><i class="bi bi-toggles me-2"></i>Notification Toggles</div>
       <div class="card-body">
         <div id="notif-msg" class="alert" style="display:none"></div>
         <form id="notif-form">
