@@ -45,6 +45,8 @@ async def _migrate_db():
         await conn.run_sync(_migrate_shutdown_steps_nullable_port)
         await conn.run_sync(_migrate_shutdown_steps_add_description)
         await conn.run_sync(_migrate_add_workflows)
+        await conn.run_sync(_migrate_add_shelly)
+        await conn.run_sync(_migrate_workflow_steps_add_shelly)
 
 
 def _migrate_add_workflows(conn):
@@ -109,6 +111,41 @@ def _migrate_add_workflows(conn):
                     "delay": row[3],
                     "desc": row[4],
                 })
+
+
+def _migrate_add_shelly(conn):
+    """Create shelly_devices and shelly_channels tables."""
+    sa = __import__("sqlalchemy")
+    conn.execute(sa.text("""
+        CREATE TABLE IF NOT EXISTS shelly_devices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name VARCHAR NOT NULL,
+            ip_address VARCHAR NOT NULL,
+            channel_count INTEGER NOT NULL DEFAULT 1,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+    conn.execute(sa.text("""
+        CREATE TABLE IF NOT EXISTS shelly_channels (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id INTEGER NOT NULL REFERENCES shelly_devices(id) ON DELETE CASCADE,
+            channel_index INTEGER NOT NULL,
+            label VARCHAR,
+            UNIQUE (device_id, channel_index)
+        )
+    """))
+
+
+def _migrate_workflow_steps_add_shelly(conn):
+    """Add shelly_channel_id column to workflow_steps if missing."""
+    info = conn.execute(
+        __import__("sqlalchemy").text("PRAGMA table_info(workflow_steps)")
+    ).fetchall()
+    cols = {col[1] for col in info}
+    if "shelly_channel_id" not in cols:
+        conn.execute(__import__("sqlalchemy").text(
+            "ALTER TABLE workflow_steps ADD COLUMN shelly_channel_id INTEGER REFERENCES shelly_channels(id)"
+        ))
 
 
 def _migrate_shutdown_steps_add_description(conn):

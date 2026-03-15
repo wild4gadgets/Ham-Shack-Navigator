@@ -80,6 +80,33 @@ class Workflow(Base):
     )
 
 
+class ShellyDevice(Base):
+    __tablename__ = "shelly_devices"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    ip_address: Mapped[str] = mapped_column(String, nullable=False)
+    channel_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    channels: Mapped[list["ShellyChannel"]] = relationship(
+        "ShellyChannel", back_populates="device", cascade="all, delete-orphan"
+    )
+
+
+class ShellyChannel(Base):
+    __tablename__ = "shelly_channels"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    device_id: Mapped[int] = mapped_column(Integer, ForeignKey("shelly_devices.id", ondelete="CASCADE"), nullable=False)
+    channel_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    label: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    device: Mapped["ShellyDevice"] = relationship("ShellyDevice", back_populates="channels")
+
+    __table_args__ = (UniqueConstraint("device_id", "channel_index"),)
+
+
 class WorkflowStep(Base):
     __tablename__ = "workflow_steps"
 
@@ -87,12 +114,14 @@ class WorkflowStep(Base):
     workflow_id: Mapped[int] = mapped_column(Integer, ForeignKey("workflows.id", ondelete="CASCADE"), nullable=False)
     step_order: Mapped[int] = mapped_column(Integer, nullable=False)
     kasa_port_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("kasa_ports.id"), nullable=True)
+    shelly_channel_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("shelly_channels.id"), nullable=True)
     action: Mapped[str] = mapped_column(String, nullable=False)
     delay_after_sec: Mapped[int] = mapped_column(Integer, default=0)
     description: Mapped[str | None] = mapped_column(String, nullable=True)
 
     workflow: Mapped["Workflow"] = relationship("Workflow", back_populates="steps")
     kasa_port: Mapped["KasaPort | None"] = relationship("KasaPort")
+    shelly_channel: Mapped["ShellyChannel | None"] = relationship("ShellyChannel")
 
     __table_args__ = (UniqueConstraint("workflow_id", "step_order"),)
 

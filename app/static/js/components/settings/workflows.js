@@ -2,6 +2,7 @@ import { apiGet, apiPost, apiDelete, apiPut, apiPatch } from '../../api.js';
 
 let workflows = [];
 let ports = [];
+let shellyChannels = [];
 let activeWorkflowId = null;
 let steps = [];
 let originalSteps = [];
@@ -13,7 +14,11 @@ export async function renderWorkflowsTab(container) {
   steps = [];
   originalSteps = [];
   editIndex = null;
-  [ports, workflows] = await Promise.all([apiGet('/kasa/ports'), apiGet('/workflows')]);
+  [ports, shellyChannels, workflows] = await Promise.all([
+    apiGet('/kasa/ports'),
+    apiGet('/shelly/channels').catch(() => []),
+    apiGet('/workflows'),
+  ]);
   render(container);
 }
 
@@ -29,6 +34,10 @@ function showMsg(text, type) {
 function render(container) {
   const portOptions = ports.map(p =>
     `<option value="${p.id}">${p.label || `Port ${p.port_index} (device ${p.device_id})`}</option>`
+  ).join('');
+
+  const shellyOptions = shellyChannels.map(ch =>
+    `<option value="${ch.id}">${ch.label || `Channel ${ch.channel_index}`} (device ${ch.device_id})</option>`
   ).join('');
 
   container.innerHTML = `
@@ -68,13 +77,14 @@ function render(container) {
               <label class="form-label">Step Type</label>
               <select class="form-select" id="step-type">
                 <option value="kasa">Kasa Action</option>
+                <option value="shelly">Shelly Action</option>
                 <option value="pause">Pause</option>
               </select>
             </div>
             <div id="step-kasa-fields">
               <div class="mb-3">
                 <label class="form-label">Kasa Port</label>
-                <select class="form-select" id="step-port">${portOptions}</select>
+                <select class="form-select" id="step-port">${portOptions || '<option disabled>No Kasa ports configured</option>'}</select>
               </div>
               <div class="mb-3">
                 <label class="form-label">Action</label>
@@ -86,6 +96,23 @@ function render(container) {
               <div class="mb-3">
                 <label class="form-label">Delay After (seconds)</label>
                 <input type="number" min="0" class="form-control" id="step-delay" value="0" />
+              </div>
+            </div>
+            <div id="step-shelly-fields" style="display:none">
+              <div class="mb-3">
+                <label class="form-label">Shelly Channel</label>
+                <select class="form-select" id="step-shelly-channel">${shellyOptions || '<option disabled>No Shelly channels configured</option>'}</select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Action</label>
+                <select class="form-select" id="step-shelly-action">
+                  <option value="off">Turn OFF</option>
+                  <option value="on">Turn ON</option>
+                </select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Delay After (seconds)</label>
+                <input type="number" min="0" class="form-control" id="step-shelly-delay" value="0" />
               </div>
             </div>
             <div id="step-pause-fields" style="display:none">
@@ -125,9 +152,10 @@ function render(container) {
   });
 
   document.getElementById('step-type').addEventListener('change', e => {
-    const isPause = e.target.value === 'pause';
-    document.getElementById('step-kasa-fields').style.display = isPause ? 'none' : '';
-    document.getElementById('step-pause-fields').style.display = isPause ? '' : 'none';
+    const val = e.target.value;
+    document.getElementById('step-kasa-fields').style.display = val === 'kasa' ? '' : 'none';
+    document.getElementById('step-shelly-fields').style.display = val === 'shelly' ? '' : 'none';
+    document.getElementById('step-pause-fields').style.display = val === 'pause' ? '' : 'none';
   });
 
   document.getElementById('step-modal-save').addEventListener('click', () => {
@@ -136,12 +164,17 @@ function render(container) {
     let newStep;
     if (type === 'pause') {
       const dur = parseInt(document.getElementById('step-pause-sec').value) || 5;
-      newStep = { action: 'pause', kasa_port_id: null, delay_after_sec: dur, description };
+      newStep = { action: 'pause', kasa_port_id: null, shelly_channel_id: null, delay_after_sec: dur, description };
+    } else if (type === 'shelly') {
+      const channelId = parseInt(document.getElementById('step-shelly-channel').value);
+      const action = document.getElementById('step-shelly-action').value;
+      const delay = parseInt(document.getElementById('step-shelly-delay').value) || 0;
+      newStep = { shelly_channel_id: channelId, kasa_port_id: null, action, delay_after_sec: delay, description };
     } else {
       const portId = parseInt(document.getElementById('step-port').value);
       const action = document.getElementById('step-action').value;
       const delay = parseInt(document.getElementById('step-delay').value) || 0;
-      newStep = { kasa_port_id: portId, action, delay_after_sec: delay, description };
+      newStep = { kasa_port_id: portId, shelly_channel_id: null, action, delay_after_sec: delay, description };
     }
     if (editIndex !== null) {
       steps[editIndex] = newStep;
@@ -317,11 +350,15 @@ function renderStepEditor(wf) {
     document.getElementById('step-description').value = '';
     document.getElementById('step-type').value = 'kasa';
     document.getElementById('step-kasa-fields').style.display = '';
+    document.getElementById('step-shelly-fields').style.display = 'none';
     document.getElementById('step-pause-fields').style.display = 'none';
     document.getElementById('step-action').value = 'off';
     document.getElementById('step-delay').value = '0';
+    document.getElementById('step-shelly-action').value = 'off';
+    document.getElementById('step-shelly-delay').value = '0';
     document.getElementById('step-pause-sec').value = '5';
     if (ports.length) document.getElementById('step-port').value = ports[0].id;
+    if (shellyChannels.length) document.getElementById('step-shelly-channel').value = shellyChannels[0].id;
     new bootstrap.Modal(document.getElementById('step-modal')).show();
   });
 
@@ -361,11 +398,21 @@ function openEditModal(index) {
   if (step.action === 'pause') {
     document.getElementById('step-type').value = 'pause';
     document.getElementById('step-kasa-fields').style.display = 'none';
+    document.getElementById('step-shelly-fields').style.display = 'none';
     document.getElementById('step-pause-fields').style.display = '';
     document.getElementById('step-pause-sec').value = step.delay_after_sec;
+  } else if (step.shelly_channel_id) {
+    document.getElementById('step-type').value = 'shelly';
+    document.getElementById('step-kasa-fields').style.display = 'none';
+    document.getElementById('step-shelly-fields').style.display = '';
+    document.getElementById('step-pause-fields').style.display = 'none';
+    document.getElementById('step-shelly-channel').value = step.shelly_channel_id;
+    document.getElementById('step-shelly-action').value = step.action;
+    document.getElementById('step-shelly-delay').value = step.delay_after_sec;
   } else {
     document.getElementById('step-type').value = 'kasa';
     document.getElementById('step-kasa-fields').style.display = '';
+    document.getElementById('step-shelly-fields').style.display = 'none';
     document.getElementById('step-pause-fields').style.display = 'none';
     document.getElementById('step-port').value = step.kasa_port_id;
     document.getElementById('step-action').value = step.action;
@@ -390,6 +437,18 @@ function renderStepList() {
     if (step.action === 'pause') {
       mainContent = `<span class="badge bg-secondary me-2">PAUSE</span><span style="color:#e0e0e0">${step.delay_after_sec}s</span>`;
       subContent = step.description ? `<span style="color:#a0b0c8">${step.description}</span>` : '';
+    } else if (step.shelly_channel_id) {
+      const ch = shellyChannels.find(c => c.id === step.shelly_channel_id);
+      const chLabel = ch ? (ch.label || `Channel ${ch.channel_index}`) : `Channel ID ${step.shelly_channel_id}`;
+      mainContent = `
+        <span class="badge ${step.action === 'on' ? 'bg-success' : 'bg-danger'} me-2">${step.action.toUpperCase()}</span>
+        <i class="bi bi-toggles me-1 text-info" style="font-size:0.85rem"></i>
+        <span style="color:#e0e0e0">${chLabel}</span>
+      `;
+      const delayPart = step.delay_after_sec > 0 ? `<span style="color:#a0b0c8">delay ${step.delay_after_sec}s</span>` : '';
+      const descPart = step.description ? `<span style="color:#a0b0c8">${step.description}</span>` : '';
+      const sep = delayPart && descPart ? '<span style="color:#555"> &mdash; </span>' : '';
+      subContent = descPart + sep + delayPart;
     } else {
       const port = ports.find(p => p.id === step.kasa_port_id);
       const portLabel = port ? (port.label || `Port ${port.port_index + 1}`) : `Port ID ${step.kasa_port_id}`;

@@ -36,6 +36,7 @@ from routers import (
     weather as weather_router,
     monitoring as monitoring_router,
     kasa as kasa_router,
+    shelly as shelly_router,
     shutdown as shutdown_router,
     events as events_router,
     workflows as workflows_router,
@@ -62,6 +63,7 @@ app.include_router(settings_router.router, prefix=prefix)
 app.include_router(weather_router.router, prefix=prefix)
 app.include_router(monitoring_router.router, prefix=prefix)
 app.include_router(kasa_router.router, prefix=prefix)
+app.include_router(shelly_router.router, prefix=prefix)
 app.include_router(shutdown_router.router, prefix=prefix)
 app.include_router(events_router.router, prefix=prefix)
 app.include_router(workflows_router.router, prefix=prefix)

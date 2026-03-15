@@ -2,6 +2,7 @@ import { renderLocationTab } from '../components/settings/location.js';
 import { renderApiKeysTab } from '../components/settings/api-keys.js';
 import { renderThresholdsTab } from '../components/settings/thresholds.js';
 import { renderKasaTab } from '../components/settings/kasa.js';
+import { renderShellyTab } from '../components/settings/shelly.js';
 import { renderWorkflowsTab } from '../components/settings/workflows.js';
 import { renderSmtpTab } from '../components/settings/smtp.js';
 import { renderNotificationsTab } from '../components/settings/notifications.js';
@@ -19,6 +20,7 @@ const NAV = [
     groupId: 'controls', label: 'Controls', icon: 'toggles',
     children: [
       { id: 'kasa',           label: 'Kasa Devices',   icon: 'plug' },
+      { id: 'shelly',         label: 'Shelly Devices', icon: 'toggles' },
       { id: 'home-assistant', label: 'Home Assistant', icon: 'house-gear' },
       { id: 'ifttt',          label: 'IFTTT',          icon: 'arrow-left-right' },
     ],
@@ -40,6 +42,7 @@ const RENDERERS = {
   'api-keys':       renderApiKeysTab,
   thresholds:       renderThresholdsTab,
   kasa:             renderKasaTab,
+  shelly:           renderShellyTab,
   workflows:        renderWorkflowsTab,
   smtp:             renderSmtpTab,
   notifications:    renderNotificationsTab,

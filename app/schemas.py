@@ -230,6 +230,7 @@ class WorkflowResponse(BaseModel):
 
 class WorkflowStepRequest(BaseModel):
     kasa_port_id: int | None = None
+    shelly_channel_id: int | None = None
     action: str
     delay_after_sec: int = 0
     description: Optional[str] = None
@@ -244,9 +245,47 @@ class WorkflowStepResponse(BaseModel):
     workflow_id: int
     step_order: int
     kasa_port_id: int | None
+    shelly_channel_id: int | None
     action: str
     delay_after_sec: int
     description: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+# --- Shelly ---
+class ShellyDeviceCreate(BaseModel):
+    name: str
+    ip_address: str
+    channel_count: int = 1
+
+
+class ShellyDeviceUpdate(BaseModel):
+    name: Optional[str] = None
+    ip_address: Optional[str] = None
+
+
+class ShellyChannelUpdate(BaseModel):
+    label: Optional[str] = None
+
+
+class ShellyChannelResponse(BaseModel):
+    id: int
+    device_id: int
+    channel_index: int
+    label: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+
+class ShellyDeviceResponse(BaseModel):
+    id: int
+    name: str
+    ip_address: str
+    channel_count: int
+    channels: list[ShellyChannelResponse] = []
 
     class Config:
         from_attributes = True

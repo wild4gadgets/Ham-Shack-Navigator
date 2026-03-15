@@ -6,9 +6,9 @@ from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
 
 from dependencies import get_db, get_current_user
-from models import User, Workflow, WorkflowStep, KasaPort
+from models import User, Workflow, WorkflowStep, KasaPort, ShellyChannel, ShellyDevice
 from schemas import WorkflowCreate, WorkflowResponse, WorkflowStepsRequest, WorkflowStepResponse
-from services import kasa_service
+from services import kasa_service, shelly_service
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
 
@@ -113,9 +113,16 @@ async def put_steps(
             if step.delay_after_sec <= 0:
                 raise HTTPException(status_code=400, detail="Pause step must have delay_after_sec > 0")
         elif step.action in ("on", "off"):
-            r = await db.execute(select(KasaPort).where(KasaPort.id == step.kasa_port_id))
-            if not r.scalar_one_or_none():
-                raise HTTPException(status_code=400, detail=f"Port ID {step.kasa_port_id} not found")
+            if step.kasa_port_id:
+                r = await db.execute(select(KasaPort).where(KasaPort.id == step.kasa_port_id))
+                if not r.scalar_one_or_none():
+                    raise HTTPException(status_code=400, detail=f"Kasa port ID {step.kasa_port_id} not found")
+            elif step.shelly_channel_id:
+                r = await db.execute(select(ShellyChannel).where(ShellyChannel.id == step.shelly_channel_id))
+                if not r.scalar_one_or_none():
+                    raise HTTPException(status_code=400, detail=f"Shelly channel ID {step.shelly_channel_id} not found")
+            else:
+                raise HTTPException(status_code=400, detail="Action step must specify kasa_port_id or shelly_channel_id")
         else:
             raise HTTPException(status_code=400, detail="Action must be 'on', 'off', or 'pause'")
 
@@ -125,6 +132,7 @@ async def put_steps(
             workflow_id=workflow_id,
             step_order=i,
             kasa_port_id=step_req.kasa_port_id if step_req.action != "pause" else None,
+            shelly_channel_id=step_req.shelly_channel_id if step_req.action != "pause" else None,
             action=step_req.action,
             delay_after_sec=step_req.delay_after_sec,
             description=step_req.description,
@@ -152,7 +160,10 @@ async def run_workflow(
 
     steps_result = await db.execute(
         select(WorkflowStep)
-        .options(selectinload(WorkflowStep.kasa_port).selectinload(KasaPort.device))
+        .options(
+            selectinload(WorkflowStep.kasa_port).selectinload(KasaPort.device),
+            selectinload(WorkflowStep.shelly_channel).selectinload(ShellyChannel.device),
+        )
         .where(WorkflowStep.workflow_id == workflow_id)
         .order_by(WorkflowStep.step_order)
     )
@@ -161,12 +172,23 @@ async def run_workflow(
     for step in steps:
         if step.action == "pause":
             await asyncio.sleep(step.delay_after_sec)
-        else:
+        elif step.kasa_port_id:
             try:
                 await kasa_service.control_port(
                     step.kasa_port.device.ip_address,
                     step.kasa_port.device.device_type,
                     step.kasa_port.port_index,
+                    step.action,
+                )
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Step {step.step_order} failed: {e}")
+            if step.delay_after_sec > 0:
+                await asyncio.sleep(step.delay_after_sec)
+        elif step.shelly_channel_id:
+            try:
+                await shelly_service.control_channel(
+                    step.shelly_channel.device.ip_address,
+                    step.shelly_channel.channel_index,
                     step.action,
                 )
             except Exception as e:
