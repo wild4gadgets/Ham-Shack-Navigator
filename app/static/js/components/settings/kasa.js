@@ -203,7 +203,7 @@ function renderDevice(device) {
         <div id="test-result-${device.id}" class="mb-2" style="display:none"></div>
         <div class="d-flex align-items-center gap-2 mb-1 px-1" style="font-size:0.72rem;color:#6c757d">
           <span style="width:54px;flex-shrink:0">Port #</span>
-          <span style="flex:1">Description</span>
+          <span style="flex:1;max-width:160px">Description</span>
           <span style="width:34px;flex-shrink:0;text-align:center">Save</span>
           <span style="flex-shrink:0;text-align:center;margin-left:0.5rem">On/Off</span>
           <span style="flex-shrink:0;margin-left:0.25rem">Pin</span>
