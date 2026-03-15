@@ -96,6 +96,15 @@ function renderDeviceList(devices) {
       <div class="card-body p-2">
         <div id="shelly-test-${dev.id}" class="mb-2" style="display:none"></div>
         <table class="table table-sm table-dark mb-0">
+          <thead>
+            <tr style="font-size:0.72rem;color:#6c757d">
+              <th style="width:36px">Port #</th>
+              <th>Description</th>
+              <th style="width:60px"></th>
+              <th class="text-end" style="width:60px">On/Off</th>
+              <th class="text-end" style="width:40px">Pin to Dashboard</th>
+            </tr>
+          </thead>
           <tbody>
             ${dev.channels.map(ch => `
               <tr>
