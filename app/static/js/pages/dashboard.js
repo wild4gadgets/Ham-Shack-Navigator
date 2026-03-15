@@ -178,7 +178,8 @@ async function loadMonitoringStatus() {
       badge.textContent = s.enabled ? 'Monitoring ON' : 'Monitoring OFF';
       badge.className = `badge ${s.enabled ? 'bg-success' : 'bg-secondary'}`;
     }
-    let html = `<span class="badge ${s.enabled ? 'bg-success' : 'bg-secondary'} me-2">${s.enabled ? 'Armed' : 'Disarmed'}</span>`;
+    let html = `<span id="btn-armed-toggle" class="badge ${s.enabled ? 'bg-success' : 'bg-secondary'} me-2"
+      style="cursor:pointer" title="Click to ${s.enabled ? 'disarm' : 'arm'}">${s.enabled ? 'Armed' : 'Disarmed'}</span>`;
     if (s.in_cooldown) {
       html += `<span class="badge bg-info me-2">Cooldown: ${s.cooldown_remaining_min.toFixed(0)} min remaining</span>`;
     }
@@ -186,6 +187,14 @@ async function loadMonitoringStatus() {
       html += `<small class="text-muted ms-3">Last shutdown: ${new Date(s.last_shutdown_at).toLocaleString()}</small>`;
     }
     area.innerHTML = html;
+
+    document.getElementById('btn-armed-toggle').addEventListener('click', async () => {
+      const toggle = document.getElementById('btn-armed-toggle');
+      toggle.style.opacity = '0.5';
+      toggle.style.pointerEvents = 'none';
+      await (s.enabled ? apiPost('/monitoring/disable') : apiPost('/monitoring/enable'));
+      await loadMonitoringStatus();
+    });
   } catch (e) {
     console.error('Status load failed:', e);
   }
