@@ -277,7 +277,11 @@ function attachHandlers(container, active, profiles) {
       if (result.city) document.getElementById('loc-city').value = result.city;
       if (result.gridsquare) document.getElementById('loc-gridsquare').value = result.gridsquare;
       if (result.what3words) document.getElementById('loc-w3w').value = result.what3words;
-      showMsg('success', `Found: ${result.city || result.lat + ', ' + result.lon}`);
+      if (result.w3w_warning) {
+        showMsg('warning', `Found: ${result.city || result.lat + ', ' + result.lon} — ${result.w3w_warning}`);
+      } else {
+        showMsg('success', `Found: ${result.city || result.lat + ', ' + result.lon}`);
+      }
     } catch (err) {
       showMsg('danger', `Lookup failed: ${err.message}`);
     } finally {

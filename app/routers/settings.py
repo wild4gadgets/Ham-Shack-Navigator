@@ -203,6 +203,7 @@ async def lookup_location(
             raise HTTPException(status_code=404, detail="Location not found")
 
         # ── W3W reverse lookup for non-W3W inputs ───────────────────────────
+        w3w_warning = ""
         if has_w3w and not what3words:
             w3w_rev_url = (
                 f"https://api.what3words.com/v3/convert-to-3wa"
@@ -210,13 +211,16 @@ async def lookup_location(
             )
             try:
                 async with session.get(w3w_rev_url, timeout=_aiohttp.ClientTimeout(total=10)) as resp:
+                    body = await resp.json()
                     if resp.status == 200:
-                        data = await resp.json()
-                        what3words = data.get("words", "")
+                        what3words = body.get("words", "")
                     else:
-                        err_body = await resp.json()
-                        logger.warning("W3W reverse lookup failed (%s): %s", resp.status, err_body)
+                        err = body.get("error", {})
+                        msg = err.get("message") or f"HTTP {resp.status}"
+                        w3w_warning = f"What3Words: {msg}"
+                        logger.warning("W3W reverse lookup failed (%s): %s", resp.status, body)
             except Exception as exc:
+                w3w_warning = f"What3Words lookup error: {exc}"
                 logger.warning("W3W reverse lookup error: %s", exc)
 
     return {
@@ -225,6 +229,7 @@ async def lookup_location(
         "city": city_display,
         "gridsquare": _compute_maidenhead(lat, lon),
         "what3words": what3words,
+        "w3w_warning": w3w_warning,
     }
 
 
