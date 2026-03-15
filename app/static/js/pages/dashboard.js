@@ -34,7 +34,7 @@ export async function renderDashboard(container) {
           </div>
           <div class="card-body d-flex align-items-center flex-wrap gap-2">
             <div id="monitoring-status-area"><span class="text-muted">Loading...</span></div>
-            <div class="ms-auto"><small id="weather-update-time" class="text-muted"></small></div>
+            <div class="ms-auto"><small id="weather-update-time" class="text-white-50"></small></div>
           </div>
         </div>
       </div>
