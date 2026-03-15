@@ -68,6 +68,16 @@ export async function renderDashboard(container) {
         </div>
       </div>
 
+      <!-- 24-Hour Forecast -->
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header"><i class="bi bi-calendar-range me-2"></i>24-Hour Forecast</div>
+          <div class="card-body p-2" id="forecast-strip">
+            <div class="text-muted text-center">Loading...</div>
+          </div>
+        </div>
+      </div>
+
       <!-- Radar -->
       <div class="col-12">
         <div class="card">
@@ -272,6 +282,69 @@ function drawGauge({ min, max, value, markers = [], unit, tickValues = [], legen
   </svg>`;
 }
 
+// ── 24-Hour Forecast strip ───────────────────────────────────────────────────
+
+function owmIcon(weather) {
+  const id = weather?.[0]?.id;
+  if (!id) return 'bi-cloud';
+  if (id >= 200 && id < 300) return 'bi-cloud-lightning-rain';
+  if (id >= 300 && id < 400) return 'bi-cloud-drizzle';
+  if (id >= 500 && id < 600) return 'bi-cloud-rain';
+  if (id >= 600 && id < 700) return 'bi-snow';
+  if (id >= 700 && id < 800) return 'bi-cloud-fog2';
+  if (id === 800) return 'bi-sun';
+  if (id === 801 || id === 802) return 'bi-cloud-sun';
+  return 'bi-clouds';
+}
+
+function owmIconColor(weather) {
+  const id = weather?.[0]?.id;
+  if (!id) return '#94a3b8';
+  if (id === 800) return '#fbbf24';
+  if (id >= 200 && id < 300) return '#a78bfa';
+  if (id >= 500 && id < 600) return '#60a5fa';
+  if (id >= 600 && id < 700) return '#e2e8f0';
+  return '#94a3b8';
+}
+
+function renderForecast(fList, metric) {
+  const el = document.getElementById('forecast-strip');
+  if (!el) return;
+  if (!fList.length) {
+    el.innerHTML = '<div class="text-muted text-center p-2">No forecast data</div>';
+    return;
+  }
+
+  const tempUnit = metric ? '°C' : '°F';
+  const windUnit = metric ? 'km/h' : 'mph';
+
+  const slots = fList.map(entry => {
+    const dt = new Date(entry.dt * 1000);
+    const timeLabel = dt.toLocaleTimeString([], { hour: 'numeric', hour12: true });
+    const temp = entry.main?.temp != null ? Math.round(entry.main.temp) : '--';
+    const pop = entry.pop != null ? Math.round(entry.pop * 100) : 0;
+    const rawSpeed = entry.wind?.speed ?? null;
+    const windSpeed = rawSpeed != null
+      ? Math.round(metric ? rawSpeed * 3.6 : rawSpeed)
+      : null;
+    const desc = entry.weather?.[0]?.description ?? '';
+    const icon = owmIcon(entry.weather);
+    const iconColor = owmIconColor(entry.weather);
+    const popColor = pop >= 60 ? '#60a5fa' : pop >= 30 ? '#93c5fd' : '#475569';
+
+    return `
+      <div class="d-flex flex-column align-items-center gap-1 px-1" style="min-width:68px;flex:1" title="${desc}">
+        <div style="font-size:0.7rem;color:#94a3b8;white-space:nowrap">${timeLabel}</div>
+        <i class="bi ${icon}" style="font-size:1.35rem;color:${iconColor}"></i>
+        <div style="font-size:0.85rem;font-weight:600;color:#f1f5f9">${temp}${tempUnit}</div>
+        <div style="font-size:0.72rem;color:${popColor}">${pop > 0 ? '💧 ' + pop + '%' : ''}</div>
+        <div style="font-size:0.68rem;color:#64748b">${windSpeed != null ? windSpeed + ' ' + windUnit : ''}</div>
+      </div>`;
+  });
+
+  el.innerHTML = `<div class="d-flex overflow-auto py-1" style="gap:0.25rem">${slots.join('')}</div>`;
+}
+
 // ── Weather loading ──────────────────────────────────────────────────────────
 
 async function loadWeather() {
@@ -293,6 +366,7 @@ async function loadWeather() {
 
       // Forecast min/max from the 24h forecast list
       const fList = forecast.data?.list || [];
+      renderForecast(fList, metric);
       const fTemps = fList.flatMap(e => [e.main?.temp_min, e.main?.temp_max]).filter(t => t != null);
       const forecastMin = fTemps.length ? Math.min(...fTemps) : null;
       const forecastMax = fTemps.length ? Math.max(...fTemps) : null;
