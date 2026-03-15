@@ -13,6 +13,13 @@ let radarPlaying = false;
 let radarHomeLat = null;
 let radarHomeLon = null;
 let radarHomeZoom = 7;
+let pinData = { kasa: [], shelly: [] };
+let pinStates = {};
+let pinPollTimer = null;
+
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 
 export async function renderDashboard(container) {
   destroyed = false;
@@ -34,6 +41,7 @@ export async function renderDashboard(container) {
           </div>
           <div class="card-body d-flex align-items-center flex-wrap gap-2">
             <div id="monitoring-status-area"><span class="text-muted">Loading...</span></div>
+            <div id="dashboard-pins" class="d-flex flex-wrap gap-1 align-items-center"></div>
             <div class="ms-auto"><small id="weather-update-time" class="text-white-50"></small></div>
           </div>
         </div>
@@ -146,6 +154,7 @@ export async function renderDashboard(container) {
 
 function cleanup() {
   destroyed = true;
+  if (pinPollTimer) { clearInterval(pinPollTimer); pinPollTimer = null; }
   if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
   if (ws) { ws.close(); ws = null; }
   if (radarAnimInterval) { clearInterval(radarAnimInterval); radarAnimInterval = null; }
@@ -156,7 +165,7 @@ function cleanup() {
 }
 
 async function loadAll() {
-  await Promise.all([loadMonitoringStatus(), loadWeather(), loadRecentEvents(), loadRadar()]);
+  await Promise.all([loadMonitoringStatus(), loadWeather(), loadRecentEvents(), loadRadar(), loadPins()]);
 }
 
 async function loadMonitoringStatus() {
@@ -594,6 +603,111 @@ async function loadRecentEvents() {
   } catch (e) {
     console.error('Events load failed:', e);
   }
+}
+
+async function loadPins() {
+  try {
+    const data = await apiGet('/dashboard/pins');
+    pinData = data;
+    pinStates = {};
+    data.kasa.forEach(p => { pinStates[`kasa-${p.id}`] = null; });
+    data.shelly.forEach(c => { pinStates[`shelly-${c.id}`] = null; });
+    renderPins();
+    await pollPinStates();
+    if (pinPollTimer) clearInterval(pinPollTimer);
+    if (data.kasa.length || data.shelly.length) {
+      pinPollTimer = setInterval(pollPinStates, 10000);
+    }
+  } catch {}
+}
+
+function renderPins() {
+  const el = document.getElementById('dashboard-pins');
+  if (!el) return;
+  const allPins = [
+    ...pinData.kasa.map(p => ({ type: 'kasa', ...p })),
+    ...pinData.shelly.map(c => ({ type: 'shelly', ...c })),
+  ];
+  if (!allPins.length) { el.innerHTML = ''; return; }
+
+  el.innerHTML = allPins.map(pin => {
+    const key = `${pin.type}-${pin.id}`;
+    const isOn = pinStates[key];
+    const label = escHtml(pin.label || (pin.type === 'kasa' ? `Port ${pin.port_index + 1}` : `Ch ${pin.channel_index}`));
+    const icon = pin.type === 'kasa' ? 'bi-plug' : 'bi-toggles';
+    const bg = isOn === null ? '#6c757d' : (isOn ? '#198754' : '#495057');
+    const stateText = isOn === null ? '?' : (isOn ? 'ON' : 'OFF');
+    return `<button class="pin-badge border-0 rounded" style="background:${bg};color:#fff;cursor:pointer;font-size:0.72rem;padding:3px 9px;line-height:1.4"
+      data-pin-type="${pin.type}" data-pin-id="${pin.id}" title="${escHtml(pin.device_name)}">
+      <i class="bi ${icon} me-1"></i>${label} <span style="opacity:0.8">${stateText}</span>
+    </button>`;
+  }).join('');
+
+  el.querySelectorAll('.pin-badge').forEach(btn => {
+    btn.addEventListener('click', () => togglePin(btn.dataset.pinType, parseInt(btn.dataset.pinId)));
+  });
+}
+
+async function pollPinStates() {
+  const kasaByDevice = {};
+  for (const pin of pinData.kasa) {
+    if (!kasaByDevice[pin.device_id]) kasaByDevice[pin.device_id] = { pins: [] };
+    kasaByDevice[pin.device_id].pins.push(pin);
+  }
+  const shellyByDevice = {};
+  for (const pin of pinData.shelly) {
+    if (!shellyByDevice[pin.device_id]) shellyByDevice[pin.device_id] = { pins: [] };
+    shellyByDevice[pin.device_id].pins.push(pin);
+  }
+
+  const promises = [];
+  for (const [deviceId, info] of Object.entries(kasaByDevice)) {
+    promises.push(
+      apiGet(`/kasa/devices/${deviceId}/states`)
+        .then(result => {
+          if (result.success) {
+            result.port_states.forEach(s => {
+              const pin = info.pins.find(p => p.port_index === s.port_index);
+              if (pin) pinStates[`kasa-${pin.id}`] = s.is_on;
+            });
+          }
+        }).catch(() => {})
+    );
+  }
+  for (const [deviceId, info] of Object.entries(shellyByDevice)) {
+    promises.push(
+      apiGet(`/shelly/devices/${deviceId}/states`)
+        .then(states => {
+          states.forEach(s => {
+            const pin = info.pins.find(c => c.channel_index === s.channel_index);
+            if (pin) pinStates[`shelly-${pin.id}`] = s.is_on;
+          });
+        }).catch(() => {})
+    );
+  }
+
+  await Promise.all(promises);
+  renderPins();
+}
+
+async function togglePin(type, id) {
+  const key = `${type}-${id}`;
+  const current = pinStates[key];
+  if (current === null) return;
+  const action = current ? 'off' : 'on';
+  pinStates[key] = null;
+  renderPins();
+  try {
+    if (type === 'kasa') {
+      await apiPost(`/kasa/ports/${id}/control`, { action });
+    } else {
+      await apiPost(`/shelly/channels/${id}/control`, { action });
+    }
+    pinStates[key] = action === 'on';
+  } catch {
+    pinStates[key] = current;
+  }
+  renderPins();
 }
 
 function connectWS() {

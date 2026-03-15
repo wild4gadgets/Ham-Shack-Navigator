@@ -124,6 +124,8 @@ async def update_port(
         raise HTTPException(status_code=404, detail="Port not found")
     if body.label is not None:
         port.label = body.label
+    if body.show_on_dashboard is not None:
+        port.show_on_dashboard = body.show_on_dashboard
     await db.commit()
     return port
 

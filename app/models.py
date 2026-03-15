@@ -48,6 +48,8 @@ class KasaPort(Base):
     port_index: Mapped[int] = mapped_column(Integer, nullable=False)
     label: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    show_on_dashboard: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
     device: Mapped["KasaDevice"] = relationship("KasaDevice", back_populates="ports")
     shutdown_steps: Mapped[list["ShutdownStep"]] = relationship("ShutdownStep", back_populates="kasa_port")
 
@@ -101,6 +103,8 @@ class ShellyChannel(Base):
     device_id: Mapped[int] = mapped_column(Integer, ForeignKey("shelly_devices.id", ondelete="CASCADE"), nullable=False)
     channel_index: Mapped[int] = mapped_column(Integer, nullable=False)
     label: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    show_on_dashboard: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     device: Mapped["ShellyDevice"] = relationship("ShellyDevice", back_populates="channels")
 

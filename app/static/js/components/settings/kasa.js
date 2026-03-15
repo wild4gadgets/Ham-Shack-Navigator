@@ -178,6 +178,11 @@ function renderDevice(device) {
         <input class="form-check-input port-switch" type="checkbox" role="switch"
                data-port-id="${p.id}" data-port-index="${p.port_index}" data-device-id="${device.id}" />
       </div>
+      <label class="d-flex align-items-center gap-1 small text-muted mb-0 ms-1" title="Pin to dashboard" style="cursor:pointer;white-space:nowrap">
+        <input class="form-check-input mt-0 dashboard-pin" type="checkbox"
+               data-port-id="${p.id}" ${p.show_on_dashboard ? 'checked' : ''} />
+        <i class="bi bi-pin-angle" style="font-size:0.75rem"></i>
+      </label>
     </div>
   `).join('');
 
@@ -327,6 +332,15 @@ function setupDeviceListeners(container, devices) {
           btn.title = '';
         }, 3000);
       }
+    });
+  });
+
+  // Dashboard pin toggles
+  container.querySelectorAll('.dashboard-pin').forEach(sw => {
+    sw.addEventListener('change', async () => {
+      try {
+        await apiPut(`/kasa/ports/${sw.dataset.portId}`, { show_on_dashboard: sw.checked });
+      } catch { sw.checked = !sw.checked; }
     });
   });
 

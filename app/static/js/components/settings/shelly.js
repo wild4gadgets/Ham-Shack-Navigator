@@ -121,6 +121,13 @@ function renderDeviceList(devices) {
                       id="shelly-sw-${ch.id}" />
                   </div>
                 </td>
+                <td class="align-middle text-end" style="width:40px">
+                  <label class="d-flex align-items-center justify-content-end mb-0" title="Pin to dashboard" style="cursor:pointer">
+                    <input class="form-check-input mt-0 shelly-dashboard-pin" type="checkbox"
+                      data-channel-id="${ch.id}" ${ch.show_on_dashboard ? 'checked' : ''} />
+                    <i class="bi bi-pin-angle ms-1" style="font-size:0.7rem;color:#94a3b8"></i>
+                  </label>
+                </td>
               </tr>
             `).join('')}
           </tbody>
@@ -175,6 +182,15 @@ function attachHandlers(container, devices, pollInterval) {
       } finally {
         delete sw.dataset.pending;
       }
+    });
+  });
+
+  // Dashboard pin toggles
+  container.querySelectorAll('.shelly-dashboard-pin').forEach(sw => {
+    sw.addEventListener('change', async () => {
+      try {
+        await apiPut(`/shelly/channels/${sw.dataset.channelId}`, { show_on_dashboard: sw.checked });
+      } catch { sw.checked = !sw.checked; }
     });
   });
 

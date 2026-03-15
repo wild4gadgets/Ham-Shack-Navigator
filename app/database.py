@@ -47,6 +47,7 @@ async def _migrate_db():
         await conn.run_sync(_migrate_add_workflows)
         await conn.run_sync(_migrate_add_shelly)
         await conn.run_sync(_migrate_workflow_steps_add_shelly)
+        await conn.run_sync(_migrate_add_show_on_dashboard)
 
 
 def _migrate_add_workflows(conn):
@@ -146,6 +147,18 @@ def _migrate_workflow_steps_add_shelly(conn):
         conn.execute(__import__("sqlalchemy").text(
             "ALTER TABLE workflow_steps ADD COLUMN shelly_channel_id INTEGER REFERENCES shelly_channels(id)"
         ))
+
+
+def _migrate_add_show_on_dashboard(conn):
+    """Add show_on_dashboard column to kasa_ports and shelly_channels if missing."""
+    sa = __import__("sqlalchemy")
+    for table in ("kasa_ports", "shelly_channels"):
+        info = conn.execute(sa.text(f"PRAGMA table_info({table})")).fetchall()
+        cols = {col[1] for col in info}
+        if "show_on_dashboard" not in cols:
+            conn.execute(sa.text(
+                f"ALTER TABLE {table} ADD COLUMN show_on_dashboard INTEGER NOT NULL DEFAULT 0"
+            ))
 
 
 def _migrate_shutdown_steps_add_description(conn):

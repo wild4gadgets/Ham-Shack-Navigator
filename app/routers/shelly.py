@@ -139,6 +139,8 @@ async def update_channel(
         raise HTTPException(status_code=404, detail="Channel not found")
     if body.label is not None:
         channel.label = body.label
+    if body.show_on_dashboard is not None:
+        channel.show_on_dashboard = body.show_on_dashboard
     await db.commit()
     await db.refresh(channel)
     return channel

@@ -163,6 +163,8 @@ class KasaPortUpdate(BaseModel):
             raise ValueError("Port label must be 15 characters or fewer")
         return v
 
+    show_on_dashboard: Optional[bool] = None
+
 
 class KasaPortControl(BaseModel):
     action: str  # "on" or "off"
@@ -173,6 +175,7 @@ class KasaPortResponse(BaseModel):
     device_id: int
     port_index: int
     label: Optional[str]
+    show_on_dashboard: bool = False
 
     class Config:
         from_attributes = True
@@ -268,6 +271,7 @@ class ShellyDeviceUpdate(BaseModel):
 
 class ShellyChannelUpdate(BaseModel):
     label: Optional[str] = None
+    show_on_dashboard: Optional[bool] = None
 
 
 class ShellyChannelResponse(BaseModel):
@@ -275,6 +279,7 @@ class ShellyChannelResponse(BaseModel):
     device_id: int
     channel_index: int
     label: Optional[str]
+    show_on_dashboard: bool = False
 
     class Config:
         from_attributes = True
