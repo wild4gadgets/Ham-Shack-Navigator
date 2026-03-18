@@ -262,11 +262,13 @@ class ShellyDeviceCreate(BaseModel):
     name: str
     ip_address: str
     channel_count: int = 1
+    generation: int = 1
 
 
 class ShellyDeviceUpdate(BaseModel):
     name: Optional[str] = None
     ip_address: Optional[str] = None
+    generation: Optional[int] = None
 
 
 class ShellyChannelUpdate(BaseModel):
@@ -290,6 +292,7 @@ class ShellyDeviceResponse(BaseModel):
     name: str
     ip_address: str
     channel_count: int
+    generation: int = 1
     channels: list[ShellyChannelResponse] = []
 
     class Config:

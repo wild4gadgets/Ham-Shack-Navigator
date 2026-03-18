@@ -63,6 +63,13 @@ function render(container, devices, pollInterval) {
               </select>
               <div class="form-text">Cannot be changed after device is added.</div>
             </div>
+            <div class="mb-3" id="shelly-generation-row">
+              <label class="form-label">Device Generation</label>
+              <select class="form-select" id="shelly-generation">
+                <option value="1">Gen 1 (original)</option>
+                <option value="2">Gen 2 / Gen 3 (Plus, Pro, Mini)</option>
+              </select>
+            </div>
           </div>
           <div class="modal-footer">
             <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -80,70 +87,58 @@ function renderDeviceList(devices) {
   if (!devices.length) {
     return '<div class="text-muted">No Shelly devices configured.</div>';
   }
-  return devices.map(dev => `
-    <div class="card mb-3" id="shelly-dev-${dev.id}">
-      <div class="card-header d-flex align-items-center">
-        <span class="flex-grow-1 fw-semibold">
-          <i class="bi bi-toggles me-2 text-info"></i>${escHtml(dev.name)}
-          <small class="text-muted ms-2">${escHtml(dev.ip_address)}</small>
-        </span>
-        <button class="btn btn-sm btn-outline-secondary me-1 btn-shelly-test" data-id="${dev.id}">Test</button>
-        <button class="btn btn-sm btn-outline-secondary me-1 btn-shelly-edit"
-          data-id="${dev.id}" data-name="${escHtml(dev.name)}" data-ip="${escHtml(dev.ip_address)}">Edit</button>
-        <button class="btn btn-sm btn-outline-danger btn-shelly-delete"
-          data-id="${dev.id}" data-name="${escHtml(dev.name)}">Delete</button>
+  return devices.map(dev => {
+    const channels = [...dev.channels].sort((a, b) => a.channel_index - b.channel_index).map(ch => `
+      <div class="d-flex align-items-center gap-2 mb-2">
+        <span class="badge bg-secondary" style="min-width:54px">Ch ${ch.channel_index}</span>
+        <input type="text" maxlength="24" class="form-control form-control-sm shelly-label-input"
+          style="max-width:160px" data-channel-id="${ch.id}"
+          value="${escHtml(ch.label || '')}" placeholder="Label" />
+        <button class="btn btn-sm btn-outline-primary btn-save-label" data-channel-id="${ch.id}" title="Save label">
+          <i class="bi bi-floppy"></i>
+        </button>
+        <div class="form-check form-switch mb-0 ms-2">
+          <input class="form-check-input shelly-toggle" type="checkbox" role="switch"
+            data-channel-id="${ch.id}" data-channel-index="${ch.channel_index}"
+            id="shelly-sw-${ch.id}" />
+        </div>
+        <label class="d-flex align-items-center gap-1 small text-muted mb-0 ms-1" title="Pin to dashboard" style="cursor:pointer;white-space:nowrap">
+          <input class="form-check-input mt-0 shelly-dashboard-pin" type="checkbox"
+            data-channel-id="${ch.id}" ${ch.show_on_dashboard ? 'checked' : ''} />
+          <i class="bi bi-pin-angle" style="font-size:0.75rem"></i>
+        </label>
       </div>
-      <div class="card-body p-2">
-        <div id="shelly-test-${dev.id}" class="mb-2" style="display:none"></div>
-        <table class="table table-sm table-dark mb-0">
-          <thead>
-            <tr style="font-size:0.72rem;color:#6c757d">
-              <th style="width:36px">Port #</th>
-              <th>Description</th>
-              <th style="width:60px"></th>
-              <th class="text-end" style="width:60px">On/Off</th>
-              <th class="text-end" style="width:40px">Pin to Dashboard</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${dev.channels.map(ch => `
-              <tr>
-                <td class="align-middle" style="width:36px">
-                  <span class="badge bg-secondary">${ch.channel_index}</span>
-                </td>
-                <td class="align-middle">
-                  <input type="text" class="form-control form-control-sm font-monospace shelly-label-input"
-                    data-channel-id="${ch.id}"
-                    value="${escHtml(ch.label || '')}"
-                    placeholder="Channel ${ch.channel_index} label" />
-                </td>
-                <td class="align-middle text-end" style="width:60px">
-                  <button class="btn btn-xs btn-outline-secondary btn-save-label py-0 px-1"
-                    data-channel-id="${ch.id}" style="font-size:0.7rem">Save</button>
-                </td>
-                <td class="align-middle text-end" style="width:60px">
-                  <div class="form-check form-switch mb-0 d-flex justify-content-end">
-                    <input class="form-check-input shelly-toggle" type="checkbox"
-                      data-channel-id="${ch.id}"
-                      data-device-ip="${escHtml(dev.ip_address)}"
-                      data-channel-index="${ch.channel_index}"
-                      id="shelly-sw-${ch.id}" />
-                  </div>
-                </td>
-                <td class="align-middle text-end" style="width:40px">
-                  <label class="d-flex align-items-center justify-content-end mb-0" title="Pin to dashboard" style="cursor:pointer">
-                    <input class="form-check-input mt-0 shelly-dashboard-pin" type="checkbox"
-                      data-channel-id="${ch.id}" ${ch.show_on_dashboard ? 'checked' : ''} />
-                    <i class="bi bi-pin-angle ms-1" style="font-size:0.7rem;color:#94a3b8"></i>
-                  </label>
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
+    `).join('');
+
+    return `
+      <div class="card mb-3" id="shelly-dev-${dev.id}">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span>
+            <strong>${escHtml(dev.name)}</strong>
+            <small class="ms-1" style="opacity:0.7">(${escHtml(dev.ip_address)}, Gen ${dev.generation ?? 1})</small>
+          </span>
+          <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-info btn-shelly-test" data-id="${dev.id}">Test</button>
+            <button class="btn btn-sm btn-outline-light btn-shelly-edit"
+              data-id="${dev.id}" data-name="${escHtml(dev.name)}" data-ip="${escHtml(dev.ip_address)}" data-generation="${dev.generation ?? 1}">Edit</button>
+            <button class="btn btn-sm btn-outline-danger btn-shelly-delete"
+              data-id="${dev.id}" data-name="${escHtml(dev.name)}">Delete</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="shelly-test-${dev.id}" class="mb-2" style="display:none"></div>
+          <div class="d-flex align-items-center gap-2 mb-1 px-1" style="font-size:0.72rem;color:#6c757d">
+            <span style="width:54px;flex-shrink:0">Ch #</span>
+            <span style="flex:1;max-width:160px">Description</span>
+            <span style="width:34px;flex-shrink:0;text-align:center">Save</span>
+            <span style="flex-shrink:0;text-align:center;margin-left:0.5rem">On/Off</span>
+            <span style="flex-shrink:0;margin-left:0.25rem">Pin</span>
+          </div>
+          ${channels}
+        </div>
       </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
 function escHtml(str) {
@@ -183,6 +178,7 @@ function attachHandlers(container, devices, pollInterval) {
       const channelId = sw.dataset.channelId;
       const action = sw.checked ? 'on' : 'off';
       sw.dataset.pending = '1';
+      sw.disabled = true;
       try {
         await apiPost(`/shelly/channels/${channelId}/control`, { action });
       } catch (e) {
@@ -190,6 +186,7 @@ function attachHandlers(container, devices, pollInterval) {
         showMsg(`Control failed: ${e.message}`);
       } finally {
         delete sw.dataset.pending;
+        sw.disabled = false;
       }
     });
   });
@@ -210,9 +207,19 @@ function attachHandlers(container, devices, pollInterval) {
       const input = container.querySelector(`.shelly-label-input[data-channel-id="${channelId}"]`);
       try {
         await apiPut(`/shelly/channels/${channelId}`, { label: input.value.trim() || null });
-        showMsg('Label saved.', 'success');
+        btn.innerHTML = '<i class="bi bi-check-lg"></i>';
+        btn.classList.replace('btn-outline-primary', 'btn-success');
+        setTimeout(() => {
+          btn.innerHTML = '<i class="bi bi-floppy"></i>';
+          btn.classList.replace('btn-success', 'btn-outline-primary');
+        }, 1500);
       } catch (e) {
-        showMsg(`Save failed: ${e.message}`);
+        btn.innerHTML = '<i class="bi bi-x-lg"></i>';
+        btn.classList.replace('btn-outline-primary', 'btn-danger');
+        setTimeout(() => {
+          btn.innerHTML = '<i class="bi bi-floppy"></i>';
+          btn.classList.replace('btn-danger', 'btn-outline-primary');
+        }, 3000);
       }
     });
   });
@@ -251,6 +258,8 @@ function attachHandlers(container, devices, pollInterval) {
       document.getElementById('shelly-name').value = btn.dataset.name;
       document.getElementById('shelly-ip').value = btn.dataset.ip;
       document.getElementById('shelly-channel-count-row').style.display = 'none';
+      document.getElementById('shelly-generation').value = btn.dataset.generation ?? '1';
+      document.getElementById('shelly-generation-row').style.display = '';
       new bootstrap.Modal(document.getElementById('shelly-modal')).show();
     });
   });
@@ -279,7 +288,9 @@ function attachHandlers(container, devices, pollInterval) {
     document.getElementById('shelly-name').value = '';
     document.getElementById('shelly-ip').value = '';
     document.getElementById('shelly-channels').value = '1';
+    document.getElementById('shelly-generation').value = '1';
     document.getElementById('shelly-channel-count-row').style.display = '';
+    document.getElementById('shelly-generation-row').style.display = '';
     new bootstrap.Modal(document.getElementById('shelly-modal')).show();
   });
 
@@ -291,10 +302,12 @@ function attachHandlers(container, devices, pollInterval) {
     if (!name || !ip) { showMsg('Name and IP address are required.'); return; }
     try {
       if (editId) {
-        await apiPut(`/shelly/devices/${editId}`, { name, ip_address: ip });
+        const generation = parseInt(document.getElementById('shelly-generation').value);
+        await apiPut(`/shelly/devices/${editId}`, { name, ip_address: ip, generation });
       } else {
         const channelCount = parseInt(document.getElementById('shelly-channels').value);
-        await apiPost('/shelly/devices', { name, ip_address: ip, channel_count: channelCount });
+        const generation = parseInt(document.getElementById('shelly-generation').value);
+        await apiPost('/shelly/devices', { name, ip_address: ip, channel_count: channelCount, generation });
       }
       bootstrap.Modal.getInstance(document.getElementById('shelly-modal')).hide();
       Object.values(pollTimers).forEach(clearInterval);

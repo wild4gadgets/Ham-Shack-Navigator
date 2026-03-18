@@ -14,6 +14,7 @@ let pingInterval = null;
 let destroyed = false;
 let radarMap = null;
 let radarLayer = null;
+let lightningLayer = null;
 let radarFrames = [];
 let radarFrameIndex = 0;
 let radarAnimInterval = null;
@@ -25,6 +26,7 @@ let pinData = { kasa: [], shelly: [] };
 let pinStates = {};
 let pinPollTimer = null;
 let solarRefreshTimer = null;
+let systemState = { last: null, startup_id: null, shutdown_id: null };
 
 function escHtml(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -40,7 +42,7 @@ export async function renderDashboard(container) {
           <div class="card-header d-flex justify-content-between align-items-center">
             <span><i class="bi bi-shield-check me-2"></i>Monitoring</span>
             <div class="d-flex gap-2">
-              <button id="btn-trigger" class="btn btn-sm btn-danger">Manual Trigger</button>
+              <button id="btn-system-toggle" class="btn btn-sm btn-secondary" disabled>...</button>
               <button id="btn-refresh" class="btn btn-sm btn-outline-light">
                 <i class="bi bi-arrow-clockwise"></i> Refresh
               </button>
@@ -55,7 +57,7 @@ export async function renderDashboard(container) {
       </div>
 
       <!-- Weather Cards -->
-      <div class="col-md-4">
+      <div class="col-6 col-lg-2">
         <div class="card h-100">
           <div class="card-header"><i class="bi bi-wind me-2"></i>Wind</div>
           <div class="card-body p-2" id="wind-card">
@@ -64,7 +66,7 @@ export async function renderDashboard(container) {
         </div>
       </div>
 
-      <div class="col-md-4">
+      <div class="col-6 col-lg-2">
         <div class="card h-100">
           <div class="card-header"><i class="bi bi-thermometer-half me-2"></i>Temperature</div>
           <div class="card-body p-2" id="temp-card">
@@ -73,7 +75,7 @@ export async function renderDashboard(container) {
         </div>
       </div>
 
-      <div class="col-md-4">
+      <div class="col-6 col-lg-2">
         <div class="card h-100">
           <div class="card-header"><i class="bi bi-lightning-charge me-2"></i>Lightning</div>
           <div class="card-body d-flex flex-column justify-content-center align-items-center" id="lightning-card">
@@ -84,21 +86,11 @@ export async function renderDashboard(container) {
         </div>
       </div>
 
-      <!-- 24-Hour Forecast -->
-      <div class="col-12">
-        <div class="card">
-          <div class="card-header"><i class="bi bi-calendar-range me-2"></i>24-Hour Forecast</div>
-          <div class="card-body p-2" id="forecast-strip">
-            <div class="text-muted text-center">Loading...</div>
-          </div>
-        </div>
-      </div>
-
       <!-- Solar Propagation -->
-      <div class="col-12">
-        <div class="card">
+      <div class="col-12 col-lg-6">
+        <div class="card h-100">
           <div class="card-header d-flex justify-content-between align-items-center">
-            <span><i class="bi bi-sun me-2"></i>Solar Propagation</span>
+            <span><i class="bi bi-sun me-2"></i>Solar / Propagation</span>
             <small id="solar-updated" class="text-white-50"></small>
           </div>
           <div class="card-body p-2" id="solar-card">
@@ -108,7 +100,7 @@ export async function renderDashboard(container) {
       </div>
 
       <!-- Radar -->
-      <div class="col-12">
+      <div class="col-12 col-lg-6">
         <div class="card">
           <div class="card-header d-flex justify-content-between align-items-center">
             <span><i class="bi bi-broadcast me-2"></i>Local Radar</span>
@@ -119,7 +111,17 @@ export async function renderDashboard(container) {
               <button id="btn-radar-next" class="btn btn-sm btn-outline-light" title="Next frame">&#8250;</button>
             </div>
           </div>
-          <div id="radar-map" style="height:400px;background:#1a1a2e"></div>
+          <div id="radar-map" style="aspect-ratio:1/1;width:100%;max-height:600px;background:#1a1a2e"></div>
+        </div>
+      </div>
+
+      <!-- 24-Hour Forecast -->
+      <div class="col-12 col-lg-6">
+        <div class="card h-100">
+          <div class="card-header"><i class="bi bi-calendar-range me-2"></i>24-Hr Forecast</div>
+          <div class="card-body p-2" id="forecast-strip">
+            <div class="text-muted text-center">Loading...</div>
+          </div>
         </div>
       </div>
 
@@ -146,10 +148,22 @@ export async function renderDashboard(container) {
   await loadAll();
   connectWS();
 
-  document.getElementById('btn-trigger').addEventListener('click', async () => {
-    if (!confirm('Trigger shutdown sequence now?')) return;
-    await apiPost('/shutdown/trigger');
-    setTimeout(loadRecentEvents, 2000);
+  document.getElementById('btn-system-toggle').addEventListener('click', async () => {
+    const isUp = systemState.last === 'Startup';
+    const targetName = isUp ? 'Shutdown' : 'Startup';
+    const targetId = isUp ? systemState.shutdown_id : systemState.startup_id;
+    if (!targetId) return;
+    if (!confirm(`Run ${targetName} workflow now?`)) return;
+    const btn = document.getElementById('btn-system-toggle');
+    btn.disabled = true;
+    try {
+      await apiPost(`/workflows/${targetId}/run`, {});
+      await loadSystemState();
+    } catch (e) {
+      alert(`Workflow failed: ${e.message}`);
+    } finally {
+      btn.disabled = false;
+    }
   });
   document.getElementById('btn-refresh').addEventListener('click', async () => {
     const btn = document.getElementById('btn-refresh');
@@ -173,12 +187,25 @@ function cleanup() {
   if (radarAnimInterval) { clearInterval(radarAnimInterval); radarAnimInterval = null; }
   if (radarMap) { radarMap.remove(); radarMap = null; }
   radarLayer = null;
+  lightningLayer = null;
   radarFrames = [];
   radarPlaying = false;
 }
 
+async function loadSystemState() {
+  try {
+    systemState = await apiGet('/workflows/system-state');
+  } catch { return; }
+  const btn = document.getElementById('btn-system-toggle');
+  if (!btn) return;
+  const isUp = systemState.last === 'Startup';
+  btn.textContent = isUp ? 'System Up' : 'System Down';
+  btn.className = `btn btn-sm ${isUp ? 'btn-success' : 'btn-danger'}`;
+  btn.disabled = false;
+}
+
 async function loadAll() {
-  await Promise.all([loadMonitoringStatus(), loadWeather(), loadRecentEvents(), loadRadar(), loadPins(), loadSolarData()]);
+  await Promise.all([loadMonitoringStatus(), loadWeather(), loadRecentEvents(), loadRadar(), loadPins(), loadSolarData(), loadSystemState()]);
   if (solarRefreshTimer) clearInterval(solarRefreshTimer);
   solarRefreshTimer = setInterval(() => { if (!destroyed) loadSolarData(); }, 30 * 60 * 1000);
 }
@@ -188,8 +215,8 @@ async function loadMonitoringStatus() {
     const s = await apiGet('/monitoring/status');
     const area = document.getElementById('monitoring-status-area');
     if (!area) return;
-let html = `<span id="btn-armed-toggle" class="badge ${s.enabled ? 'bg-success' : 'bg-secondary'} me-2"
-      style="cursor:pointer" title="Click to ${s.enabled ? 'disarm' : 'arm'}">${s.enabled ? 'Armed' : 'Disarmed'}</span>`;
+    let html = `<span id="btn-armed-toggle" class="badge ${s.enabled ? 'bg-success' : 'bg-danger'} me-2"
+      style="cursor:pointer" title="Click to ${s.enabled ? 'stop' : 'start'} monitoring">Monitoring ${s.enabled ? 'On' : 'Off'}</span>`;
     if (s.in_cooldown) {
       html += `<span class="badge bg-info me-2">Cooldown: ${s.cooldown_remaining_min.toFixed(0)} min remaining</span>`;
     }
@@ -352,31 +379,29 @@ function renderForecast(fList, metric) {
   const tempUnit = metric ? '°C' : '°F';
   const windUnit = metric ? 'km/h' : 'mph';
 
-  const slots = fList.map(entry => {
+  const rows = fList.slice(0, 8).map(entry => {
     const dt = new Date(entry.dt * 1000);
-    const timeLabel = dt.toLocaleTimeString([], { hour: 'numeric', hour12: true });
+    const timeLabel = dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
     const temp = entry.main?.temp != null ? Math.round(entry.main.temp) : '--';
     const pop = entry.pop != null ? Math.round(entry.pop * 100) : 0;
     const rawSpeed = entry.wind?.speed ?? null;
-    const windSpeed = rawSpeed != null
-      ? Math.round(metric ? rawSpeed * 3.6 : rawSpeed)
-      : null;
+    const windSpeed = rawSpeed != null ? Math.round(metric ? rawSpeed * 3.6 : rawSpeed) : null;
     const desc = entry.weather?.[0]?.description ?? '';
     const icon = owmIcon(entry.weather);
     const iconColor = owmIconColor(entry.weather);
-    const popColor = pop >= 60 ? '#60a5fa' : pop >= 30 ? '#93c5fd' : '#475569';
+    const popColor = pop >= 60 ? '#60a5fa' : pop >= 30 ? '#93c5fd' : '#64748b';
 
     return `
-      <div class="d-flex flex-column align-items-center gap-1 px-1" style="min-width:68px;flex:1" title="${desc}">
-        <div style="font-size:0.7rem;color:#94a3b8;white-space:nowrap">${timeLabel}</div>
-        <i class="bi ${icon}" style="font-size:1.35rem;color:${iconColor}"></i>
-        <div style="font-size:0.85rem;font-weight:600;color:#f1f5f9">${temp}${tempUnit}</div>
-        <div style="font-size:0.72rem;color:${popColor}">${pop > 0 ? '💧 ' + pop + '%' : ''}</div>
-        <div style="font-size:0.68rem;color:#64748b">${windSpeed != null ? windSpeed + ' ' + windUnit : ''}</div>
+      <div class="d-flex align-items-center gap-2 py-1" style="border-bottom:1px solid #1e2a3a;font-size:0.78rem" title="${desc}">
+        <span style="width:52px;flex-shrink:0;color:#94a3b8">${timeLabel}</span>
+        <i class="bi ${icon}" style="font-size:1.05rem;color:${iconColor};flex-shrink:0"></i>
+        <span style="font-weight:600;color:#f1f5f9;width:36px;flex-shrink:0">${temp}${tempUnit}</span>
+        <span style="color:${popColor};flex-shrink:0;min-width:32px">${pop > 0 ? '💧' + pop + '%' : ''}</span>
+        <span style="color:#64748b;margin-left:auto;flex-shrink:0">${windSpeed != null ? windSpeed + ' ' + windUnit : ''}</span>
       </div>`;
   });
 
-  el.innerHTML = `<div class="d-flex overflow-auto py-1" style="gap:0.25rem">${slots.join('')}</div>`;
+  el.innerHTML = rows.join('');
 }
 
 // ── Weather loading ──────────────────────────────────────────────────────────
@@ -534,6 +559,23 @@ async function loadRadar() {
     radarFrames = [...past, ...nowcast];
     if (!radarFrames.length) return;
 
+    // Lightning overlay — use the most recent strike frame
+    const lightningFrames = rv.lightning ?? [];
+    if (lightningFrames.length) {
+      const lf = lightningFrames[lightningFrames.length - 1];
+      const lUrl = `${host}${lf.path}/256/{z}/{x}/{y}/1/1_1.png`;
+      if (!lightningLayer) {
+        lightningLayer = L.tileLayer(lUrl, {
+          opacity: 0.9,
+          maxNativeZoom: RADAR_MAX_NATIVE_ZOOM,
+          maxZoom: 19,
+          attribution: 'RainViewer',
+        }).addTo(radarMap);
+      } else {
+        lightningLayer.setUrl(lUrl);
+      }
+    }
+
     radarFrameIndex = radarFrames.length - 1;
     showRadarFrame(host, radarFrameIndex);
 
@@ -584,6 +626,8 @@ function showRadarFrame(host, index) {
     radarLayer.setUrl(url);
   }
 
+  if (lightningLayer) lightningLayer.bringToFront();
+
   const ts = document.getElementById('radar-timestamp');
   if (ts) ts.textContent = new Date(frame.time * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
@@ -597,10 +641,11 @@ function stopRadarAnim() {
 
 async function loadRecentEvents() {
   try {
-    const result = await apiGet('/events?page=1&page_size=10');
+    const result = await apiGet('/events?page=1&page_size=25');
     const container = document.getElementById('recent-events-table');
     if (!container) return;
-    if (!result.items?.length) {
+    const items = (result.items ?? []).filter(ev => ev.severity !== 'info');
+    if (!items.length) {
       container.innerHTML = '<div class="text-center text-muted p-3">No events yet</div>';
       return;
     }
@@ -608,7 +653,7 @@ async function loadRecentEvents() {
       <table class="table table-dark table-sm table-hover mb-0">
         <thead><tr><th>Time</th><th>Type</th><th>Severity</th><th>Message</th></tr></thead>
         <tbody>
-          ${result.items.map(ev => `
+          ${items.slice(0, 10).map(ev => `
             <tr>
               <td><small>${new Date(ev.created_at).toLocaleString()}</small></td>
               <td><small>${ev.event_type}</small></td>
@@ -654,7 +699,7 @@ function renderPins() {
     const isOn = pinStates[key];
     const label = escHtml(pin.label || (pin.type === 'kasa' ? `Port ${pin.port_index + 1}` : `Ch ${pin.channel_index}`));
     const icon = pin.type === 'kasa' ? 'bi-plug' : 'bi-toggles';
-    const bg = isOn === null ? '#6c757d' : (isOn ? '#198754' : '#495057');
+    const bg = isOn === null ? '#6c757d' : (isOn ? '#198754' : '#dc3545');
     const stateText = isOn === null ? '?' : (isOn ? 'ON' : 'OFF');
     return `<button class="pin-badge border-0 rounded" style="background:${bg};color:#fff;cursor:pointer;font-size:0.72rem;padding:3px 9px;line-height:1.4"
       data-pin-type="${pin.type}" data-pin-id="${pin.id}" title="${escHtml(pin.device_name)}">
@@ -820,12 +865,13 @@ function renderSolarData({ sfi, sunspots, kIndex, aIndex, xray, geoField, solarW
     { label: 'Sig/Noise',  value: signalNoise, color: '#94a3b8' },
   ];
 
+  // 2-column grid of index badges
   const indexHTML = `
-    <div class="d-flex flex-wrap gap-2 mb-3">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px">
       ${indices.map(idx => `
-        <div style="background:#0f3460;border-radius:6px;padding:6px 14px;text-align:center;min-width:82px">
-          <div style="font-size:0.72rem;color:#b0c0d8;text-transform:uppercase;letter-spacing:0.05em">${idx.label}</div>
-          <div style="font-size:1.15rem;font-weight:700;color:${idx.color}">${escHtml(idx.value)}</div>
+        <div style="background:#0f3460;border-radius:5px;padding:4px 8px;text-align:center">
+          <div style="font-size:0.62rem;color:#b0c0d8;text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap">${idx.label}</div>
+          <div style="font-size:1rem;font-weight:700;color:${idx.color}">${escHtml(idx.value)}</div>
         </div>`).join('')}
     </div>`;
 
@@ -836,32 +882,28 @@ function renderSolarData({ sfi, sunspots, kIndex, aIndex, xray, geoField, solarW
     const day   = bands[b]?.day   ?? '--';
     const night = bands[b]?.night ?? '--';
     return `<tr>
-      <td style="color:#c8d8ee;font-size:0.88rem;padding:4px 12px 4px 0;white-space:nowrap">${bandLabel[b] ?? b}</td>
-      <td style="padding:4px 6px"><span style="background:${conditionColor(day)};color:#fff;font-size:0.8rem;padding:2px 9px;border-radius:4px;display:inline-block;font-weight:600">${escHtml(day)}</span></td>
-      <td style="padding:4px 6px"><span style="background:${conditionColor(night)};color:#fff;font-size:0.8rem;padding:2px 9px;border-radius:4px;display:inline-block;font-weight:600">${escHtml(night)}</span></td>
+      <td style="color:#c8d8ee;font-size:0.82rem;padding:3px 8px 3px 0;white-space:nowrap">${bandLabel[b] ?? b}</td>
+      <td style="padding:3px 4px"><span style="background:${conditionColor(day)};color:#fff;font-size:0.75rem;padding:1px 7px;border-radius:4px;display:inline-block;font-weight:600">${escHtml(day)}</span></td>
+      <td style="padding:3px 4px"><span style="background:${conditionColor(night)};color:#fff;font-size:0.75rem;padding:1px 7px;border-radius:4px;display:inline-block;font-weight:600">${escHtml(night)}</span></td>
     </tr>`;
   }).join('');
 
   const bandHTML = `
     <div>
-      <div style="font-size:0.75rem;color:#b0c0d8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">HF Band Conditions</div>
-      <table style="border-collapse:collapse">
+      <div style="font-size:0.68rem;color:#b0c0d8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">HF Band Conditions</div>
+      <table style="border-collapse:collapse;width:100%">
         <thead>
           <tr>
-            <th style="font-size:0.75rem;color:#b0c0d8;padding:1px 12px 5px 0;text-align:left">Band</th>
-            <th style="font-size:0.75rem;color:#b0c0d8;padding:1px 6px 5px;text-align:left">☀ Day</th>
-            <th style="font-size:0.75rem;color:#b0c0d8;padding:1px 6px 5px;text-align:left">☽ Night</th>
+            <th style="font-size:0.68rem;color:#b0c0d8;padding:1px 8px 4px 0;text-align:left">Band</th>
+            <th style="font-size:0.68rem;color:#b0c0d8;padding:1px 4px 4px;text-align:left">☀ Day</th>
+            <th style="font-size:0.68rem;color:#b0c0d8;padding:1px 4px 4px;text-align:left">☽ Night</th>
           </tr>
         </thead>
         <tbody>${bandRows}</tbody>
       </table>
     </div>`;
 
-  card.innerHTML = `
-    ${indexHTML}
-    <div class="d-flex flex-wrap gap-4 align-items-start">
-      ${bandHTML}
-    </div>`;
+  card.innerHTML = `${indexHTML}${bandHTML}`;
 }
 
 function connectWS() {

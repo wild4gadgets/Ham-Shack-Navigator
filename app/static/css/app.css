@@ -26,20 +26,23 @@ body {
 
 .card-header .text-muted { color: rgba(255,255,255,0.65) !important; }
 
-.port-switch {
+.port-switch,
+.shelly-toggle {
   width: 2.5em !important;
   height: 1.25em !important;
   cursor: pointer;
-  background-color: #6c757d !important;
-  border-color: #888 !important;
+  background-color: #dc3545 !important;
+  border-color: #b02a37 !important;
 }
 
-.port-switch:checked {
+.port-switch:checked,
+.shelly-toggle:checked {
   background-color: #198754 !important;
   border-color: #198754 !important;
 }
 
-.port-switch:disabled {
+.port-switch:disabled,
+.shelly-toggle:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }

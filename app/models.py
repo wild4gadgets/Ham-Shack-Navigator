@@ -89,6 +89,7 @@ class ShellyDevice(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     ip_address: Mapped[str] = mapped_column(String, nullable=False)
     channel_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    generation: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     channels: Mapped[list["ShellyChannel"]] = relationship(

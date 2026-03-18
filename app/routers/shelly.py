@@ -34,7 +34,7 @@ async def create_device(
 ):
     if body.channel_count < 1 or body.channel_count > 8:
         raise HTTPException(status_code=400, detail="channel_count must be between 1 and 8")
-    device = ShellyDevice(name=body.name, ip_address=body.ip_address, channel_count=body.channel_count)
+    device = ShellyDevice(name=body.name, ip_address=body.ip_address, channel_count=body.channel_count, generation=body.generation)
     db.add(device)
     await db.flush()
     for i in range(body.channel_count):
@@ -61,6 +61,8 @@ async def update_device(
         device.name = body.name
     if body.ip_address is not None:
         device.ip_address = body.ip_address
+    if body.generation is not None:
+        device.generation = body.generation
     await db.commit()
     result = await db.execute(
         select(ShellyDevice).options(selectinload(ShellyDevice.channels)).where(ShellyDevice.id == device_id)
@@ -93,7 +95,7 @@ async def get_device_states(
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
     try:
-        return await shelly_service.get_channel_states(device.ip_address, device.channel_count)
+        return await shelly_service.get_channel_states(device.ip_address, device.channel_count, device.generation)
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
 
@@ -165,7 +167,7 @@ async def control_channel(
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
     try:
-        await shelly_service.control_channel(channel.device.ip_address, channel.channel_index, action)
+        await shelly_service.control_channel(channel.device.ip_address, channel.channel_index, action, channel.device.generation)
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))

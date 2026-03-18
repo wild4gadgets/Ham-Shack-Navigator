@@ -1,4 +1,6 @@
 import asyncio
+import json
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,7 +8,7 @@ from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
 
 from dependencies import get_db, get_current_user
-from models import User, Workflow, WorkflowStep, KasaPort, ShellyChannel, ShellyDevice
+from models import User, Workflow, WorkflowStep, KasaPort, ShellyChannel, ShellyDevice, Setting
 from schemas import WorkflowCreate, WorkflowResponse, WorkflowStepsRequest, WorkflowStepResponse
 from services import kasa_service, shelly_service
 
@@ -148,6 +150,20 @@ async def put_steps(
     return result.scalars().all()
 
 
+@router.get("/system-state")
+async def get_system_state(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Return the last system workflow that ran and the IDs of Startup/Shutdown workflows."""
+    startup = (await db.execute(select(Workflow).where(Workflow.name == "Startup", Workflow.is_system == True))).scalar_one_or_none()
+    shutdown = (await db.execute(select(Workflow).where(Workflow.name == "Shutdown", Workflow.is_system == True))).scalar_one_or_none()
+    row = (await db.execute(select(Setting).where(Setting.key == "last_system_workflow"))).scalar_one_or_none()
+    last = json.loads(row.value) if row else None
+    return {
+        "last": last,
+        "startup_id": startup.id if startup else None,
+        "shutdown_id": shutdown.id if shutdown else None,
+    }
+
+
 @router.post("/{workflow_id}/run")
 async def run_workflow(
     workflow_id: int,
@@ -155,7 +171,8 @@ async def run_workflow(
     _: User = Depends(get_current_user),
 ):
     result = await db.execute(select(Workflow).where(Workflow.id == workflow_id))
-    if not result.scalar_one_or_none():
+    wf = result.scalar_one_or_none()
+    if not wf:
         raise HTTPException(status_code=404, detail="Workflow not found")
 
     steps_result = await db.execute(
@@ -190,10 +207,21 @@ async def run_workflow(
                     step.shelly_channel.device.ip_address,
                     step.shelly_channel.channel_index,
                     step.action,
+                    step.shelly_channel.device.generation,
                 )
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Step {step.step_order} failed: {e}")
             if step.delay_after_sec > 0:
                 await asyncio.sleep(step.delay_after_sec)
+
+    # Persist last system workflow name for the dashboard button
+    if wf.is_system and wf.name in ("Startup", "Shutdown"):
+        row = (await db.execute(select(Setting).where(Setting.key == "last_system_workflow"))).scalar_one_or_none()
+        if row:
+            row.value = json.dumps(wf.name)
+            row.updated_at = datetime.now(timezone.utc)
+        else:
+            db.add(Setting(key="last_system_workflow", value=json.dumps(wf.name)))
+        await db.commit()
 
     return {"success": True}

@@ -48,6 +48,8 @@ async def _migrate_db():
         await conn.run_sync(_migrate_add_shelly)
         await conn.run_sync(_migrate_workflow_steps_add_shelly)
         await conn.run_sync(_migrate_add_show_on_dashboard)
+        await conn.run_sync(_migrate_shelly_add_generation)
+        await conn.run_sync(_migrate_add_startup_workflow)
 
 
 def _migrate_add_workflows(conn):
@@ -170,6 +172,29 @@ def _migrate_shutdown_steps_add_description(conn):
     if "description" not in cols:
         conn.execute(__import__("sqlalchemy").text(
             "ALTER TABLE shutdown_steps ADD COLUMN description VARCHAR"
+        ))
+
+
+def _migrate_add_startup_workflow(conn):
+    """Seed the Startup system workflow if it doesn't exist."""
+    sa = __import__("sqlalchemy")
+    existing = conn.execute(sa.text(
+        "SELECT id FROM workflows WHERE name = 'Startup' AND is_system = 1"
+    )).fetchone()
+    if not existing:
+        conn.execute(sa.text(
+            "INSERT INTO workflows (name, is_system, created_at) VALUES ('Startup', 1, datetime('now'))"
+        ))
+
+
+def _migrate_shelly_add_generation(conn):
+    """Add generation column to shelly_devices if missing (default 1 for Gen 1)."""
+    sa = __import__("sqlalchemy")
+    info = conn.execute(sa.text("PRAGMA table_info(shelly_devices)")).fetchall()
+    cols = {col[1] for col in info}
+    if "generation" not in cols:
+        conn.execute(sa.text(
+            "ALTER TABLE shelly_devices ADD COLUMN generation INTEGER NOT NULL DEFAULT 1"
         ))
 
 
