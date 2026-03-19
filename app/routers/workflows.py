@@ -1,18 +1,54 @@
 import asyncio
 import json
-from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
 
+from database import AsyncSessionLocal
 from dependencies import get_db, get_current_user
 from models import User, Workflow, WorkflowStep, KasaPort, ShellyChannel, ShellyDevice, Setting
 from schemas import WorkflowCreate, WorkflowResponse, WorkflowStepsRequest, WorkflowStepResponse
 from services import kasa_service, shelly_service
+from ws_manager import manager
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
+
+
+async def _execute_workflow(workflow_id: int, workflow_name: str, is_system: bool, steps: list[dict]):
+    """Run workflow steps in the background and broadcast completion via WebSocket."""
+    error = None
+    for i, step in enumerate(steps, start=1):
+        try:
+            if step["type"] == "pause":
+                await asyncio.sleep(step["delay_after_sec"])
+            elif step["type"] == "kasa":
+                await kasa_service.control_port(
+                    step["ip_address"], step["device_type"], step["port_index"], step["action"]
+                )
+                if step["delay_after_sec"] > 0:
+                    await asyncio.sleep(step["delay_after_sec"])
+            elif step["type"] == "shelly":
+                await shelly_service.control_channel(
+                    step["ip_address"], step["channel_index"], step["action"], step["generation"]
+                )
+                if step["delay_after_sec"] > 0:
+                    await asyncio.sleep(step["delay_after_sec"])
+        except Exception as e:
+            error = f"Step {i} failed: {e}"
+            break
+
+    if not error and is_system and workflow_name in ("Startup", "Shutdown"):
+        async with AsyncSessionLocal() as db:
+            row = (await db.execute(select(Setting).where(Setting.key == "last_system_workflow"))).scalar_one_or_none()
+            if row:
+                row.value = json.dumps(workflow_name)
+            else:
+                db.add(Setting(key="last_system_workflow", value=json.dumps(workflow_name)))
+            await db.commit()
+
+    await manager.broadcast({"type": "workflow_complete", "workflow_id": workflow_id, "success": error is None, "error": error})
 
 
 @router.get("", response_model=list[WorkflowResponse])
@@ -164,9 +200,10 @@ async def get_system_state(db: AsyncSession = Depends(get_db), _: User = Depends
     }
 
 
-@router.post("/{workflow_id}/run")
+@router.post("/{workflow_id}/run", status_code=202)
 async def run_workflow(
     workflow_id: int,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
@@ -186,42 +223,29 @@ async def run_workflow(
     )
     steps = steps_result.scalars().all()
 
+    # Serialize step data before ORM session closes
+    steps_data = []
     for step in steps:
         if step.action == "pause":
-            await asyncio.sleep(step.delay_after_sec)
+            steps_data.append({"type": "pause", "delay_after_sec": step.delay_after_sec})
         elif step.kasa_port_id:
-            try:
-                await kasa_service.control_port(
-                    step.kasa_port.device.ip_address,
-                    step.kasa_port.device.device_type,
-                    step.kasa_port.port_index,
-                    step.action,
-                )
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Step {step.step_order} failed: {e}")
-            if step.delay_after_sec > 0:
-                await asyncio.sleep(step.delay_after_sec)
+            steps_data.append({
+                "type": "kasa",
+                "action": step.action,
+                "delay_after_sec": step.delay_after_sec,
+                "ip_address": step.kasa_port.device.ip_address,
+                "device_type": step.kasa_port.device.device_type,
+                "port_index": step.kasa_port.port_index,
+            })
         elif step.shelly_channel_id:
-            try:
-                await shelly_service.control_channel(
-                    step.shelly_channel.device.ip_address,
-                    step.shelly_channel.channel_index,
-                    step.action,
-                    step.shelly_channel.device.generation,
-                )
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Step {step.step_order} failed: {e}")
-            if step.delay_after_sec > 0:
-                await asyncio.sleep(step.delay_after_sec)
+            steps_data.append({
+                "type": "shelly",
+                "action": step.action,
+                "delay_after_sec": step.delay_after_sec,
+                "ip_address": step.shelly_channel.device.ip_address,
+                "channel_index": step.shelly_channel.channel_index,
+                "generation": step.shelly_channel.device.generation,
+            })
 
-    # Persist last system workflow name for the dashboard button
-    if wf.is_system and wf.name in ("Startup", "Shutdown"):
-        row = (await db.execute(select(Setting).where(Setting.key == "last_system_workflow"))).scalar_one_or_none()
-        if row:
-            row.value = json.dumps(wf.name)
-            row.updated_at = datetime.now(timezone.utc)
-        else:
-            db.add(Setting(key="last_system_workflow", value=json.dumps(wf.name)))
-        await db.commit()
-
-    return {"success": True}
+    background_tasks.add_task(_execute_workflow, workflow_id, wf.name, wf.is_system, steps_data)
+    return {"running": True}

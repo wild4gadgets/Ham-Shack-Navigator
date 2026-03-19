@@ -4,6 +4,8 @@ APScheduler: monitoring poll job + daily digest job.
 import asyncio
 import json
 import logging
+import urllib.request
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -139,7 +141,57 @@ async def _daily_digest():
             else:
                 summary = "No forecast data available."
 
-            await send_digest(db, summary)
+            # Fetch solar/propagation data
+            solar_summary = ""
+            try:
+                def _fetch_solar():
+                    with urllib.request.urlopen("https://www.hamqsl.com/solarxml.php", timeout=10) as resp:
+                        return resp.read()
+
+                solar_xml = await asyncio.to_thread(_fetch_solar)
+                root = ET.fromstring(solar_xml)
+                sd = root.find('.//solardata')
+                if sd is not None:
+                    def g(tag):
+                        el = sd.find(tag)
+                        return el.text.strip() if el is not None and el.text else '--'
+
+                    sfi = g('solarflux')
+                    sunspots = g('sunspots')
+                    k_index = g('kindex')
+                    a_index = g('aindex')
+                    xray = g('xray')
+                    geomag = g('geomagfield')
+                    solar_wind = g('solarwind')
+                    updated = g('updated')
+
+                    bands = {}
+                    for band_el in sd.findall('.//calculatedconditions/band'):
+                        name = band_el.get('name', '')
+                        time = band_el.get('time', '')
+                        if name and time:
+                            if name not in bands:
+                                bands[name] = {}
+                            bands[name][time] = band_el.text.strip() if band_el.text else '--'
+
+                    band_lines = []
+                    for band in ['80m-40m', '30m-20m', '17m-15m', '12m-10m']:
+                        day = bands.get(band, {}).get('day', '--')
+                        night = bands.get(band, {}).get('night', '--')
+                        band_lines.append(f"  {band:<10}  Day: {day:<8}  Night: {night}")
+
+                    solar_summary = (
+                        f"\nSolar & Propagation (as of {updated}):\n"
+                        f"  SFI: {sfi}  Sunspots: {sunspots}  K-index: {k_index}"
+                        f"  A-index: {a_index}  X-ray: {xray}\n"
+                        f"  Geomag: {geomag}  Solar Wind: {solar_wind} km/s\n\n"
+                        f"HF Band Conditions:\n" + "\n".join(band_lines)
+                    )
+            except Exception as e:
+                logger.warning("Solar data fetch failed for digest: %s", e)
+                solar_summary = "\nSolar/propagation data unavailable."
+
+            await send_digest(db, summary, solar_summary)
             await log_event(db, "email_sent", "info", "Daily digest email sent")
         except Exception as e:
             logger.error("Daily digest error: %s", e)

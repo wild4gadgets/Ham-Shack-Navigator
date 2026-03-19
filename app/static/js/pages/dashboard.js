@@ -156,13 +156,13 @@ export async function renderDashboard(container) {
     if (!confirm(`Run ${targetName} workflow now?`)) return;
     const btn = document.getElementById('btn-system-toggle');
     btn.disabled = true;
+    btn.textContent = 'Running\u2026';
     try {
       await apiPost(`/workflows/${targetId}/run`, {});
-      await loadSystemState();
+      // Workflow is running in the background; button updates on workflow_complete WS event
     } catch (e) {
-      alert(`Workflow failed: ${e.message}`);
-    } finally {
-      btn.disabled = false;
+      alert(`Could not start workflow: ${e.message}`);
+      await loadSystemState();
     }
   });
   document.getElementById('btn-refresh').addEventListener('click', async () => {
@@ -920,6 +920,10 @@ function connectWS() {
       if (msg.type === 'weather_update') loadWeather();
       if (msg.type === 'monitoring_status') loadMonitoringStatus();
       if (msg.type === 'new_event') loadRecentEvents();
+      if (msg.type === 'workflow_complete') {
+        if (!msg.success && msg.error) alert(`Workflow failed: ${msg.error}`);
+        loadSystemState();
+      }
       if (msg.type === 'shutdown_alert') {
         const alertDiv = document.getElementById('alerts-area');
         if (alertDiv) {
@@ -931,7 +935,7 @@ function connectWS() {
   };
 
   ws.onclose = () => {
-    if (!destroyed) setTimeout(() => { if (!destroyed) connectWS(); }, 5000);
+    if (!destroyed) setTimeout(() => { if (!destroyed) { connectWS(); loadSystemState(); } }, 5000);
   };
 
   if (pingInterval) clearInterval(pingInterval);

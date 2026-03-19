@@ -131,7 +131,7 @@ function renderDeviceList(devices) {
             <span style="width:54px;flex-shrink:0">Ch #</span>
             <span style="flex:1;max-width:160px">Description</span>
             <span style="width:34px;flex-shrink:0;text-align:center">Save</span>
-            <span style="flex-shrink:0;text-align:center;margin-left:0.5rem">On/Off</span>
+            <span style="flex-shrink:0;text-align:center;margin-left:0.5rem">Off/On</span>
             <span style="flex-shrink:0;margin-left:0.25rem">Pin</span>
           </div>
           ${channels}

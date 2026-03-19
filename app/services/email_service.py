@@ -68,15 +68,16 @@ This is an automated notification from your Ham Shack Cockpit Monitor.
         logger.error("Failed to send shutdown notification: %s", e)
 
 
-async def send_digest(db: AsyncSession, forecast_summary: str):
+async def send_digest(db: AsyncSession, forecast_summary: str, solar_summary: str = ""):
     smtp = await _get_smtp_config(db)
     if not smtp or not smtp.get("host"):
         return
 
     subject = f"[Ham Shack Cockpit] Daily Forecast Digest - {datetime.utcnow().strftime('%Y-%m-%d')}"
+    solar_section = f"\n{solar_summary}" if solar_summary else ""
     body = f"""Good morning! Here is your daily weather digest for your ham radio station.
 
-{forecast_summary}
+{forecast_summary}{solar_section}
 
 Stay safe and 73!
 - Ham Shack Cockpit Monitor
