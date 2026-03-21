@@ -56,29 +56,29 @@ export async function renderDashboard(container) {
         </div>
       </div>
 
-      <!-- Weather Cards -->
-      <div class="col-6 col-lg-2">
-        <div class="card h-100">
+      <!-- Weather Cards - square tiles -->
+      <div class="col-4 col-lg-2">
+        <div class="card">
           <div class="card-header"><i class="bi bi-wind me-2"></i>Wind</div>
-          <div class="card-body p-2" id="wind-card">
+          <div class="card-body p-1" id="wind-card" style="aspect-ratio:1/1;overflow:hidden">
             <div class="text-muted text-center pt-3">Loading...</div>
           </div>
         </div>
       </div>
 
-      <div class="col-6 col-lg-2">
-        <div class="card h-100">
+      <div class="col-4 col-lg-2">
+        <div class="card">
           <div class="card-header"><i class="bi bi-thermometer-half me-2"></i>Temperature</div>
-          <div class="card-body p-2" id="temp-card">
+          <div class="card-body p-1" id="temp-card" style="aspect-ratio:1/1;overflow:hidden">
             <div class="text-muted text-center pt-3">Loading...</div>
           </div>
         </div>
       </div>
 
-      <div class="col-6 col-lg-2">
-        <div class="card h-100">
+      <div class="col-4 col-lg-2">
+        <div class="card">
           <div class="card-header"><i class="bi bi-lightning-charge me-2"></i>Lightning</div>
-          <div class="card-body d-flex flex-column justify-content-center align-items-center" id="lightning-card">
+          <div class="card-body d-flex flex-column justify-content-center align-items-center" id="lightning-card" style="aspect-ratio:1/1">
             <div class="weather-value" id="lightning-value">--</div>
             <div class="weather-unit" id="lightning-unit">miles away</div>
             <div class="mt-2 text-muted" id="lightning-desc"></div>
@@ -86,14 +86,11 @@ export async function renderDashboard(container) {
         </div>
       </div>
 
-      <!-- Solar Propagation -->
-      <div class="col-12 col-lg-6">
-        <div class="card h-100">
-          <div class="card-header d-flex justify-content-between align-items-center">
-            <span><i class="bi bi-sun me-2"></i>Solar / Propagation</span>
-            <small id="solar-updated" class="text-white-50"></small>
-          </div>
-          <div class="card-body p-2" id="solar-card">
+      <!-- 24-Hour Forecast -->
+      <div class="col-8 col-lg-4">
+        <div class="card">
+          <div class="card-header"><i class="bi bi-calendar-range me-2"></i>24-Hr Forecast</div>
+          <div class="card-body p-2" id="forecast-strip">
             <div class="text-muted text-center">Loading...</div>
           </div>
         </div>
@@ -115,11 +112,14 @@ export async function renderDashboard(container) {
         </div>
       </div>
 
-      <!-- 24-Hour Forecast -->
+      <!-- Solar Propagation -->
       <div class="col-12 col-lg-6">
-        <div class="card h-100">
-          <div class="card-header"><i class="bi bi-calendar-range me-2"></i>24-Hr Forecast</div>
-          <div class="card-body p-2" id="forecast-strip">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-sun me-2"></i>Solar / Propagation</span>
+            <small id="solar-updated" class="text-white-50"></small>
+          </div>
+          <div class="card-body p-2" id="solar-card">
             <div class="text-muted text-center">Loading...</div>
           </div>
         </div>
@@ -161,6 +161,9 @@ export async function renderDashboard(container) {
       await apiPost(`/workflows/${targetId}/run`, {});
       // Workflow is running in the background; button updates on workflow_complete WS event
     } catch (e) {
+      // 504 means the proxy dropped the response but the workflow was already queued;
+      // the workflow_complete WS event will still arrive, so treat it like a success.
+      if (e.message.includes('504')) return;
       alert(`Could not start workflow: ${e.message}`);
       await loadSystemState();
     }
@@ -333,7 +336,7 @@ function drawGauge({ min, max, value, markers = [], unit, tickValues = [], legen
     ? `<text x="${cx}" y="168" text-anchor="middle" fill="#8899bb" font-size="11">${unit}</text>`
     : '';
 
-  return `<svg viewBox="0 0 200 205" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-height:230px">
+  return `<svg viewBox="0 0 200 205" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;display:block">
     <path d="${bgArc}" fill="none" stroke="#1e2a3a" stroke-width="10"/>
     ${ticksSVG}
     ${markersSVG}
@@ -379,7 +382,7 @@ function renderForecast(fList, metric) {
   const tempUnit = metric ? '°C' : '°F';
   const windUnit = metric ? 'km/h' : 'mph';
 
-  const rows = fList.slice(0, 8).map(entry => {
+  const makeRow = (entry, indent) => {
     const dt = new Date(entry.dt * 1000);
     const timeLabel = dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
     const temp = entry.main?.temp != null ? Math.round(entry.main.temp) : '--';
@@ -390,18 +393,24 @@ function renderForecast(fList, metric) {
     const icon = owmIcon(entry.weather);
     const iconColor = owmIconColor(entry.weather);
     const popColor = pop >= 60 ? '#60a5fa' : pop >= 30 ? '#93c5fd' : '#64748b';
-
+    const leftPad = indent ? 'padding-left:10px;' : '';
     return `
-      <div class="d-flex align-items-center gap-2 py-1" style="border-bottom:1px solid #1e2a3a;font-size:0.78rem" title="${desc}">
-        <span style="width:52px;flex-shrink:0;color:#94a3b8">${timeLabel}</span>
-        <i class="bi ${icon}" style="font-size:1.05rem;color:${iconColor};flex-shrink:0"></i>
-        <span style="font-weight:600;color:#f1f5f9;width:36px;flex-shrink:0">${temp}${tempUnit}</span>
-        <span style="color:${popColor};flex-shrink:0;min-width:32px">${pop > 0 ? '💧' + pop + '%' : ''}</span>
-        <span style="color:#64748b;margin-left:auto;flex-shrink:0">${windSpeed != null ? windSpeed + ' ' + windUnit : ''}</span>
+      <div class="d-flex align-items-center gap-1 py-1" style="${leftPad}border-bottom:1px solid #1e2a3a;font-size:0.78rem" title="${desc}">
+        <span style="width:50px;flex-shrink:0;white-space:nowrap;color:#94a3b8">${timeLabel}</span>
+        <i class="bi ${icon}" style="font-size:1rem;color:${iconColor};flex-shrink:0;margin-left:4px"></i>
+        <span style="font-weight:600;color:#f1f5f9;width:34px;flex-shrink:0">${temp}${tempUnit}</span>
+        <span style="color:#64748b;flex-shrink:0">${windSpeed != null ? windSpeed + ' ' + windUnit : ''}</span>
+        <span style="color:${popColor};flex-shrink:0;margin-left:auto">${pop > 0 ? '💧' + pop + '%' : ''}</span>
       </div>`;
-  });
+  };
 
-  el.innerHTML = rows.join('');
+  const leftRows  = fList.slice(0, 4).map(e => makeRow(e, false));
+  const rightRows = fList.slice(4, 8).map(e => makeRow(e, true));
+  el.innerHTML = `<div class="d-flex">\
+<div style="flex:1;min-width:0">${leftRows.join('')}</div>\
+<div style="width:1px;background:#2e3f52;flex-shrink:0;margin:0 4px"></div>\
+<div style="flex:1;min-width:0">${rightRows.join('')}</div>\
+</div>`;
 }
 
 // ── Weather loading ──────────────────────────────────────────────────────────
@@ -503,7 +512,7 @@ async function loadWeather() {
         lightEl.textContent = dist;
         if (lightDesc) lightDesc.textContent = `Updated: ${new Date(realtime.fetched_at).toLocaleTimeString()}`;
       } else if (lightEl) {
-        lightEl.textContent = '∞';
+        lightEl.textContent = metric ? '> 400' : '> 248';
         if (lightDesc) lightDesc.textContent = 'No lightning detected';
       }
     }
@@ -865,13 +874,13 @@ function renderSolarData({ sfi, sunspots, kIndex, aIndex, xray, geoField, solarW
     { label: 'Sig/Noise',  value: signalNoise, color: '#94a3b8' },
   ];
 
-  // 2-column grid of index badges
+  // 4-column grid of index badges (2 rows of 4, more compact)
   const indexHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px">
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px">
       ${indices.map(idx => `
-        <div style="background:#0f3460;border-radius:5px;padding:4px 8px;text-align:center">
-          <div style="font-size:0.62rem;color:#b0c0d8;text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap">${idx.label}</div>
-          <div style="font-size:1rem;font-weight:700;color:${idx.color}">${escHtml(idx.value)}</div>
+        <div style="background:#0f3460;border-radius:5px;padding:3px 5px;text-align:center">
+          <div style="font-size:0.58rem;color:#b0c0d8;text-transform:uppercase;letter-spacing:0.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${idx.label}</div>
+          <div style="font-size:0.9rem;font-weight:700;color:${idx.color};line-height:1.2">${escHtml(idx.value)}</div>
         </div>`).join('')}
     </div>`;
 
@@ -882,28 +891,33 @@ function renderSolarData({ sfi, sunspots, kIndex, aIndex, xray, geoField, solarW
     const day   = bands[b]?.day   ?? '--';
     const night = bands[b]?.night ?? '--';
     return `<tr>
-      <td style="color:#c8d8ee;font-size:0.82rem;padding:3px 8px 3px 0;white-space:nowrap">${bandLabel[b] ?? b}</td>
-      <td style="padding:3px 4px"><span style="background:${conditionColor(day)};color:#fff;font-size:0.75rem;padding:1px 7px;border-radius:4px;display:inline-block;font-weight:600">${escHtml(day)}</span></td>
-      <td style="padding:3px 4px"><span style="background:${conditionColor(night)};color:#fff;font-size:0.75rem;padding:1px 7px;border-radius:4px;display:inline-block;font-weight:600">${escHtml(night)}</span></td>
+      <td style="color:#c8d8ee;font-size:0.78rem;padding:2px 6px 2px 0;white-space:nowrap">${bandLabel[b] ?? b}</td>
+      <td style="padding:2px 3px"><span style="background:${conditionColor(day)};color:#fff;font-size:0.7rem;padding:1px 6px;border-radius:4px;display:inline-block;font-weight:600">${escHtml(day)}</span></td>
+      <td style="padding:2px 3px"><span style="background:${conditionColor(night)};color:#fff;font-size:0.7rem;padding:1px 6px;border-radius:4px;display:inline-block;font-weight:600">${escHtml(night)}</span></td>
     </tr>`;
   }).join('');
 
   const bandHTML = `
-    <div>
-      <div style="font-size:0.68rem;color:#b0c0d8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">HF Band Conditions</div>
+    <div style="flex-shrink:0">
+      <div style="font-size:0.63rem;color:#b0c0d8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:3px">HF Bands</div>
       <table style="border-collapse:collapse;width:100%">
         <thead>
           <tr>
-            <th style="font-size:0.68rem;color:#b0c0d8;padding:1px 8px 4px 0;text-align:left">Band</th>
-            <th style="font-size:0.68rem;color:#b0c0d8;padding:1px 4px 4px;text-align:left">☀ Day</th>
-            <th style="font-size:0.68rem;color:#b0c0d8;padding:1px 4px 4px;text-align:left">☽ Night</th>
+            <th style="font-size:0.63rem;color:#b0c0d8;padding:1px 6px 3px 0;text-align:left">Band</th>
+            <th style="font-size:0.63rem;color:#b0c0d8;padding:1px 3px 3px;text-align:left">☀ Day</th>
+            <th style="font-size:0.63rem;color:#b0c0d8;padding:1px 3px 3px;text-align:left">☽ Night</th>
           </tr>
         </thead>
         <tbody>${bandRows}</tbody>
       </table>
     </div>`;
 
-  card.innerHTML = `${indexHTML}${bandHTML}`;
+  // Side-by-side: index grid left, band conditions right
+  card.innerHTML = `
+    <div style="display:flex;gap:12px;align-items:start">
+      <div style="flex:1;min-width:0">${indexHTML}</div>
+      ${bandHTML}
+    </div>`;
 }
 
 function connectWS() {
