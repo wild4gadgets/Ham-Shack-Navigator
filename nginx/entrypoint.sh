@@ -8,7 +8,7 @@ KEY="$SSL_DIR/key.pem"
 if [ ! -f "$CERT" ] || [ ! -f "$KEY" ]; then
     echo "Generating self-signed SSL certificate..."
     mkdir -p "$SSL_DIR"
-    openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+    openssl req -x509 -nodes -days 397 -newkey rsa:2048 \
         -keyout "$KEY" \
         -out "$CERT" \
         -subj "/C=US/ST=State/L=City/O=ShackWeather/CN=localhost" \
