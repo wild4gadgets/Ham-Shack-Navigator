@@ -106,13 +106,21 @@ body {
     height: 260px;
   }
 
-  #forecast-strip {
-    overflow-x: hidden;
+  /* Forecast: stack left/right halves into a single column */
+  .forecast-cols {
+    flex-direction: column;
+  }
+  .forecast-divider {
+    display: none;
   }
 
-  #forecast-strip .d-flex > div {
-    min-width: 0;
-    overflow: hidden;
+  /* Solar: stack indices + band table vertically */
+  .solar-layout {
+    flex-direction: column;
+  }
+  .solar-indices,
+  .solar-bands {
+    width: 100%;
   }
 }
 

@@ -406,9 +406,9 @@ function renderForecast(fList, metric) {
 
   const leftRows  = fList.slice(0, 4).map(e => makeRow(e, false));
   const rightRows = fList.slice(4, 8).map(e => makeRow(e, true));
-  el.innerHTML = `<div class="d-flex">\
+  el.innerHTML = `<div class="d-flex forecast-cols">\
 <div style="flex:1;min-width:0">${leftRows.join('')}</div>\
-<div style="width:1px;background:#2e3f52;flex-shrink:0;margin:0 4px"></div>\
+<div class="forecast-divider" style="width:1px;background:#2e3f52;flex-shrink:0;margin:0 4px"></div>\
 <div style="flex:1;min-width:0">${rightRows.join('')}</div>\
 </div>`;
 }
@@ -898,7 +898,7 @@ function renderSolarData({ sfi, sunspots, kIndex, aIndex, xray, geoField, solarW
   }).join('');
 
   const bandHTML = `
-    <div style="flex-shrink:0">
+    <div class="solar-bands" style="flex-shrink:0">
       <div style="font-size:0.63rem;color:#b0c0d8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:3px">HF Bands</div>
       <table style="border-collapse:collapse;width:100%">
         <thead>
@@ -914,8 +914,8 @@ function renderSolarData({ sfi, sunspots, kIndex, aIndex, xray, geoField, solarW
 
   // Side-by-side: index grid left, band conditions right
   card.innerHTML = `
-    <div style="display:flex;gap:12px;align-items:start">
-      <div style="flex:1;min-width:0">${indexHTML}</div>
+    <div class="solar-layout" style="display:flex;gap:12px;align-items:start">
+      <div class="solar-indices" style="flex:1;min-width:0">${indexHTML}</div>
       ${bandHTML}
     </div>`;
 }
