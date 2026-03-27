@@ -50,6 +50,8 @@ async def _migrate_db():
         await conn.run_sync(_migrate_add_show_on_dashboard)
         await conn.run_sync(_migrate_shelly_add_generation)
         await conn.run_sync(_migrate_add_startup_workflow)
+        await conn.run_sync(_migrate_workflow_steps_add_ifttt)
+        await conn.run_sync(_migrate_add_scheduled_workflows)
 
 
 def _migrate_add_workflows(conn):
@@ -196,6 +198,31 @@ def _migrate_shelly_add_generation(conn):
         conn.execute(sa.text(
             "ALTER TABLE shelly_devices ADD COLUMN generation INTEGER NOT NULL DEFAULT 1"
         ))
+
+
+def _migrate_workflow_steps_add_ifttt(conn):
+    """Add IFTTT trigger columns to workflow_steps if missing."""
+    sa = __import__("sqlalchemy")
+    info = conn.execute(sa.text("PRAGMA table_info(workflow_steps)")).fetchall()
+    cols = {col[1] for col in info}
+    for col in ("ifttt_event_name", "ifttt_value1", "ifttt_value2", "ifttt_value3"):
+        if col not in cols:
+            conn.execute(sa.text(f"ALTER TABLE workflow_steps ADD COLUMN {col} VARCHAR"))
+
+
+def _migrate_add_scheduled_workflows(conn):
+    """Create scheduled_workflows table if missing."""
+    sa = __import__("sqlalchemy")
+    conn.execute(sa.text("""
+        CREATE TABLE IF NOT EXISTS scheduled_workflows (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            workflow_id INTEGER NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            run_time VARCHAR NOT NULL,
+            days_of_week VARCHAR NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
 
 
 def _migrate_shutdown_steps_nullable_port(conn):

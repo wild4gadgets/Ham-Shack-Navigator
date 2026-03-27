@@ -112,6 +112,23 @@ class ShellyChannel(Base):
     __table_args__ = (UniqueConstraint("device_id", "channel_index"),)
 
 
+class ScheduledWorkflow(Base):
+    __tablename__ = "scheduled_workflows"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workflow_id: Mapped[int] = mapped_column(Integer, ForeignKey("workflows.id", ondelete="CASCADE"), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    run_time: Mapped[str] = mapped_column(String, nullable=False)  # "HH:MM" UTC
+    days_of_week: Mapped[str] = mapped_column(String, nullable=False)  # "0,2,4" where 0=Sun
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    workflow: Mapped["Workflow"] = relationship("Workflow")
+
+    @property
+    def workflow_name(self) -> str:
+        return self.workflow.name if self.workflow else ""
+
+
 class WorkflowStep(Base):
     __tablename__ = "workflow_steps"
 
@@ -123,6 +140,10 @@ class WorkflowStep(Base):
     action: Mapped[str] = mapped_column(String, nullable=False)
     delay_after_sec: Mapped[int] = mapped_column(Integer, default=0)
     description: Mapped[str | None] = mapped_column(String, nullable=True)
+    ifttt_event_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    ifttt_value1: Mapped[str | None] = mapped_column(String, nullable=True)
+    ifttt_value2: Mapped[str | None] = mapped_column(String, nullable=True)
+    ifttt_value3: Mapped[str | None] = mapped_column(String, nullable=True)
 
     workflow: Mapped["Workflow"] = relationship("Workflow", back_populates="steps")
     kasa_port: Mapped["KasaPort | None"] = relationship("KasaPort")

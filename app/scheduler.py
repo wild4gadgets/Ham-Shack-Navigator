@@ -12,9 +12,10 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from database import AsyncSessionLocal
-from models import Setting
+from models import Setting, Workflow, ScheduledWorkflow
 from services.weather_service import fetch_all
 from services.monitoring_service import check_conditions, is_in_cooldown, set_last_shutdown, log_event
 from services.shutdown_service import execute_shutdown
@@ -197,6 +198,117 @@ async def _daily_digest():
             logger.error("Daily digest error: %s", e)
 
 
+def _to_aps_days(user_days: list[int]) -> str:
+    """Convert user day-of-week (0=Sun) to APScheduler format (0=Mon, 6=Sun)."""
+    return ",".join(str((d - 1) % 7) for d in user_days)
+
+
+def add_scheduled_workflow_job(sw_id: int, run_time: str, days_of_week: list[int]):
+    """Add or replace an APScheduler job for a scheduled workflow."""
+    if not _scheduler or not _scheduler.running or not days_of_week:
+        return
+    hour, minute = map(int, run_time.split(":"))
+    aps_days = _to_aps_days(days_of_week)
+    _scheduler.add_job(
+        _run_scheduled_workflow,
+        args=[sw_id],
+        trigger=CronTrigger(day_of_week=aps_days, hour=hour, minute=minute),
+        id=f"scheduled_wf_{sw_id}",
+        max_instances=1,
+        coalesce=True,
+        replace_existing=True,
+    )
+    logger.info("Scheduled workflow job %d: %s UTC on aps_days=%s", sw_id, run_time, aps_days)
+
+
+def remove_scheduled_workflow_job(sw_id: int):
+    """Remove the APScheduler job for a scheduled workflow."""
+    if _scheduler and _scheduler.running:
+        try:
+            _scheduler.remove_job(f"scheduled_wf_{sw_id}")
+        except Exception:
+            pass
+
+
+async def _run_scheduled_workflow(sw_id: int):
+    """Execute the steps of a scheduled workflow."""
+    from routers.workflows import _execute_workflow  # lazy import — avoids circular at module load
+
+    async with AsyncSessionLocal() as db:
+        sw = (await db.execute(
+            select(ScheduledWorkflow).where(ScheduledWorkflow.id == sw_id)
+        )).scalar_one_or_none()
+        if not sw or not sw.enabled:
+            return
+
+        from models import WorkflowStep, KasaPort, ShellyChannel
+        wf = (await db.execute(
+            select(Workflow).where(Workflow.id == sw.workflow_id)
+        )).scalar_one_or_none()
+        if not wf:
+            return
+
+        steps_result = await db.execute(
+            select(WorkflowStep)
+            .options(
+                selectinload(WorkflowStep.kasa_port).selectinload(KasaPort.device),
+                selectinload(WorkflowStep.shelly_channel).selectinload(ShellyChannel.device),
+            )
+            .where(WorkflowStep.workflow_id == sw.workflow_id)
+            .order_by(WorkflowStep.step_order)
+        )
+        steps = steps_result.scalars().all()
+
+        steps_data = []
+        for step in steps:
+            if step.action == "pause":
+                steps_data.append({"type": "pause", "delay_after_sec": step.delay_after_sec})
+            elif step.action == "ifttt":
+                steps_data.append({
+                    "type": "ifttt",
+                    "event_name": step.ifttt_event_name,
+                    "value1": step.ifttt_value1 or "",
+                    "value2": step.ifttt_value2 or "",
+                    "value3": step.ifttt_value3 or "",
+                    "delay_after_sec": step.delay_after_sec,
+                })
+            elif step.kasa_port_id:
+                steps_data.append({
+                    "type": "kasa",
+                    "action": step.action,
+                    "delay_after_sec": step.delay_after_sec,
+                    "ip_address": step.kasa_port.device.ip_address,
+                    "device_type": step.kasa_port.device.device_type,
+                    "port_index": step.kasa_port.port_index,
+                })
+            elif step.shelly_channel_id:
+                steps_data.append({
+                    "type": "shelly",
+                    "action": step.action,
+                    "delay_after_sec": step.delay_after_sec,
+                    "ip_address": step.shelly_channel.device.ip_address,
+                    "channel_index": step.shelly_channel.channel_index,
+                    "generation": step.shelly_channel.device.generation,
+                })
+
+        wf_id, wf_name, wf_system = wf.id, wf.name, wf.is_system
+
+    asyncio.create_task(_execute_workflow(wf_id, wf_name, wf_system, steps_data))
+    logger.info("Scheduled workflow %d (%s) triggered", sw_id, wf_name)
+
+
+async def _load_scheduled_workflow_jobs():
+    """On startup, register APScheduler jobs for all enabled scheduled workflows."""
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(ScheduledWorkflow).where(ScheduledWorkflow.enabled == True)
+        )
+        for sw in result.scalars().all():
+            days = [int(d) for d in sw.days_of_week.split(",") if d.strip()]
+            if days:
+                add_scheduled_workflow_job(sw.id, sw.run_time, days)
+
+
 async def start_scheduler():
     global _scheduler
     _scheduler = AsyncIOScheduler(timezone="UTC")
@@ -222,6 +334,7 @@ async def start_scheduler():
     )
 
     _scheduler.start()
+    await _load_scheduled_workflow_jobs()
     logger.info("Scheduler started")
 
 

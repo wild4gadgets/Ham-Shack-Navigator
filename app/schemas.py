@@ -237,6 +237,10 @@ class WorkflowStepRequest(BaseModel):
     action: str
     delay_after_sec: int = 0
     description: Optional[str] = None
+    ifttt_event_name: Optional[str] = None
+    ifttt_value1: Optional[str] = None
+    ifttt_value2: Optional[str] = None
+    ifttt_value3: Optional[str] = None
 
 
 class WorkflowStepsRequest(BaseModel):
@@ -252,9 +256,46 @@ class WorkflowStepResponse(BaseModel):
     action: str
     delay_after_sec: int
     description: Optional[str] = None
+    ifttt_event_name: Optional[str] = None
+    ifttt_value1: Optional[str] = None
+    ifttt_value2: Optional[str] = None
+    ifttt_value3: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+class ScheduledWorkflowCreate(BaseModel):
+    workflow_id: int
+    run_time: str  # "HH:MM" UTC
+    days_of_week: list[int]  # [0-6] where 0=Sun
+    enabled: bool = True
+
+
+class ScheduledWorkflowUpdate(BaseModel):
+    workflow_id: Optional[int] = None
+    run_time: Optional[str] = None
+    days_of_week: Optional[list[int]] = None
+    enabled: Optional[bool] = None
+
+
+class ScheduledWorkflowResponse(BaseModel):
+    id: int
+    workflow_id: int
+    workflow_name: str
+    enabled: bool
+    run_time: str
+    days_of_week: list[int]
+
+    class Config:
+        from_attributes = True
+
+    @field_validator("days_of_week", mode="before")
+    @classmethod
+    def parse_days(cls, v):
+        if isinstance(v, str):
+            return [int(d) for d in v.split(",") if d.strip()]
+        return v
 
 
 # --- Shelly ---
