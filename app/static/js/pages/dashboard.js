@@ -57,28 +57,28 @@ export async function renderDashboard(container) {
       </div>
 
       <!-- Weather Cards - square tiles -->
-      <div class="col-4 col-lg-2">
+      <div class="col-12 col-md-4 col-lg-2">
         <div class="card">
           <div class="card-header"><i class="bi bi-wind me-2"></i>Wind</div>
-          <div class="card-body p-1" id="wind-card" style="aspect-ratio:1/1;overflow:hidden">
+          <div class="card-body p-1 weather-tile-body" id="wind-card" style="overflow:hidden">
             <div class="text-muted text-center pt-3">Loading...</div>
           </div>
         </div>
       </div>
 
-      <div class="col-4 col-lg-2">
+      <div class="col-12 col-md-4 col-lg-2">
         <div class="card">
           <div class="card-header"><i class="bi bi-thermometer-half me-2"></i>Temperature</div>
-          <div class="card-body p-1" id="temp-card" style="aspect-ratio:1/1;overflow:hidden">
+          <div class="card-body p-1 weather-tile-body" id="temp-card" style="overflow:hidden">
             <div class="text-muted text-center pt-3">Loading...</div>
           </div>
         </div>
       </div>
 
-      <div class="col-4 col-lg-2">
+      <div class="col-12 col-md-4 col-lg-2">
         <div class="card">
           <div class="card-header"><i class="bi bi-lightning-charge me-2"></i>Lightning</div>
-          <div class="card-body d-flex flex-column justify-content-center align-items-center" id="lightning-card" style="aspect-ratio:1/1">
+          <div class="card-body d-flex flex-column justify-content-center align-items-center weather-tile-body" id="lightning-card">
             <div class="weather-value" id="lightning-value">--</div>
             <div class="weather-unit" id="lightning-unit">miles away</div>
             <div class="mt-2 text-muted" id="lightning-desc"></div>
@@ -87,7 +87,7 @@ export async function renderDashboard(container) {
       </div>
 
       <!-- 24-Hour Forecast -->
-      <div class="col-8 col-lg-4">
+      <div class="col-12 col-md-8 col-lg-4">
         <div class="card">
           <div class="card-header"><i class="bi bi-calendar-range me-2"></i>24-Hr Forecast</div>
           <div class="card-body p-2" id="forecast-strip">

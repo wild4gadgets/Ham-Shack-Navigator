@@ -95,6 +95,27 @@ body {
 .status-dot.on { background: #198754; box-shadow: 0 0 6px #198754; }
 .status-dot.off { background: #6c757d; }
 
+/* Weather gauge tiles — square on desktop, capped height on mobile */
+.weather-tile-body {
+  aspect-ratio: 1 / 1;
+}
+
+@media (max-width: 767px) {
+  .weather-tile-body {
+    aspect-ratio: unset;
+    height: 260px;
+  }
+
+  #forecast-strip {
+    overflow-x: hidden;
+  }
+
+  #forecast-strip .d-flex > div {
+    min-width: 0;
+    overflow: hidden;
+  }
+}
+
 #radar-map { border-radius: 0 0 4px 4px; }
 
 .page-link { background-color: var(--card-bg); border-color: #444; color: #ccc; }
