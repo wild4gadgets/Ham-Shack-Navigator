@@ -72,19 +72,43 @@ async def check_conditions(db: AsyncSession) -> tuple[bool, str, dict]:
                           meta)
             return True, f"High wind gust: {wind_gust:.1f} mph", meta
 
-    # Check lightning from Tomorrow.io
+    # Check lightning from all sources; use the nearest detection across all of them
+    lightning_candidates: list[tuple[float, str]] = []  # (distance_miles, source_name)
+
     realtime = await _get_cache(db, "tomorrow_realtime")
     if realtime:
-        values = realtime.get("data", {}).get("values", {})
-        lightning_km = values.get("lightningDistance")
-        if lightning_km is not None:
-            lightning_miles = lightning_km * MILES_PER_KM
-            if lightning_miles <= lightning_threshold:
-                meta = {"lightning_miles": lightning_miles, "threshold_miles": lightning_threshold}
-                await log_event(db, "lightning_alert", "critical",
-                              f"Lightning detected {lightning_miles:.1f} miles away (threshold: {lightning_threshold} miles)",
-                              meta)
-                return True, f"Lightning at {lightning_miles:.1f} miles", meta
+        km = realtime.get("data", {}).get("values", {}).get("lightningDistance")
+        if km is not None:
+            lightning_candidates.append((km * MILES_PER_KM, "Tomorrow.io"))
+
+    nws = await _get_cache(db, "nws_alerts")
+    if nws:
+        km = nws.get("lightningDistance")
+        if km is not None:
+            label = "NWS " + ", ".join(nws.get("active_warnings", [])) if nws.get("active_warnings") else "NWS"
+            lightning_candidates.append((km * MILES_PER_KM, label))
+
+    rainviewer = await _get_cache(db, "rainviewer_lightning")
+    if rainviewer:
+        km = rainviewer.get("lightningDistance")
+        if km is not None:
+            lightning_candidates.append((km * MILES_PER_KM, "RainViewer"))
+
+    if lightning_candidates:
+        nearest_miles, nearest_source = min(lightning_candidates, key=lambda x: x[0])
+        if nearest_miles <= lightning_threshold:
+            meta = {
+                "lightning_miles": round(nearest_miles, 1),
+                "threshold_miles": lightning_threshold,
+                "source": nearest_source,
+            }
+            await log_event(
+                db, "lightning_alert", "critical",
+                f"Lightning {nearest_miles:.1f} mi away via {nearest_source} "
+                f"(threshold: {lightning_threshold} mi)",
+                meta,
+            )
+            return True, f"Lightning at {nearest_miles:.1f} miles ({nearest_source})", meta
 
     # Check OWM weather alerts
     if current:
@@ -133,6 +157,42 @@ async def set_last_shutdown(db: AsyncSession):
         row = Setting(key="monitoring", value=json.dumps({
             "enabled": True,
             "last_shutdown_at": now_iso,
+        }))
+        db.add(row)
+    await db.commit()
+
+
+_NOTIFICATION_COOLDOWN_MIN = 30
+
+
+async def is_notification_in_cooldown(db: AsyncSession) -> bool:
+    """Return True if a notification was sent within the last 30 minutes."""
+    monitoring = await _get_setting(db, "monitoring")
+    if not monitoring:
+        return False
+    last_notif = monitoring.get("last_notification_at")
+    if not last_notif:
+        return False
+    last_dt = datetime.fromisoformat(last_notif)
+    if last_dt.tzinfo is None:
+        last_dt = last_dt.replace(tzinfo=timezone.utc)
+    elapsed_min = (datetime.now(timezone.utc) - last_dt).total_seconds() / 60
+    return elapsed_min < _NOTIFICATION_COOLDOWN_MIN
+
+
+async def set_last_notification(db: AsyncSession):
+    """Record that notifications were just sent."""
+    result = await db.execute(select(Setting).where(Setting.key == "monitoring"))
+    row = result.scalar_one_or_none()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    if row:
+        data = json.loads(row.value)
+        data["last_notification_at"] = now_iso
+        row.value = json.dumps(data)
+    else:
+        row = Setting(key="monitoring", value=json.dumps({
+            "enabled": True,
+            "last_notification_at": now_iso,
         }))
         db.add(row)
     await db.commit()

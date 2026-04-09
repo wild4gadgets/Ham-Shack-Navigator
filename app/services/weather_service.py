@@ -1,8 +1,9 @@
 """
-Weather service: fetches OWM and Tomorrow.io data, writes to weather_cache.
+Weather service: fetches OWM, Tomorrow.io, and NWS alert data, writes to weather_cache.
 """
 import json
 import logging
+import time as _time
 from datetime import datetime, timezone
 
 import aiohttp
@@ -15,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 OWM_BASE = "https://api.openweathermap.org/data/2.5"
 TOMORROW_BASE = "https://api.tomorrow.io/v4"
+NWS_API_BASE = "https://api.weather.gov"
 
 
 async def _get_api_keys(db: AsyncSession) -> tuple[str | None, str | None]:
@@ -33,6 +35,11 @@ async def _get_location(db: AsyncSession) -> tuple[float | None, float | None, s
         return None, None, "imperial"
     data = json.loads(row.value)
     return data.get("lat"), data.get("lon"), data.get("units", "imperial")
+
+
+async def get_location(db: AsyncSession) -> tuple[float | None, float | None, str]:
+    """Public wrapper for _get_location; used by scheduler."""
+    return await _get_location(db)
 
 
 async def _save_cache(db: AsyncSession, source: str, data: dict):
@@ -124,12 +131,80 @@ async def fetch_tomorrow_realtime(db: AsyncSession) -> dict | None:
         return None
 
 
+# Events that indicate lightning is actively occurring at the user's location
+_NWS_WARNING_EVENTS = {"Severe Thunderstorm Warning", "Tornado Warning"}
+
+
+async def fetch_nws_alerts(db: AsyncSession) -> dict | None:
+    """
+    Query the NWS active-alerts endpoint for severe weather at the user's location.
+    Severe Thunderstorm Warnings and Tornado Warnings are treated as an imminent
+    lightning threat and return lightningDistance=0 km.  No API key required.
+    Only applicable to US locations; returns None for non-US coordinates.
+    """
+    lat, lon, _ = await _get_location(db)
+    if lat is None:
+        return None
+
+    url = f"{NWS_API_BASE}/alerts/active?point={lat:.4f},{lon:.4f}"
+    try:
+        async with aiohttp.ClientSession(
+            headers={"User-Agent": "Ham-Shack-Cockpit (ham shack safety monitor)"}
+        ) as session:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                if resp.status == 404:
+                    # 404 from NWS typically means the point is outside the US
+                    result = {"lightningDistance": None, "note": "outside_nws_coverage"}
+                    await _save_cache(db, "nws_alerts", result)
+                    return result
+                if resp.status != 200:
+                    logger.warning("NWS alerts returned %d", resp.status)
+                    return None
+                data = await resp.json(content_type=None)
+
+        active_warnings = [
+            f["properties"]["event"]
+            for f in data.get("features", [])
+            if f.get("properties", {}).get("event") in _NWS_WARNING_EVENTS
+        ]
+
+        result = {
+            "lightningDistance": 0.0 if active_warnings else None,
+            "active_warnings": active_warnings,
+        }
+        await _save_cache(db, "nws_alerts", result)
+        return result
+
+    except Exception as e:
+        logger.error("NWS alerts fetch error: %s", e)
+        return None
+
+
+async def fetch_rainviewer_lightning(db: AsyncSession) -> dict | None:
+    """
+    RainViewer lightning detection (placeholder).
+
+    RainViewer removed lightning frames from their public weather-maps API in
+    their v2.0 release.  This function is a no-op stub kept in place so that
+    it can be re-enabled if/when RainViewer restores lightning data.
+    """
+    return None
+
+
 async def fetch_all(db: AsyncSession) -> dict:
     """Fetch all weather sources. Returns dict of results."""
     current = await fetch_owm_current(db)
     forecast = await fetch_owm_forecast(db)
     realtime = await fetch_tomorrow_realtime(db)
-    return {"current": current, "forecast": forecast, "realtime": realtime}
+    nws = await fetch_nws_alerts(db)
+    rainviewer = await fetch_rainviewer_lightning(db)
+    return {
+        "current": current,
+        "forecast": forecast,
+        "realtime": realtime,
+        "nws_alerts": nws,
+        "rainviewer_lightning": rainviewer,
+    }
 
 
 async def get_cached(db: AsyncSession, source: str) -> dict | None:

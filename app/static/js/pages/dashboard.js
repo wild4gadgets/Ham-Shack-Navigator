@@ -417,11 +417,12 @@ function renderForecast(fList, metric) {
 
 async function loadWeather() {
   try {
-    const [current, forecast, realtime, loc] = await Promise.all([
+    const [current, forecast, realtime, loc, lightning] = await Promise.all([
       apiGet('/weather/current'),
       apiGet('/weather/forecast'),
       apiGet('/weather/realtime'),
       apiGet('/settings/location'),
+      apiGet('/weather/lightning'),
     ]);
 
     const metric = (loc.units || 'imperial') === 'metric';
@@ -498,22 +499,22 @@ async function loadWeather() {
       });
     }
 
-    // ── Lightning (keep text display) ──
-    if (realtime.data) {
-      const values = realtime.data?.data?.values || {};
-      const lightEl = document.getElementById('lightning-value');
+    // ── Lightning ──
+    {
+      const lightEl   = document.getElementById('lightning-value');
       const lightUnit = document.getElementById('lightning-unit');
       const lightDesc = document.getElementById('lightning-desc');
       if (lightUnit) lightUnit.textContent = metric ? 'km away' : 'miles away';
-      if (lightEl && values.lightningDistance != null) {
-        const dist = metric
-          ? values.lightningDistance.toFixed(1)
-          : (values.lightningDistance * 0.621371).toFixed(1);
-        lightEl.textContent = dist;
-        if (lightDesc) lightDesc.textContent = `Updated: ${new Date(realtime.fetched_at).toLocaleTimeString()}`;
-      } else if (lightEl) {
-        lightEl.textContent = metric ? '> 400' : '> 248';
-        if (lightDesc) lightDesc.textContent = 'No lightning detected';
+      if (lightEl) {
+        const km    = lightning?.lightningDistance;
+        const miles = lightning?.lightningMiles;
+        if (km != null) {
+          lightEl.textContent = metric ? km.toFixed(1) : miles.toFixed(1);
+          if (lightDesc) lightDesc.textContent = lightning.source || '';
+        } else {
+          lightEl.textContent = metric ? '> 400' : '> 248';
+          if (lightDesc) lightDesc.textContent = 'No lightning detected';
+        }
       }
     }
 

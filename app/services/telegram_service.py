@@ -34,7 +34,26 @@ async def _send_message(bot_token: str, chat_id: str, text: str):
                 raise RuntimeError(f"Telegram error: {data.get('description', 'unknown')}")
 
 
-async def send_telegram_shutdown(db: AsyncSession, reason: str, steps_executed: list[str]):
+def _build_alert_line(meta: dict | None) -> str:
+    """Return a one-line HTML alert summary for the Telegram message."""
+    if not meta:
+        return ""
+    lightning_miles = meta.get("lightning_miles")
+    source = meta.get("source", "")
+    if lightning_miles is not None:
+        if lightning_miles == 0.0 and source.upper().startswith("NWS"):
+            warnings = source.replace("NWS ", "").strip() or "Severe Thunderstorm Warning"
+            return f"&#9889; <b>NWS {warnings}</b> — lightning at your location\n"
+        return f"&#9889; <b>Lightning</b>: {lightning_miles:.1f} mi away ({source})\n"
+    wind_gust = meta.get("wind_gust_mph")
+    if wind_gust is not None:
+        return f"&#128168; <b>Wind gust</b>: {wind_gust:.1f} mph\n"
+    return ""
+
+
+async def send_telegram_shutdown(
+    db: AsyncSession, reason: str, steps_executed: list[str], meta: dict | None = None
+):
     cfg = await _get_telegram_config(db)
     if not cfg or not cfg.get("enabled") or not cfg.get("bot_token") or not cfg.get("chat_id"):
         return
@@ -46,8 +65,10 @@ async def send_telegram_shutdown(db: AsyncSession, reason: str, steps_executed: 
 
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     steps_lines = "\n".join(f"  {i+1}. {s}" for i, s in enumerate(steps_executed)) or "  (none)"
+    alert_line = _build_alert_line(meta)
     text = (
-        f"<b>Ham Shack Cockpit - Shutdown Triggered</b>\n"
+        f"<b>Ham Shack Cockpit — Shutdown Triggered</b>\n"
+        f"{alert_line}"
         f"Reason: {reason}\n"
         f"Time: {timestamp}\n\n"
         f"Steps:\n{steps_lines}"

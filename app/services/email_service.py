@@ -44,23 +44,59 @@ async def _send_email(smtp: dict, subject: str, body: str, html: bool = False):
     )
 
 
-async def send_shutdown_notification(db: AsyncSession, reason: str, steps_executed: list[str]):
+def _build_alert_section(meta: dict | None) -> str:
+    """Return a formatted alert block to embed in shutdown notifications."""
+    if not meta:
+        return ""
+    lightning_miles = meta.get("lightning_miles")
+    source = meta.get("source", "")
+    threshold = meta.get("threshold_miles")
+    wind_gust = meta.get("wind_gust_mph")
+
+    if lightning_miles is not None:
+        if lightning_miles == 0.0 and source.upper().startswith("NWS"):
+            warnings = source.replace("NWS ", "").strip() or "Severe Thunderstorm Warning"
+            return (
+                f"SEVERE WEATHER WARNING\n"
+                f"  NWS Alert : {warnings}\n"
+                f"  Status    : Lightning actively occurring at or near your location\n"
+                f"  Threshold : {threshold} miles\n"
+            )
+        return (
+            f"LIGHTNING ALERT\n"
+            f"  Detected  : {lightning_miles:.1f} miles away\n"
+            f"  Source    : {source}\n"
+            f"  Threshold : {threshold} miles\n"
+        )
+    if wind_gust is not None:
+        return (
+            f"HIGH WIND ALERT\n"
+            f"  Wind gust : {wind_gust:.1f} mph\n"
+            f"  Threshold : {meta.get('threshold_mph')} mph\n"
+        )
+    return ""
+
+
+async def send_shutdown_notification(
+    db: AsyncSession, reason: str, steps_executed: list[str], meta: dict | None = None
+):
     smtp = await _get_smtp_config(db)
     if not smtp or not smtp.get("host"):
         return
 
+    alert_section = _build_alert_section(meta)
+    alert_block = f"\n{alert_section}\n" if alert_section else "\n"
+
     subject = f"[Ham Shack Cockpit] Shutdown triggered - {reason}"
     steps_text = "\n".join(f"  {i+1}. {s}" for i, s in enumerate(steps_executed))
-    body = f"""Ham Shack Cockpit Monitor has triggered an automatic shutdown.
-
-Reason: {reason}
-Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}
-
-Steps Executed:
-{steps_text}
-
-This is an automated notification from your Ham Shack Cockpit Monitor.
-"""
+    body = (
+        f"Ham Shack Cockpit Monitor has triggered an automatic shutdown.\n"
+        f"{alert_block}"
+        f"Reason: {reason}\n"
+        f"Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
+        f"\nSteps Executed:\n{steps_text}\n"
+        f"\nThis is an automated notification from your Ham Shack Cockpit Monitor.\n"
+    )
     try:
         await _send_email(smtp, subject, body)
         logger.info("Shutdown notification email sent")

@@ -34,11 +34,12 @@ async def _post_event(webhook_key: str, event_name: str, value1: str = "", value
                 raise RuntimeError(f"IFTTT responded {resp.status}: {body}")
 
 
-async def send_ifttt_shutdown(db: AsyncSession, reason: str, steps_executed: list[str]):
+async def send_ifttt_shutdown(
+    db: AsyncSession, reason: str, steps_executed: list[str], meta: dict | None = None
+):
     cfg = await _get_ifttt_config(db)
     if not cfg or not cfg.get("enabled") or not cfg.get("webhook_key"):
         return
-    # Check notification preferences
     notif_result = await db.execute(select(Setting).where(Setting.key == "notifications"))
     notif_row = notif_result.scalar_one_or_none()
     notifications = json.loads(notif_row.value) if notif_row else {}
@@ -47,9 +48,13 @@ async def send_ifttt_shutdown(db: AsyncSession, reason: str, steps_executed: lis
 
     event_name = cfg.get("event_name_shutdown", "ham_shack_shutdown")
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    steps_summary = ", ".join(steps_executed[:3]) if steps_executed else "none"
+    # value1=reason, value2=timestamp, value3=source or steps summary
+    if meta and meta.get("source"):
+        detail = f"Source: {meta['source']}"
+    else:
+        detail = ", ".join(steps_executed[:3]) if steps_executed else "none"
     try:
-        await _post_event(cfg["webhook_key"], event_name, reason, timestamp, steps_summary)
+        await _post_event(cfg["webhook_key"], event_name, reason, timestamp, detail)
         logger.info("IFTTT shutdown event sent: %s", event_name)
     except Exception as e:
         logger.error("Failed to send IFTTT shutdown event: %s", e)

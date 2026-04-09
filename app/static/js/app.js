@@ -9,9 +9,8 @@ document.getElementById('logout-btn').addEventListener('click', () => {
 
 // Hash routing
 window.addEventListener('hashchange', () => navigate());
-window.addEventListener('load', () => navigate());
 
-// Initial navigation
+// Initial navigation (module scripts are deferred, so DOM is ready)
 navigate();
 
 // ── 7-segment LED clocks ─────────────────────────────────────────────────────
