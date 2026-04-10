@@ -1,9 +1,10 @@
 import { navigate } from './router.js';
-import { clearToken, getToken } from './state.js';
+import { clearToken, getToken, state } from './state.js';
 
 // Logout
 document.getElementById('logout-btn').addEventListener('click', () => {
   clearToken();
+  state.user = null;
   window.location.hash = '#/login';
 });
 

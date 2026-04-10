@@ -41,10 +41,61 @@ class TokenResponse(BaseModel):
 class UserResponse(BaseModel):
     id: int
     email: str
+    role: str
     is_active: int
 
     class Config:
         from_attributes = True
+
+
+class AdminUserResponse(BaseModel):
+    id: int
+    email: str
+    role: str
+    is_active: int
+    created_at: str
+
+    class Config:
+        from_attributes = True
+
+    @classmethod
+    def from_orm_user(cls, u):
+        return cls(
+            id=u.id,
+            email=u.email,
+            role=u.role,
+            is_active=u.is_active,
+            created_at=u.created_at.isoformat() if u.created_at else "",
+        )
+
+
+class CreateUserRequest(BaseModel):
+    email: str
+    password: str
+    role: str = "readonly"
+
+    @field_validator("password")
+    @classmethod
+    def password_complexity(cls, v):
+        return validate_password_complexity(v)
+
+    @field_validator("role")
+    @classmethod
+    def valid_role(cls, v):
+        if v not in ("admin", "readonly"):
+            raise ValueError("Role must be 'admin' or 'readonly'")
+        return v
+
+
+class UpdateUserRoleRequest(BaseModel):
+    role: str
+
+    @field_validator("role")
+    @classmethod
+    def valid_role(cls, v):
+        if v not in ("admin", "readonly"):
+            raise ValueError("Role must be 'admin' or 'readonly'")
+        return v
 
 
 class ChangeEmailRequest(BaseModel):

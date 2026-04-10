@@ -52,6 +52,7 @@ async def _migrate_db():
         await conn.run_sync(_migrate_add_startup_workflow)
         await conn.run_sync(_migrate_workflow_steps_add_ifttt)
         await conn.run_sync(_migrate_add_scheduled_workflows)
+        await conn.run_sync(_migrate_add_user_role)
 
 
 def _migrate_add_workflows(conn):
@@ -223,6 +224,17 @@ def _migrate_add_scheduled_workflows(conn):
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
     """))
+
+
+def _migrate_add_user_role(conn):
+    """Add role column to users table if missing. Existing users become admin."""
+    sa = __import__("sqlalchemy")
+    info = conn.execute(sa.text("PRAGMA table_info(users)")).fetchall()
+    cols = {col[1] for col in info}
+    if "role" not in cols:
+        conn.execute(sa.text(
+            "ALTER TABLE users ADD COLUMN role VARCHAR NOT NULL DEFAULT 'admin'"
+        ))
 
 
 def _migrate_shutdown_steps_nullable_port(conn):

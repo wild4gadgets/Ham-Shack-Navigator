@@ -19,7 +19,11 @@ export async function apiFetch(path, options = {}) {
     let detail = `HTTP ${resp.status}`;
     try {
       const body = await resp.json();
-      detail = body.detail || detail;
+      if (Array.isArray(body.detail)) {
+        detail = body.detail.map(e => e.msg || JSON.stringify(e)).join('; ');
+      } else {
+        detail = body.detail || detail;
+      }
     } catch {}
     throw new Error(detail);
   }

@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from dependencies import get_db, get_current_user
+from dependencies import get_db, get_current_user, require_admin
 from models import User, Setting
 from schemas import (
     LocationSettings, LocationProfile, ApiKeySettings, ThresholdSettings, SmtpSettings,
@@ -112,7 +112,7 @@ async def get_location(db: AsyncSession = Depends(get_db), _: User = Depends(get
 
 
 @router.put("/location")
-async def put_location(body: LocationSettings, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def put_location(body: LocationSettings, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     await _save_setting(db, "location", body.model_dump())
     return {"detail": "Saved"}
 
@@ -189,7 +189,7 @@ async def get_location_profiles(db: AsyncSession = Depends(get_db), _: User = De
 async def create_location_profile(
     body: LocationProfile,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
 ):
     profiles = await _get_setting(db, "location_profiles")
     if not isinstance(profiles, list):
@@ -206,7 +206,7 @@ async def update_location_profile(
     profile_id: str,
     body: LocationProfile,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
 ):
     profiles = await _get_setting(db, "location_profiles")
     if not isinstance(profiles, list):
@@ -231,7 +231,7 @@ async def update_location_profile(
 async def delete_location_profile(
     profile_id: str,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
 ):
     profiles = await _get_setting(db, "location_profiles")
     if not isinstance(profiles, list):
@@ -247,7 +247,7 @@ async def delete_location_profile(
 async def activate_location_profile(
     profile_id: str,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
 ):
     profiles = await _get_setting(db, "location_profiles")
     if not isinstance(profiles, list):
@@ -272,7 +272,7 @@ async def get_api_keys(db: AsyncSession = Depends(get_db), _: User = Depends(get
 
 
 @router.put("/api-keys")
-async def put_api_keys(body: ApiKeySettings, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def put_api_keys(body: ApiKeySettings, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     existing = await _get_setting(db, "api_keys")
     # Only update if not still masked
     if body.owm_key and not body.owm_key.startswith(MASKED):
@@ -291,7 +291,7 @@ async def get_thresholds(db: AsyncSession = Depends(get_db), _: User = Depends(g
 
 
 @router.put("/thresholds")
-async def put_thresholds(body: ThresholdSettings, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def put_thresholds(body: ThresholdSettings, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     await _save_setting(db, "thresholds", body.model_dump())
     sched.update_poll_interval(body.poll_interval_sec)
     return {"detail": "Saved"}
@@ -308,7 +308,7 @@ async def get_smtp(db: AsyncSession = Depends(get_db), _: User = Depends(get_cur
 
 
 @router.put("/smtp")
-async def put_smtp(body: SmtpSettings, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def put_smtp(body: SmtpSettings, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     existing = await _get_setting(db, "smtp")
     update = body.model_dump()
     # Don't overwrite password if masked
@@ -320,7 +320,7 @@ async def put_smtp(body: SmtpSettings, db: AsyncSession = Depends(get_db), _: Us
 
 
 @router.post("/smtp/test")
-async def test_smtp(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def test_smtp(db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     from services.email_service import send_test_email
     try:
         await send_test_email(db)
@@ -361,7 +361,7 @@ async def get_ifttt(db: AsyncSession = Depends(get_db), _: User = Depends(get_cu
 
 
 @router.put("/ifttt")
-async def put_ifttt(body: IftttSettings, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def put_ifttt(body: IftttSettings, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     existing = await _get_setting(db, "ifttt")
     update = body.model_dump()
     if update.get("webhook_key") and update["webhook_key"].startswith(MASKED):
@@ -373,7 +373,7 @@ async def put_ifttt(body: IftttSettings, db: AsyncSession = Depends(get_db), _: 
 
 
 @router.post("/ifttt/test")
-async def test_ifttt(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def test_ifttt(db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     from services.ifttt_service import send_ifttt_test
     try:
         await send_ifttt_test(db)
@@ -394,7 +394,7 @@ async def get_telegram(db: AsyncSession = Depends(get_db), _: User = Depends(get
 
 
 @router.put("/telegram")
-async def put_telegram(body: TelegramSettings, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def put_telegram(body: TelegramSettings, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     existing = await _get_setting(db, "telegram")
     update = body.model_dump()
     if update.get("bot_token") and update["bot_token"].startswith(MASKED):
@@ -404,7 +404,7 @@ async def put_telegram(body: TelegramSettings, db: AsyncSession = Depends(get_db
 
 
 @router.post("/telegram/test")
-async def test_telegram(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def test_telegram(db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     from services.telegram_service import send_telegram_test
     try:
         await send_telegram_test(db)
@@ -426,7 +426,7 @@ async def get_home_assistant(db: AsyncSession = Depends(get_db), _: User = Depen
 
 
 @router.put("/home-assistant")
-async def put_home_assistant(body: HomeAssistantSettings, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def put_home_assistant(body: HomeAssistantSettings, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     import secrets as _secrets
     existing = await _get_setting(db, "home_assistant")
     update = body.model_dump()
@@ -442,7 +442,7 @@ async def put_home_assistant(body: HomeAssistantSettings, db: AsyncSession = Dep
 
 
 @router.post("/home-assistant/regenerate-token")
-async def regenerate_ha_token(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def regenerate_ha_token(db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     import secrets as _secrets
     existing = await _get_setting(db, "home_assistant")
     existing["ha_poll_token"] = _secrets.token_hex(32)
@@ -451,7 +451,7 @@ async def regenerate_ha_token(db: AsyncSession = Depends(get_db), _: User = Depe
 
 
 @router.post("/home-assistant/test")
-async def test_home_assistant(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def test_home_assistant(db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     from services.ha_service import push_ha_test
     try:
         await push_ha_test(db)
@@ -468,6 +468,6 @@ async def get_kasa_settings(db: AsyncSession = Depends(get_db), _: User = Depend
 
 
 @router.put("/kasa")
-async def put_kasa_settings(body: KasaSettings, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def put_kasa_settings(body: KasaSettings, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     await _save_setting(db, "kasa_settings", body.model_dump())
     return {"detail": "Saved"}

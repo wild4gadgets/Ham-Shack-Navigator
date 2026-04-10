@@ -1,13 +1,20 @@
 import { apiGet, apiPut } from '../../api.js';
+import { isAdmin } from '../../state.js';
 
 export async function renderAccountTab(container) {
   const me = await apiGet('/users/me');
+  const admin = isAdmin();
+
+  const roleLabel = me.role === 'admin'
+    ? '<span class="badge bg-danger ms-1">Admin</span>'
+    : '<span class="badge bg-secondary ms-1">Read-only</span>';
 
   container.innerHTML = `
+    ${admin ? `
     <div class="card mb-3">
       <div class="card-header"><i class="bi bi-envelope me-2"></i>Change Email</div>
       <div class="card-body">
-        <p class="text-muted mb-3">Current email: <strong>${me.email}</strong></p>
+        <p class="text-muted mb-3">Current email: <strong>${me.email}</strong> ${roleLabel}</p>
         <div id="email-msg" class="alert" style="display:none"></div>
         <form id="email-form">
           <div class="mb-3">
@@ -22,6 +29,14 @@ export async function renderAccountTab(container) {
         </form>
       </div>
     </div>
+    ` : `
+    <div class="card mb-3">
+      <div class="card-header"><i class="bi bi-person me-2"></i>Account Info</div>
+      <div class="card-body">
+        <p class="text-muted mb-0">Signed in as: <strong>${me.email}</strong> ${roleLabel}</p>
+      </div>
+    </div>
+    `}
 
     <div class="card">
       <div class="card-header"><i class="bi bi-key me-2"></i>Change Password</div>
@@ -47,27 +62,28 @@ export async function renderAccountTab(container) {
     </div>
   `;
 
-  document.getElementById('email-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const msg = document.getElementById('email-msg');
-    msg.style.display = 'none';
-    try {
-      await apiPut('/users/me/email', {
-        new_email: document.getElementById('new-email').value,
-        current_password: document.getElementById('email-cur-password').value,
-      });
-      msg.className = 'alert alert-success';
-      msg.textContent = 'Email updated successfully.';
-      msg.style.display = '';
-      document.getElementById('email-form').reset();
-      // Refresh to show new email
-      await renderAccountTab(container);
-    } catch (err) {
-      msg.className = 'alert alert-danger';
-      msg.textContent = err.message;
-      msg.style.display = '';
-    }
-  });
+  if (admin) {
+    document.getElementById('email-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = document.getElementById('email-msg');
+      msg.style.display = 'none';
+      try {
+        await apiPut('/users/me/email', {
+          new_email: document.getElementById('new-email').value,
+          current_password: document.getElementById('email-cur-password').value,
+        });
+        msg.className = 'alert alert-success';
+        msg.textContent = 'Email updated successfully.';
+        msg.style.display = '';
+        document.getElementById('email-form').reset();
+        await renderAccountTab(container);
+      } catch (err) {
+        msg.className = 'alert alert-danger';
+        msg.textContent = err.message;
+        msg.style.display = '';
+      }
+    });
+  }
 
   document.getElementById('password-form').addEventListener('submit', async (e) => {
     e.preventDefault();

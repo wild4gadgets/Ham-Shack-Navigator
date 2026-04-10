@@ -4,7 +4,8 @@ import { renderDashboard } from './pages/dashboard.js';
 import { renderSettings } from './pages/settings.js';
 import { renderEvents } from './pages/events.js';
 import { renderWorkflows } from './pages/workflows.js';
-import { getToken } from './state.js';
+import { renderUsers } from './pages/users.js';
+import { getToken, state, isAdmin } from './state.js';
 import { apiGet } from './api.js';
 
 const app = document.getElementById('app');
@@ -40,7 +41,26 @@ export async function navigate(forceHash) {
     return;
   }
 
+  // Fetch current user info if authenticated and not cached
+  if (getToken() && !state.user) {
+    try {
+      state.user = await apiGet('/auth/me');
+    } catch {}
+  }
+
   navbar.style.display = getToken() ? '' : 'none';
+
+  // Show/hide admin-only nav items
+  const usersNavLink = document.getElementById('nav-users');
+  if (usersNavLink) usersNavLink.style.display = isAdmin() ? '' : 'none';
+  const workflowsNavLink = document.getElementById('nav-workflows');
+  if (workflowsNavLink) workflowsNavLink.style.display = isAdmin() ? '' : 'none';
+  const roleIndicator = document.getElementById('nav-role-indicator');
+  if (roleIndicator && state.user) {
+    roleIndicator.textContent = isAdmin() ? 'Admin' : 'Read Only';
+    roleIndicator.className = `badge rounded-pill ${isAdmin() ? 'bg-success' : 'bg-danger'}`;
+    roleIndicator.style.display = '';
+  }
 
   app.innerHTML = '';
 
@@ -57,7 +77,17 @@ export async function navigate(forceHash) {
   } else if (hash === '#/events') {
     await renderEvents(app);
   } else if (hash === '#/workflows') {
+    if (!isAdmin()) {
+      window.location.hash = '#/dashboard';
+      return;
+    }
     await renderWorkflows(app);
+  } else if (hash === '#/users') {
+    if (!isAdmin()) {
+      window.location.hash = '#/dashboard';
+      return;
+    }
+    await renderUsers(app);
   } else {
     app.innerHTML = '<div class="text-center mt-5"><h3>Page not found</h3><a href="#/dashboard">Go home</a></div>';
   }

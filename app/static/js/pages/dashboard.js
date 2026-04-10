@@ -1,5 +1,5 @@
 import { apiGet, apiPost } from '../api.js';
-import { getToken } from '../state.js';
+import { getToken, isAdmin } from '../state.js';
 
 async function apiFetchXml(path) {
   const token = getToken();
@@ -148,7 +148,13 @@ export async function renderDashboard(container) {
   await loadAll();
   connectWS();
 
+  if (!isAdmin()) {
+    document.getElementById('btn-system-toggle').disabled = true;
+    document.getElementById('btn-system-toggle').title = 'Admin access required';
+  }
+
   document.getElementById('btn-system-toggle').addEventListener('click', async () => {
+    if (!isAdmin()) return;
     const isUp = systemState.last === 'Startup';
     const targetName = isUp ? 'Shutdown' : 'Startup';
     const targetId = isUp ? systemState.shutdown_id : systemState.startup_id;
@@ -204,7 +210,7 @@ async function loadSystemState() {
   const isUp = systemState.last === 'Startup';
   btn.textContent = isUp ? 'System Up' : 'System Down';
   btn.className = `btn btn-sm ${isUp ? 'btn-success' : 'btn-danger'}`;
-  btn.disabled = false;
+  btn.disabled = !isAdmin();
 }
 
 async function loadAll() {
@@ -218,8 +224,9 @@ async function loadMonitoringStatus() {
     const s = await apiGet('/monitoring/status');
     const area = document.getElementById('monitoring-status-area');
     if (!area) return;
+    const canToggle = isAdmin();
     let html = `<span id="btn-armed-toggle" class="badge ${s.enabled ? 'bg-success' : 'bg-danger'} me-2"
-      style="cursor:pointer" title="Click to ${s.enabled ? 'stop' : 'start'} monitoring">Monitoring ${s.enabled ? 'On' : 'Off'}</span>`;
+      style="${canToggle ? 'cursor:pointer' : ''}" title="${canToggle ? `Click to ${s.enabled ? 'stop' : 'start'} monitoring` : 'Admin access required'}">Monitoring ${s.enabled ? 'On' : 'Off'}</span>`;
     if (s.in_cooldown) {
       html += `<span class="badge bg-info me-2">Cooldown: ${s.cooldown_remaining_min.toFixed(0)} min remaining</span>`;
     }
@@ -228,13 +235,15 @@ async function loadMonitoringStatus() {
     }
     area.innerHTML = html;
 
-    document.getElementById('btn-armed-toggle').addEventListener('click', async () => {
-      const toggle = document.getElementById('btn-armed-toggle');
-      toggle.style.opacity = '0.5';
-      toggle.style.pointerEvents = 'none';
-      await (s.enabled ? apiPost('/monitoring/disable') : apiPost('/monitoring/enable'));
-      await loadMonitoringStatus();
-    });
+    if (canToggle) {
+      document.getElementById('btn-armed-toggle').addEventListener('click', async () => {
+        const toggle = document.getElementById('btn-armed-toggle');
+        toggle.style.opacity = '0.5';
+        toggle.style.pointerEvents = 'none';
+        await (s.enabled ? apiPost('/monitoring/disable') : apiPost('/monitoring/enable'));
+        await loadMonitoringStatus();
+      });
+    }
   } catch (e) {
     console.error('Status load failed:', e);
   }
@@ -711,15 +720,18 @@ function renderPins() {
     const icon = pin.type === 'kasa' ? 'bi-plug' : 'bi-toggles';
     const bg = isOn === null ? '#6c757d' : (isOn ? '#198754' : '#dc3545');
     const stateText = isOn === null ? '?' : (isOn ? 'ON' : 'OFF');
-    return `<button class="pin-badge border-0 rounded" style="background:${bg};color:#fff;cursor:pointer;font-size:0.72rem;padding:3px 9px;line-height:1.4"
-      data-pin-type="${pin.type}" data-pin-id="${pin.id}" title="${escHtml(pin.device_name)}">
+    const cursor = isAdmin() ? 'pointer' : 'default';
+    return `<button class="pin-badge border-0 rounded" style="background:${bg};color:#fff;cursor:${cursor};font-size:0.72rem;padding:3px 9px;line-height:1.4"
+      data-pin-type="${pin.type}" data-pin-id="${pin.id}" title="${escHtml(pin.device_name)}" ${isAdmin() ? '' : 'disabled'}>
       <i class="bi ${icon} me-1"></i>${label} <span style="opacity:0.8">${stateText}</span>
     </button>`;
   }).join('');
 
-  el.querySelectorAll('.pin-badge').forEach(btn => {
-    btn.addEventListener('click', () => togglePin(btn.dataset.pinType, parseInt(btn.dataset.pinId)));
-  });
+  if (isAdmin()) {
+    el.querySelectorAll('.pin-badge').forEach(btn => {
+      btn.addEventListener('click', () => togglePin(btn.dataset.pinType, parseInt(btn.dataset.pinId)));
+    });
+  }
 }
 
 async function pollPinStates() {

@@ -23,7 +23,7 @@ async def setup(body: SetupRequest, db: AsyncSession = Depends(get_db)):
     if result.scalar() > 0:
         raise HTTPException(status_code=403, detail="Setup already completed")
 
-    user = User(email=body.email, hashed_pw=hash_password(body.password))
+    user = User(email=body.email, hashed_pw=hash_password(body.password), role="admin")
     db.add(user)
     await db.commit()
 

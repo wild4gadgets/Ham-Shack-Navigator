@@ -10,9 +10,10 @@ import { renderIftttTab } from '../components/settings/ifttt.js';
 import { renderTelegramTab } from '../components/settings/telegram.js';
 import { renderHomeAssistantTab } from '../components/settings/home-assistant.js';
 import { renderAccountTab } from '../components/settings/account.js';
+import { isAdmin } from '../state.js';
 
-// NAV definition — flat items or group objects
-const NAV = [
+// Full NAV — admin sees all, readonly sees only notifications + account
+const ADMIN_NAV = [
   { id: 'location',  label: 'Location', icon: 'geo-alt' },
   { id: 'api-keys',  label: 'API Keys', icon: 'key' },
   { id: 'thresholds', label: 'Thresholds', icon: 'sliders' },
@@ -32,6 +33,16 @@ const NAV = [
       { id: 'smtp',          label: 'SMTP / Email', icon: 'envelope' },
       { id: 'telegram',      label: 'Telegram',     icon: 'telegram' },
       { id: 'notifications', label: 'Toggles',      icon: 'toggles' },
+    ],
+  },
+  { id: 'account', label: 'Account', icon: 'person' },
+];
+
+const READONLY_NAV = [
+  {
+    groupId: 'notifications', label: 'Notifications', icon: 'bell',
+    children: [
+      { id: 'notifications', label: 'Toggles', icon: 'toggles' },
     ],
   },
   { id: 'account', label: 'Account', icon: 'person' },
@@ -91,7 +102,17 @@ function renderNavItem(entry, activeTab) {
 }
 
 export function renderSettings(container) {
-  const activeTab = window.location.hash.split('/')[2] || 'location';
+  const NAV = isAdmin() ? ADMIN_NAV : READONLY_NAV;
+
+  // For read-only users, ensure they can only access allowed tabs
+  const allowedTabs = new Set();
+  NAV.forEach(entry => {
+    if (entry.groupId) entry.children.forEach(c => allowedTabs.add(c.id));
+    else allowedTabs.add(entry.id);
+  });
+
+  let activeTab = window.location.hash.split('/')[2] || (isAdmin() ? 'location' : 'notifications');
+  if (!allowedTabs.has(activeTab)) activeTab = isAdmin() ? 'location' : 'notifications';
 
   container.innerHTML = `
     <div class="row g-0">
@@ -113,7 +134,8 @@ export function renderSettings(container) {
     const content = document.getElementById('settings-content');
     if (!content) return;
     content.innerHTML = '';
-    const fn = RENDERERS[tabId] || RENDERERS.location;
+    const defaultTab = isAdmin() ? 'location' : 'notifications';
+    const fn = RENDERERS[tabId] || RENDERERS[defaultTab];
     fn(content);
   };
 
