@@ -43,6 +43,7 @@ from routers import (
     ha_state as ha_state_router,
     dashboard_pins as dashboard_pins_router,
     solar as solar_router,
+    dxcluster as dxcluster_router,
 )
 
 
@@ -72,6 +73,7 @@ app.include_router(workflows_router.router, prefix=prefix)
 app.include_router(ha_state_router.router, prefix=prefix)
 app.include_router(dashboard_pins_router.router, prefix=prefix)
 app.include_router(solar_router.router, prefix=prefix)
+app.include_router(dxcluster_router.router, prefix=prefix)
 
 
 @app.get("/api/v1/health")

@@ -10,6 +10,7 @@ import { renderIftttTab } from '../components/settings/ifttt.js';
 import { renderTelegramTab } from '../components/settings/telegram.js';
 import { renderHomeAssistantTab } from '../components/settings/home-assistant.js';
 import { renderAccountTab } from '../components/settings/account.js';
+import { renderDxclusterTab } from '../components/settings/dxcluster.js';
 import { isAdmin } from '../state.js';
 
 // Full NAV — admin sees all, readonly sees only notifications + account
@@ -17,6 +18,7 @@ const ADMIN_NAV = [
   { id: 'location',  label: 'Location', icon: 'geo-alt' },
   { id: 'api-keys',  label: 'API Keys', icon: 'key' },
   { id: 'thresholds', label: 'Thresholds', icon: 'sliders' },
+  { id: 'dxcluster', label: 'DX Cluster', icon: 'reception-4' },
   {
     groupId: 'controls', label: 'Controls', icon: 'toggles',
     children: [
@@ -60,6 +62,7 @@ const RENDERERS = {
   ifttt:            renderIftttTab,
   telegram:         renderTelegramTab,
   'home-assistant': renderHomeAssistantTab,
+  dxcluster:        renderDxclusterTab,
   account:          renderAccountTab,
 };
 

@@ -191,6 +191,11 @@ class KasaSettings(BaseModel):
     poll_interval_sec: int = 30
 
 
+class DxclusterSettings(BaseModel):
+    region: str = "NA"
+    refresh_interval_sec: int = 300
+
+
 # --- Kasa ---
 class KasaDeviceCreate(BaseModel):
     name: str

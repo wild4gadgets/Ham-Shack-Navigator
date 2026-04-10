@@ -26,6 +26,7 @@ let pinData = { kasa: [], shelly: [] };
 let pinStates = {};
 let pinPollTimer = null;
 let solarRefreshTimer = null;
+let dxcRefreshTimer = null;
 let systemState = { last: null, startup_id: null, shutdown_id: null };
 
 function escHtml(s) {
@@ -112,15 +113,33 @@ export async function renderDashboard(container) {
         </div>
       </div>
 
-      <!-- Solar Propagation -->
+      <!-- Right column: Solar Propagation + DX Band Activity stacked -->
       <div class="col-12 col-lg-6">
-        <div class="card">
-          <div class="card-header d-flex justify-content-between align-items-center">
-            <span><i class="bi bi-sun me-2"></i>Solar / Propagation</span>
-            <small id="solar-updated" class="text-white-50"></small>
+        <div class="row g-3">
+          <!-- Solar Propagation -->
+          <div class="col-12">
+            <div class="card">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-sun me-2"></i>Solar / Propagation</span>
+                <small id="solar-updated" class="text-white-50"></small>
+              </div>
+              <div class="card-body p-2" id="solar-card">
+                <div class="text-muted text-center">Loading...</div>
+              </div>
+            </div>
           </div>
-          <div class="card-body p-2" id="solar-card">
-            <div class="text-muted text-center">Loading...</div>
+
+          <!-- DX Band Activity -->
+          <div class="col-12">
+            <div class="card">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-reception-4 me-2"></i>Band Activity</span>
+                <small id="dxc-updated" class="text-white-50"></small>
+              </div>
+              <div class="card-body p-2" id="dxc-card">
+                <div class="text-muted text-center">Loading...</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -192,6 +211,7 @@ function cleanup() {
   if (pinPollTimer) { clearInterval(pinPollTimer); pinPollTimer = null; }
   if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
   if (solarRefreshTimer) { clearInterval(solarRefreshTimer); solarRefreshTimer = null; }
+  if (dxcRefreshTimer) { clearInterval(dxcRefreshTimer); dxcRefreshTimer = null; }
   if (ws) { ws.close(); ws = null; }
   if (radarAnimInterval) { clearInterval(radarAnimInterval); radarAnimInterval = null; }
   if (radarMap) { radarMap.remove(); radarMap = null; }
@@ -214,9 +234,17 @@ async function loadSystemState() {
 }
 
 async function loadAll() {
-  await Promise.all([loadMonitoringStatus(), loadWeather(), loadRecentEvents(), loadRadar(), loadPins(), loadSolarData(), loadSystemState()]);
+  await Promise.all([loadMonitoringStatus(), loadWeather(), loadRecentEvents(), loadRadar(), loadPins(), loadSolarData(), loadSystemState(), loadDxCluster()]);
   if (solarRefreshTimer) clearInterval(solarRefreshTimer);
   solarRefreshTimer = setInterval(() => { if (!destroyed) loadSolarData(); }, 30 * 60 * 1000);
+  if (dxcRefreshTimer) clearInterval(dxcRefreshTimer);
+  try {
+    const dxcSettings = await apiGet('/settings/dxcluster');
+    const dxcIntervalMs = ((dxcSettings.refresh_interval_sec ?? 300)) * 1000;
+    dxcRefreshTimer = setInterval(() => { if (!destroyed) loadDxCluster(); }, dxcIntervalMs);
+  } catch {
+    dxcRefreshTimer = setInterval(() => { if (!destroyed) loadDxCluster(); }, 5 * 60 * 1000);
+  }
 }
 
 async function loadMonitoringStatus() {
@@ -931,6 +959,93 @@ function renderSolarData({ sfi, sunspots, kIndex, aIndex, xray, geoField, solarW
       <div class="solar-indices" style="flex:1;min-width:0">${indexHTML}</div>
       ${bandHTML}
     </div>`;
+}
+
+// ── DX Cluster Band Activity ─────────────────────────────────────────────────
+
+const DXC_REGION_LABELS = {
+  AF: 'Africa', AS: 'Asia', EU: 'Europe',
+  NA: 'North America', OC: 'Oceania', SA: 'South America',
+};
+
+function dxcHeatColor(count) {
+  if (count === 0) return { bg: '#0d1b2a', fg: '#1e3a5f' };
+  if (count < 4)  return { bg: '#1a4731', fg: '#86efac' };
+  if (count < 10) return { bg: '#166534', fg: '#4ade80' };
+  if (count < 20) return { bg: '#92400e', fg: '#fbbf24' };
+  if (count < 30) return { bg: '#9a3412', fg: '#fb923c' };
+  return                  { bg: '#7f1d1d', fg: '#f87171' };
+}
+
+function renderDxHeatmap({ region, bands, continents, counts }) {
+  const card = document.getElementById('dxc-card');
+  if (!card) return;
+
+  const updEl = document.getElementById('dxc-updated');
+  if (updEl) updEl.textContent = `Updated: ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
+  const regionLabel = DXC_REGION_LABELS[region] || region;
+
+  const thBase = 'font-size:0.63rem;color:#b0c0d8;text-transform:uppercase;letter-spacing:0.03em;padding:2px 4px;text-align:center;font-weight:600;white-space:nowrap';
+  const headers = continents.map(c => `<th style="${thBase}">${c}</th>`).join('');
+
+  const rows = bands.map(band => {
+    const cells = continents.map(cont => {
+      const count = counts[band]?.[cont] ?? 0;
+      const { bg, fg } = dxcHeatColor(count);
+      const display = count === 0 ? '' : String(count);
+      return `<td style="background:${bg};color:${fg};text-align:center;padding:3px 4px;border:1px solid #060e18;font-size:0.72rem;font-weight:${count > 0 ? '700' : '400'};min-width:28px">${display}</td>`;
+    }).join('');
+    return `<tr>
+      <td style="color:#c8d8ee;font-size:0.72rem;padding:3px 8px 3px 2px;white-space:nowrap;font-weight:600">${escHtml(band)}</td>
+      ${cells}
+    </tr>`;
+  }).join('');
+
+  const legendItems = [
+    { bg: '#1a4731', label: '1–3' },
+    { bg: '#166534', label: '4–9' },
+    { bg: '#92400e', label: '10–19' },
+    { bg: '#9a3412', label: '20–29' },
+    { bg: '#7f1d1d', label: '30+' },
+  ];
+  const legendHTML = legendItems.map(i =>
+    `<span style="display:inline-flex;align-items:center;gap:2px">
+      <span style="width:10px;height:10px;background:${i.bg};display:inline-block;border-radius:1px;flex-shrink:0"></span>
+      <span style="font-size:0.6rem;color:#94a3b8">${i.label}</span>
+    </span>`
+  ).join('');
+
+  card.innerHTML = `
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr>
+            <th style="font-size:0.63rem;color:#b0c0d8;padding:2px 8px 3px 2px;text-align:left;font-weight:600">Band</th>
+            ${headers}
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap">
+        <span style="font-size:0.6rem;color:#64748b">Spots from ${escHtml(regionLabel)} · last 60 min · <a href="https://www.dxsummit.fi" target="_blank" rel="noopener" style="color:#60a5fa">DXSummit</a></span>
+        <span style="margin-left:auto;display:inline-flex;gap:5px;align-items:center">${legendHTML}</span>
+      </div>
+    </div>`;
+}
+
+async function loadDxCluster() {
+  const card = document.getElementById('dxc-card');
+  if (!card) return;
+  try {
+    const settings = await apiGet('/settings/dxcluster');
+    const region = (settings.region || 'NA').toUpperCase();
+    const data = await apiGet(`/dxcluster/spots?region=${region}`);
+    renderDxHeatmap(data);
+  } catch (e) {
+    console.error('DX cluster load failed:', e);
+    if (card) card.innerHTML = '<div class="text-muted text-center p-2">Band activity unavailable</div>';
+  }
 }
 
 function connectWS() {

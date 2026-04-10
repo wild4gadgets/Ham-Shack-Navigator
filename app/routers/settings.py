@@ -17,6 +17,7 @@ from models import User, Setting
 from schemas import (
     LocationSettings, LocationProfile, ApiKeySettings, ThresholdSettings, SmtpSettings,
     NotificationSettings, KasaSettings, IftttSettings, TelegramSettings, HomeAssistantSettings,
+    DxclusterSettings,
 )
 import scheduler as sched
 
@@ -470,4 +471,17 @@ async def get_kasa_settings(db: AsyncSession = Depends(get_db), _: User = Depend
 @router.put("/kasa")
 async def put_kasa_settings(body: KasaSettings, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     await _save_setting(db, "kasa_settings", body.model_dump())
+    return {"detail": "Saved"}
+
+
+# --- DX Cluster ---
+@router.get("/dxcluster")
+async def get_dxcluster(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    data = await _get_setting(db, "dxcluster")
+    return data or {"region": "NA"}
+
+
+@router.put("/dxcluster")
+async def put_dxcluster(body: DxclusterSettings, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
+    await _save_setting(db, "dxcluster", body.model_dump())
     return {"detail": "Saved"}
