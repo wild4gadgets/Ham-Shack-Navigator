@@ -45,6 +45,7 @@ from routers import (
     solar as solar_router,
     dxcluster as dxcluster_router,
     pskreporter as pskreporter_router,
+    qrz as qrz_router,
 )
 
 
@@ -76,6 +77,7 @@ app.include_router(dashboard_pins_router.router, prefix=prefix)
 app.include_router(solar_router.router, prefix=prefix)
 app.include_router(dxcluster_router.router, prefix=prefix)
 app.include_router(pskreporter_router.router, prefix=prefix)
+app.include_router(qrz_router.router, prefix=prefix)
 
 
 @app.get("/api/v1/health")

@@ -198,6 +198,11 @@ class DxclusterSettings(BaseModel):
     refresh_interval_sec: int = 300
 
 
+class QrzSettings(BaseModel):
+    username: str = ""
+    password: str = ""
+
+
 class PskReporterSettings(BaseModel):
     callsign: str = ""
     default_direction: str = "senderCallsign"

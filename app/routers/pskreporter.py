@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/pskreporter", tags=["pskreporter"])
 
 PSK_API = "https://retrieve.pskreporter.info/query"
-CACHE_TTL = 300  # 5 minutes
+CACHE_TTL = 240  # 4 minutes — ensures 5-min frontend refresh always gets fresh data
 
 BAND_RANGES = {
     "160m": (1_800_000,   2_000_000),

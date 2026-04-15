@@ -28,6 +28,9 @@ let pinPollTimer = null;
 let solarRefreshTimer = null;
 let dxcRefreshTimer = null;
 let pskRefreshTimer = null;
+let pskCountdownTimer = null;
+let pskNextRefreshAt = null;
+let pskPaused = false;
 let pskMap = null;
 let pskSpotLayer = null;
 let pskTerminator = null;
@@ -160,8 +163,14 @@ export async function renderDashboard(container) {
             <span><i class="bi bi-broadcast-pin me-2"></i>PSK Reporter Spots</span>
             <div class="d-flex align-items-center gap-2">
               <small id="psk-updated" class="text-white-50"></small>
+              <button id="btn-psk-pause" class="btn btn-sm btn-outline-warning" title="Pause auto-refresh">
+                <i class="bi bi-pause-fill"></i>
+              </button>
               <button id="btn-psk-refresh" class="btn btn-sm btn-outline-light" title="Refresh now">
                 <i class="bi bi-arrow-clockwise"></i>
+              </button>
+              <button id="btn-psk-collapse" class="btn btn-sm btn-outline-secondary" title="Collapse controls">
+                <i class="bi bi-chevron-up"></i>
               </button>
             </div>
           </div>
@@ -182,7 +191,7 @@ export async function renderDashboard(container) {
               </div>
               <div>
                 <label class="form-label mb-1" style="font-size:0.75rem;color:#94a3b8">Mode(s) <span style="color:#94a3b8">(none=all)</span></label>
-                <select id="psk-tile-modes" class="form-select form-select-sm" multiple size="3" style="min-width:90px">
+                <select id="psk-tile-modes" class="form-select form-select-sm" multiple size="10" style="min-width:90px">
                   <option value="FT8">FT8</option>
                   <option value="FT4">FT4</option>
                   <option value="CW">CW</option>
@@ -197,7 +206,7 @@ export async function renderDashboard(container) {
               </div>
               <div>
                 <label class="form-label mb-1" style="font-size:0.75rem;color:#94a3b8">Band(s) <span style="color:#94a3b8">(none=all)</span></label>
-                <select id="psk-tile-bands" class="form-select form-select-sm" multiple size="3" style="min-width:75px">
+                <select id="psk-tile-bands" class="form-select form-select-sm" multiple size="12" style="min-width:75px">
                   <option value="160m">160m</option>
                   <option value="80m">80m</option>
                   <option value="60m">60m</option>
@@ -261,6 +270,27 @@ export async function renderDashboard(container) {
         </div>
       </div>
     </div>
+
+    <!-- QRZ Lookup Modal -->
+    <div class="modal fade" id="qrz-modal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content" style="background:#12122a;border:1px solid #2a2a4a;color:#e0e0e0">
+          <div class="modal-header" style="border-color:#2a2a4a">
+            <h5 class="modal-title" id="qrz-modal-title">QRZ Lookup</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body" id="qrz-modal-body">
+            <div class="text-center text-muted py-4">Loading…</div>
+          </div>
+          <div class="modal-footer" style="border-color:#2a2a4a">
+            <a id="qrz-modal-link" href="#" target="_blank" class="btn btn-sm btn-outline-info" style="display:none">
+              <i class="bi bi-box-arrow-up-right me-1"></i>Open on QRZ.com
+            </a>
+            <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
   `;
 
   await loadAll();
@@ -312,6 +342,8 @@ function cleanup() {
   if (solarRefreshTimer) { clearInterval(solarRefreshTimer); solarRefreshTimer = null; }
   if (dxcRefreshTimer) { clearInterval(dxcRefreshTimer); dxcRefreshTimer = null; }
   if (pskRefreshTimer) { clearInterval(pskRefreshTimer); pskRefreshTimer = null; }
+  if (pskCountdownTimer) { clearInterval(pskCountdownTimer); pskCountdownTimer = null; }
+  pskNextRefreshAt = null;
   if (pskTerminatorTimer) { clearInterval(pskTerminatorTimer); pskTerminatorTimer = null; }
   if (pskTerminator)  { pskTerminator.remove(); pskTerminator = null; }
   if (pskSpotLayer)   { pskSpotLayer.clearLayers(); pskSpotLayer = null; }
@@ -636,13 +668,21 @@ function maidenToLatLon(locator) {
 async function initPskTile() {
   // Initialize Leaflet map
   if (!pskMap) {
-    pskMap = L.map('psk-map', { zoomControl: true, attributionControl: true, worldCopyJump: true }).setView([20, 0], 2);
+    const pskMapEl = document.getElementById('psk-map');
+    const minZoom = Math.ceil(Math.log2((pskMapEl.clientHeight || 500) / 256));
+    pskMap = L.map('psk-map', { zoomControl: true, attributionControl: true, worldCopyJump: true, minZoom }).setView([20, 0], 2);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
       attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
       subdomains: 'abcd',
       maxZoom: 19,
     }).addTo(pskMap);
     pskSpotLayer = L.layerGroup().addTo(pskMap);
+
+    // Wire QRZ lookup button inside popups
+    pskMap.on('popupopen', (e) => {
+      const btn = e.popup.getElement()?.querySelector('.psk-qrz-btn');
+      if (btn) btn.addEventListener('click', () => openQrzModal(btn.dataset.call));
+    });
 
     // Greyline helpers
     const enableGreyline = () => {
@@ -714,6 +754,25 @@ async function initPskTile() {
     if (document.getElementById('psk-tile-callsign')?.value) await loadPskSpots();
   } catch { /* no saved settings yet */ }
 
+  // Collapse / expand controls panel
+  const collapseBtn = document.getElementById('btn-psk-collapse');
+  const controlsEl  = document.getElementById('psk-controls');
+  if (collapseBtn && controlsEl) {
+    const collapsed = localStorage.getItem('psk_controls_collapsed') === 'true';
+    if (collapsed) {
+      controlsEl.classList.add('d-none');
+      collapseBtn.title = 'Expand controls';
+      collapseBtn.querySelector('i').className = 'bi bi-chevron-down';
+    }
+    collapseBtn.addEventListener('click', () => {
+      const isCollapsed = controlsEl.classList.contains('d-none');
+      controlsEl.classList.toggle('d-none', !isCollapsed);
+      collapseBtn.title = isCollapsed ? 'Collapse controls' : 'Expand controls';
+      collapseBtn.querySelector('i').className = isCollapsed ? 'bi bi-chevron-up' : 'bi bi-chevron-down';
+      localStorage.setItem('psk_controls_collapsed', isCollapsed ? 'false' : 'true');
+    });
+  }
+
   document.getElementById('btn-psk-fetch')?.addEventListener('click', () => loadPskSpots());
   document.getElementById('btn-psk-refresh')?.addEventListener('click', async () => {
     const btn = document.getElementById('btn-psk-refresh');
@@ -722,8 +781,114 @@ async function initPskTile() {
     if (btn) btn.disabled = false;
   });
 
+  const PSK_INTERVAL_MS = 5 * 60 * 1000;
+
   if (pskRefreshTimer) clearInterval(pskRefreshTimer);
-  pskRefreshTimer = setInterval(() => { if (!destroyed) loadPskSpots(); }, 5 * 60 * 1000);
+  pskRefreshTimer = setInterval(() => {
+    if (!destroyed && !pskPaused) {
+      pskNextRefreshAt = Date.now() + PSK_INTERVAL_MS;
+      loadPskSpots();
+    }
+  }, PSK_INTERVAL_MS);
+  pskNextRefreshAt = Date.now() + PSK_INTERVAL_MS;
+
+  // Countdown display — updates every second
+  if (pskCountdownTimer) clearInterval(pskCountdownTimer);
+  pskCountdownTimer = setInterval(() => {
+    if (destroyed) return;
+    const updEl = document.getElementById('psk-updated');
+    if (!updEl) return;
+    const base = updEl.dataset.base || '';
+    if (pskPaused) {
+      updEl.textContent = base + (base ? ' · ' : '') + 'paused';
+    } else if (pskNextRefreshAt) {
+      const remaining = Math.max(0, Math.ceil((pskNextRefreshAt - Date.now()) / 1000));
+      const min = Math.floor(remaining / 60);
+      const sec = String(remaining % 60).padStart(2, '0');
+      updEl.textContent = base + (base ? ' · ' : '') + `next: ${min}:${sec}`;
+    }
+  }, 1000);
+
+  // Pause / resume button
+  const pauseBtn = document.getElementById('btn-psk-pause');
+  if (pauseBtn) {
+    // Restore persisted pause state
+    pskPaused = localStorage.getItem('psk_paused') === 'true';
+    pauseBtn.innerHTML = pskPaused
+      ? '<i class="bi bi-play-fill"></i>'
+      : '<i class="bi bi-pause-fill"></i>';
+    pauseBtn.title = pskPaused ? 'Resume auto-refresh' : 'Pause auto-refresh';
+    pauseBtn.className = pskPaused
+      ? 'btn btn-sm btn-warning'
+      : 'btn btn-sm btn-outline-warning';
+
+    pauseBtn.addEventListener('click', () => {
+      pskPaused = !pskPaused;
+      localStorage.setItem('psk_paused', pskPaused);
+      pauseBtn.innerHTML = pskPaused
+        ? '<i class="bi bi-play-fill"></i>'
+        : '<i class="bi bi-pause-fill"></i>';
+      pauseBtn.title = pskPaused ? 'Resume auto-refresh' : 'Pause auto-refresh';
+      pauseBtn.className = pskPaused
+        ? 'btn btn-sm btn-warning'
+        : 'btn btn-sm btn-outline-warning';
+      if (!pskPaused) {
+        // Resume: reset countdown and fetch immediately
+        pskNextRefreshAt = Date.now() + PSK_INTERVAL_MS;
+        loadPskSpots();
+      }
+    });
+  }
+}
+
+async function openQrzModal(callsign) {
+  const modalEl = document.getElementById('qrz-modal');
+  const title   = document.getElementById('qrz-modal-title');
+  const body    = document.getElementById('qrz-modal-body');
+  const link    = document.getElementById('qrz-modal-link');
+
+  title.textContent = `QRZ: ${callsign}`;
+  body.innerHTML = '<div class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div>';
+  link.style.display = 'none';
+
+  const modal = new bootstrap.Modal(modalEl);
+  modal.show();
+
+  try {
+    const d = await apiGet(`/qrz/lookup?callsign=${encodeURIComponent(callsign)}`);
+
+    // Build human-readable location from QRZ fields
+    const locationParts = [d.addr2, d.state, d.country].filter(Boolean);
+    const location = locationParts.join(', ');
+
+    body.innerHTML = `
+      <div class="row g-3 align-items-start">
+        <div class="col-md-8">
+          <div class="mb-1" style="font-size:1.15rem;font-weight:700">${escHtml((d.fname || '') + ' ' + (d.name || '')).trim() || escHtml(d.call)}</div>
+          <div class="mb-2" style="color:#94a3b8">${escHtml(d.call)}${d.class ? ` &nbsp;·&nbsp; Class ${escHtml(d.class)}` : ''}</div>
+          ${location      ? `<div class="mb-1"><i class="bi bi-geo-alt-fill me-1" style="color:#38bdf8"></i>${escHtml(location)}</div>` : ''}
+          ${d.grid        ? `<div class="mb-1"><i class="bi bi-grid-3x3 me-1" style="color:#94a3b8"></i>Grid: <span style="font-family:monospace">${escHtml(d.grid)}</span></div>` : ''}
+          ${d.addr1       ? `<div class="mb-1 text-muted" style="font-size:0.85rem">${escHtml(d.addr1)}</div>` : ''}
+          ${d.email       ? `<div class="mb-1" style="font-size:0.85rem"><i class="bi bi-envelope me-1"></i>${escHtml(d.email)}</div>` : ''}
+          ${d.qslmgr      ? `<div class="mb-1" style="font-size:0.85rem">QSL via: ${escHtml(d.qslmgr)}</div>` : ''}
+          <div class="mt-2 d-flex gap-2 flex-wrap">
+            ${d.lotw === 'Y' ? '<span class="badge bg-success">LoTW</span>' : ''}
+            ${d.eqsl === 'Y' ? '<span class="badge bg-info text-dark">eQSL</span>' : ''}
+            ${d.cqzone      ? `<span class="badge bg-secondary">CQ ${escHtml(d.cqzone)}</span>` : ''}
+            ${d.ituzone     ? `<span class="badge bg-secondary">ITU ${escHtml(d.ituzone)}</span>` : ''}
+            ${d.dxcc        ? `<span class="badge bg-secondary">DXCC ${escHtml(d.dxcc)}</span>` : ''}
+          </div>
+        </div>
+        <div class="col-md-4 text-center">
+          ${d.image ? `<img src="${escHtml(d.image)}" class="img-fluid rounded" style="max-height:160px;object-fit:cover" onerror="this.style.display='none'" />` : ''}
+        </div>
+      </div>`;
+
+    link.href = `https://www.qrz.com/db/${encodeURIComponent(d.call)}`;
+    link.style.display = '';
+  } catch (err) {
+    body.innerHTML = `<div class="alert alert-warning mb-0">${escHtml(err.message)}</div>`;
+  }
 }
 
 async function loadPskSpots() {
@@ -765,8 +930,12 @@ async function loadPskSpots() {
     const updEl = document.getElementById('psk-updated');
     if (updEl && data.fetched_at) {
       const d = new Date(data.fetched_at.slice(0, 19) + 'Z');
-      updEl.textContent = `${data.cached ? '(cached) ' : ''}${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · ${data.count ?? 0} spots`;
+      const base = `${data.cached ? '(cached) ' : ''}${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · ${data.count ?? 0} spots`;
+      updEl.dataset.base = base;
+      updEl.textContent = base;  // countdown interval will append "next: X:XX" within 1s
     }
+    // Reset auto-refresh countdown from now
+    pskNextRefreshAt = Date.now() + 5 * 60 * 1000;
 
     if (!data.spots?.length) {
       pskSpotLayer.clearLayers();
@@ -834,7 +1003,8 @@ async function loadPskSpots() {
         `Locator: ${escHtml(otherLoc || '--')}<br>` +
         `Band: ${escHtml(spot.band)} &nbsp; Mode: ${escHtml(spot.mode)}<br>` +
         `SNR: <span style="color:${sColor};font-weight:600">${escHtml(snrStr)} dB</span><br>` +
-        `Time: ${escHtml(t)}`,
+        `Time: ${escHtml(t)}<br>` +
+        `<button class="psk-qrz-btn" data-call="${escHtml(otherCall)}" style="margin-top:5px;padding:2px 8px;font-size:0.78rem;background:transparent;border:1px solid #38bdf8;color:#38bdf8;border-radius:4px;cursor:pointer">QRZ Lookup</button>`,
         { className: 'psk-popup' }
       );
 
