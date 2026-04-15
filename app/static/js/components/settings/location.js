@@ -60,7 +60,7 @@ function buildUI(container, active, profiles) {
 
   container.innerHTML = `
     <div class="card">
-      <div class="card-header"><i class="bi bi-geo-alt me-2"></i>Station Location</div>
+      <div class="card-header"><i class="bi bi-geo-alt me-2"></i>Station Information</div>
       <div class="card-body">
         <div id="loc-msg" class="alert" style="display:none"></div>
 
@@ -109,7 +109,13 @@ function buildUI(container, active, profiles) {
                 value="${escHtml(prof?.name ?? '')}"
                 placeholder="e.g. Home QTH" ${!activeId ? 'disabled' : ''} />
             </div>
-            <div class="col-md-6 mb-3">
+            <div class="col-md-3 mb-3">
+              <label class="form-label">Station Callsign</label>
+              <input type="text" class="form-control font-monospace" id="loc-callsign"
+                value="${escHtml(active.callsign || '')}" placeholder="e.g. W1AW"
+                style="text-transform:uppercase" maxlength="10" />
+            </div>
+            <div class="col-md-3 mb-3">
               <label class="form-label">City / Station Name</label>
               <input type="text" class="form-control" id="loc-city"
                 value="${escHtml(active.city || '')}" placeholder="e.g. Denver, CO" />
@@ -286,6 +292,7 @@ function attachHandlers(container, active, profiles) {
     const lon = parseFloat(document.getElementById('loc-lon').value);
     const payload = {
       name: document.getElementById('loc-profile-name').value.trim() || 'Default',
+      callsign: document.getElementById('loc-callsign').value.trim().toUpperCase(),
       city: document.getElementById('loc-city').value,
       lat: isNaN(lat) ? 0 : lat,
       lon: isNaN(lon) ? 0 : lon,

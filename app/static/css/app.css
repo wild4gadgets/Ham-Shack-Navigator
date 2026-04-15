@@ -126,6 +126,28 @@ body {
 
 #radar-map { border-radius: 0 0 4px 4px; }
 
+/* PSK Reporter map spot labels */
+.psk-spot-label {
+  font-size: 0.68rem;
+  line-height: 1.3;
+  white-space: nowrap;
+  text-shadow: 0 0 3px #000, 0 0 6px #000;
+  pointer-events: none;
+}
+.psk-label-call {
+  font-weight: 700;
+  color: #ffffff;
+}
+
+/* PSK Reporter popup */
+.psk-popup .leaflet-popup-content-wrapper {
+  background: #16213e;
+  border: 1px solid #2a2a4a;
+  color: #e2e8f0;
+  font-size: 0.82rem;
+}
+.psk-popup .leaflet-popup-tip { background: #16213e; }
+
 .page-link { background-color: var(--card-bg); border-color: #444; color: #ccc; }
 .page-link:hover { background-color: var(--accent); color: #fff; }
 .page-item.active .page-link { background-color: #0d6efd; border-color: #0d6efd; }

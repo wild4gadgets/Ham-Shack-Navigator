@@ -118,6 +118,7 @@ class LocationSettings(BaseModel):
     lat: float
     lon: float
     city: str = ""
+    callsign: str = ""
     units: str = "imperial"  # "imperial" or "metric"
     gridsquare: str = ""
     active_profile_id: str = ""
@@ -129,6 +130,7 @@ class LocationProfile(BaseModel):
     lat: float = 0.0
     lon: float = 0.0
     city: str = ""
+    callsign: str = ""
     units: str = "imperial"
     gridsquare: str = ""
 
@@ -194,6 +196,14 @@ class KasaSettings(BaseModel):
 class DxclusterSettings(BaseModel):
     region: str = "NA"
     refresh_interval_sec: int = 300
+
+
+class PskReporterSettings(BaseModel):
+    callsign: str = ""
+    default_direction: str = "senderCallsign"
+    default_modes: list[str] = []
+    default_bands: list[str] = []
+    default_timespan: int = -3600
 
 
 # --- Kasa ---

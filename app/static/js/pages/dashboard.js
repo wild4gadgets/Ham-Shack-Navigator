@@ -27,6 +27,11 @@ let pinStates = {};
 let pinPollTimer = null;
 let solarRefreshTimer = null;
 let dxcRefreshTimer = null;
+let pskRefreshTimer = null;
+let pskMap = null;
+let pskSpotLayer = null;
+let pskTerminator = null;
+let pskTerminatorTimer = null;
 let systemState = { last: null, startup_id: null, shutdown_id: null };
 
 function escHtml(s) {
@@ -88,7 +93,7 @@ export async function renderDashboard(container) {
       </div>
 
       <!-- 24-Hour Forecast -->
-      <div class="col-12 col-md-8 col-lg-4">
+      <div class="col-12 col-lg-6">
         <div class="card">
           <div class="card-header"><i class="bi bi-calendar-range me-2"></i>24-Hr Forecast</div>
           <div class="card-body p-2" id="forecast-strip">
@@ -147,6 +152,99 @@ export async function renderDashboard(container) {
 
       <!-- Alerts -->
       <div class="col-12" id="alerts-area"></div>
+
+      <!-- PSK Reporter Spots -->
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-broadcast-pin me-2"></i>PSK Reporter Spots</span>
+            <div class="d-flex align-items-center gap-2">
+              <small id="psk-updated" class="text-white-50"></small>
+              <button id="btn-psk-refresh" class="btn btn-sm btn-outline-light" title="Refresh now">
+                <i class="bi bi-arrow-clockwise"></i>
+              </button>
+            </div>
+          </div>
+          <div class="card-body p-2">
+            <!-- Controls -->
+            <div class="d-flex flex-wrap gap-2 align-items-end mb-2" id="psk-controls">
+              <div>
+                <label class="form-label mb-1" style="font-size:0.75rem;color:#94a3b8">Callsign</label>
+                <input type="text" id="psk-tile-callsign" class="form-control form-control-sm"
+                  placeholder="W1AW" style="width:90px;text-transform:uppercase" maxlength="10" />
+              </div>
+              <div>
+                <label class="form-label mb-1" style="font-size:0.75rem;color:#94a3b8">Direction</label>
+                <select id="psk-tile-direction" class="form-select form-select-sm" style="width:160px">
+                  <option value="senderCallsign">Heard by others</option>
+                  <option value="receiverCallsign">Heard from others</option>
+                </select>
+              </div>
+              <div>
+                <label class="form-label mb-1" style="font-size:0.75rem;color:#94a3b8">Mode(s) <span style="color:#94a3b8">(none=all)</span></label>
+                <select id="psk-tile-modes" class="form-select form-select-sm" multiple size="3" style="min-width:90px">
+                  <option value="FT8">FT8</option>
+                  <option value="FT4">FT4</option>
+                  <option value="CW">CW</option>
+                  <option value="SSB">SSB</option>
+                  <option value="PSK31">PSK31</option>
+                  <option value="RTTY">RTTY</option>
+                  <option value="JS8">JS8</option>
+                  <option value="WSPR">WSPR</option>
+                  <option value="JT65">JT65</option>
+                  <option value="JT9">JT9</option>
+                </select>
+              </div>
+              <div>
+                <label class="form-label mb-1" style="font-size:0.75rem;color:#94a3b8">Band(s) <span style="color:#94a3b8">(none=all)</span></label>
+                <select id="psk-tile-bands" class="form-select form-select-sm" multiple size="3" style="min-width:75px">
+                  <option value="160m">160m</option>
+                  <option value="80m">80m</option>
+                  <option value="60m">60m</option>
+                  <option value="40m">40m</option>
+                  <option value="30m">30m</option>
+                  <option value="20m">20m</option>
+                  <option value="17m">17m</option>
+                  <option value="15m">15m</option>
+                  <option value="12m">12m</option>
+                  <option value="10m">10m</option>
+                  <option value="6m">6m</option>
+                  <option value="2m">2m</option>
+                </select>
+              </div>
+              <div>
+                <label class="form-label mb-1" style="font-size:0.75rem;color:#94a3b8">Timespan</label>
+                <select id="psk-tile-timespan" class="form-select form-select-sm" style="width:120px">
+                  <option value="-900">15 minutes</option>
+                  <option value="-1800">30 minutes</option>
+                  <option value="-3600" selected>1 hour</option>
+                  <option value="-5400">90 minutes</option>
+                  <option value="-7200">2 hours</option>
+                  <option value="-14400">4 hours</option>
+                  <option value="-21600">6 hours</option>
+                </select>
+              </div>
+              <div class="align-self-end">
+                <button id="btn-psk-fetch" class="btn btn-sm btn-primary">Fetch Spots</button>
+              </div>
+              <div class="align-self-end pb-1">
+                <div class="form-check mb-0">
+                  <input class="form-check-input" type="checkbox" id="psk-greyline-toggle">
+                  <label class="form-check-label" for="psk-greyline-toggle" style="font-size:0.8rem;color:#94a3b8">Greyline</label>
+                </div>
+              </div>
+            </div>
+            <!-- Map -->
+            <div id="psk-map" style="height:500px;background:#1a1a2e;border-radius:4px;position:relative">
+              <div id="psk-map-placeholder" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:1000;pointer-events:none">
+                <span class="text-muted" style="font-size:0.85rem">Enter a callsign and click Fetch Spots.</span>
+              </div>
+            </div>
+            <!-- Legend -->
+            <div id="psk-legend" style="display:none;padding:6px 4px 0;font-size:0.75rem"></div>
+          </div>
+        </div>
+      </div>
 
       <!-- Recent Events -->
       <div class="col-12">
@@ -213,6 +311,11 @@ function cleanup() {
   if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
   if (solarRefreshTimer) { clearInterval(solarRefreshTimer); solarRefreshTimer = null; }
   if (dxcRefreshTimer) { clearInterval(dxcRefreshTimer); dxcRefreshTimer = null; }
+  if (pskRefreshTimer) { clearInterval(pskRefreshTimer); pskRefreshTimer = null; }
+  if (pskTerminatorTimer) { clearInterval(pskTerminatorTimer); pskTerminatorTimer = null; }
+  if (pskTerminator)  { pskTerminator.remove(); pskTerminator = null; }
+  if (pskSpotLayer)   { pskSpotLayer.clearLayers(); pskSpotLayer = null; }
+  if (pskMap)         { pskMap.remove(); pskMap = null; }
   if (ws) { ws.close(); ws = null; }
   if (radarAnimInterval) { clearInterval(radarAnimInterval); radarAnimInterval = null; }
   if (radarMap) { radarMap.remove(); radarMap = null; }
@@ -235,7 +338,7 @@ async function loadSystemState() {
 }
 
 async function loadAll() {
-  await Promise.all([loadMonitoringStatus(), loadWeather(), loadRecentEvents(), loadRadar(), loadPins(), loadSolarData(), loadSystemState(), loadDxCluster()]);
+  await Promise.all([loadMonitoringStatus(), loadWeather(), loadRecentEvents(), loadRadar(), loadPins(), loadSolarData(), loadSystemState(), loadDxCluster(), initPskTile()]);
   if (solarRefreshTimer) clearInterval(solarRefreshTimer);
   solarRefreshTimer = setInterval(() => { if (!destroyed) loadSolarData(); }, 30 * 60 * 1000);
   if (dxcRefreshTimer) clearInterval(dxcRefreshTimer);
@@ -481,6 +584,302 @@ function renderForecast(fList, metric) {
 <div class="forecast-divider" style="width:1px;background:#2e3f52;flex-shrink:0;margin:0 4px"></div>\
 <div style="flex:1;min-width:0">${rightRows.join('')}</div>\
 </div>`;
+}
+
+// ── PSK Reporter ─────────────────────────────────────────────────────────────
+
+const BAND_COLORS = {
+  '160m': '#a855f7',
+  '80m':  '#ec4899',
+  '60m':  '#f97316',
+  '40m':  '#eab308',
+  '30m':  '#84cc16',
+  '20m':  '#22c55e',
+  '17m':  '#06b6d4',
+  '15m':  '#3b82f6',
+  '12m':  '#6366f1',
+  '10m':  '#ef4444',
+  '6m':   '#f43f5e',
+  '2m':   '#14b8a6',
+};
+
+function snrColor(snr) {
+  if (snr == null) return '#94a3b8';
+  if (snr >= 10)  return '#4ade80';
+  if (snr >=  0)  return '#86efac';
+  if (snr >= -10) return '#fde047';
+  if (snr >= -20) return '#fb923c';
+  return '#f87171';
+}
+
+/** Convert a Maidenhead grid locator (4 or 6 chars) to [lat, lon] center. */
+function maidenToLatLon(locator) {
+  if (!locator || locator.length < 4) return null;
+  const g = locator.trim().toUpperCase();
+  if (!/^[A-R]{2}[0-9]{2}/.test(g)) return null;
+  let lon = (g.charCodeAt(0) - 65) * 20 - 180;
+  let lat = (g.charCodeAt(1) - 65) * 10 - 90;
+  lon += parseInt(g[2]) * 2;
+  lat += parseInt(g[3]);
+  if (g.length >= 6 && /[A-X]{2}$/.test(g.slice(4, 6))) {
+    lon += (g.charCodeAt(4) - 65) * (2 / 24);
+    lat += (g.charCodeAt(5) - 65) * (1 / 24);
+    lon += 1 / 24;   // center of subsquare
+    lat += 1 / 48;
+  } else {
+    lon += 1;        // center of 2° square
+    lat += 0.5;
+  }
+  return [lat, lon];
+}
+
+async function initPskTile() {
+  // Initialize Leaflet map
+  if (!pskMap) {
+    pskMap = L.map('psk-map', { zoomControl: true, attributionControl: true, worldCopyJump: true }).setView([20, 0], 2);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
+      subdomains: 'abcd',
+      maxZoom: 19,
+    }).addTo(pskMap);
+    pskSpotLayer = L.layerGroup().addTo(pskMap);
+
+    // Greyline helpers
+    const enableGreyline = () => {
+      pskTerminator = L.terminator({
+        fillColor:   '#0a0f2e',
+        fillOpacity: 0.45,
+        color:       '#f97316',
+        weight:      1.5,
+        opacity:     0.8,
+      }).addTo(pskMap);
+      pskTerminator.bringToBack();
+      if (pskTerminatorTimer) clearInterval(pskTerminatorTimer);
+      pskTerminatorTimer = setInterval(() => {
+        if (pskTerminator) pskTerminator.setTime(new Date());
+      }, 60 * 1000);
+    };
+    const disableGreyline = () => {
+      if (pskTerminatorTimer) { clearInterval(pskTerminatorTimer); pskTerminatorTimer = null; }
+      if (pskTerminator) { pskTerminator.remove(); pskTerminator = null; }
+    };
+
+    // Restore persisted state
+    const greylineEl = document.getElementById('psk-greyline-toggle');
+    if (greylineEl) {
+      const saved = localStorage.getItem('psk_greyline') === 'true';
+      greylineEl.checked = saved;
+      if (saved) enableGreyline();
+
+      greylineEl.addEventListener('change', (e) => {
+        localStorage.setItem('psk_greyline', e.target.checked);
+        if (e.target.checked) enableGreyline(); else disableGreyline();
+      });
+    }
+  }
+
+  // Pre-fill controls: localStorage first, fall back to saved API settings
+  const LSK = 'psk_tile_prefs';
+  try {
+    const cs      = document.getElementById('psk-tile-callsign');
+    const dir     = document.getElementById('psk-tile-direction');
+    const modesEl = document.getElementById('psk-tile-modes');
+    const bandsEl = document.getElementById('psk-tile-bands');
+    const ts      = document.getElementById('psk-tile-timespan');
+
+    // Try localStorage first
+    let prefs = null;
+    try { prefs = JSON.parse(localStorage.getItem(LSK)); } catch { /* ignore */ }
+
+    if (prefs) {
+      if (cs  && prefs.callsign)   cs.value  = prefs.callsign;
+      if (dir && prefs.direction)  dir.value = prefs.direction;
+      if (ts  && prefs.timespan)   ts.value  = String(prefs.timespan);
+      if (modesEl && prefs.modes?.length)
+        Array.from(modesEl.options).forEach(o => { o.selected = prefs.modes.includes(o.value); });
+      if (bandsEl && prefs.bands?.length)
+        Array.from(bandsEl.options).forEach(o => { o.selected = prefs.bands.includes(o.value); });
+    } else {
+      // Fall back to API settings defaults
+      const cfg = await apiGet('/pskreporter/settings');
+      if (cs  && cfg.callsign)           cs.value  = cfg.callsign;
+      if (dir && cfg.default_direction)  dir.value = cfg.default_direction;
+      if (ts  && cfg.default_timespan)   ts.value  = String(cfg.default_timespan);
+      if (modesEl && cfg.default_modes?.length)
+        Array.from(modesEl.options).forEach(o => { o.selected = cfg.default_modes.includes(o.value); });
+      if (bandsEl && cfg.default_bands?.length)
+        Array.from(bandsEl.options).forEach(o => { o.selected = cfg.default_bands.includes(o.value); });
+    }
+
+    if (document.getElementById('psk-tile-callsign')?.value) await loadPskSpots();
+  } catch { /* no saved settings yet */ }
+
+  document.getElementById('btn-psk-fetch')?.addEventListener('click', () => loadPskSpots());
+  document.getElementById('btn-psk-refresh')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-psk-refresh');
+    if (btn) btn.disabled = true;
+    await loadPskSpots();
+    if (btn) btn.disabled = false;
+  });
+
+  if (pskRefreshTimer) clearInterval(pskRefreshTimer);
+  pskRefreshTimer = setInterval(() => { if (!destroyed) loadPskSpots(); }, 5 * 60 * 1000);
+}
+
+async function loadPskSpots() {
+  if (!pskMap) return;
+  const callsign  = document.getElementById('psk-tile-callsign')?.value.trim().toUpperCase() || '';
+  const direction = document.getElementById('psk-tile-direction')?.value || 'senderCallsign';
+  const modesEl   = document.getElementById('psk-tile-modes');
+  const bandsEl   = document.getElementById('psk-tile-bands');
+  const timespan  = parseInt(document.getElementById('psk-tile-timespan')?.value || '-3600');
+
+  // Persist current selections to localStorage
+  if (callsign) {
+    try {
+      localStorage.setItem('psk_tile_prefs', JSON.stringify({
+        callsign, direction, timespan,
+        modes: modesEl ? Array.from(modesEl.selectedOptions).map(o => o.value) : [],
+        bands: bandsEl ? Array.from(bandsEl.selectedOptions).map(o => o.value) : [],
+      }));
+    } catch { /* ignore */ }
+  }
+  const placeholder = document.getElementById('psk-map-placeholder');
+  const legend    = document.getElementById('psk-legend');
+
+  const setPlaceholder = (msg) => {
+    if (placeholder) { placeholder.style.display = 'flex'; placeholder.querySelector('span').textContent = msg; }
+  };
+
+  if (!callsign) { setPlaceholder('Enter a callsign and click Fetch Spots.'); return; }
+
+  setPlaceholder('Fetching spots…');
+  const modes = modesEl ? Array.from(modesEl.selectedOptions).map(o => o.value).join(',') : '';
+  const bands = bandsEl ? Array.from(bandsEl.selectedOptions).map(o => o.value).join(',') : '';
+
+  try {
+    const params = new URLSearchParams({ callsign, direction, modes, bands, timespan });
+    const data = await apiGet(`/pskreporter/spots?${params}`);
+
+    // Update header status
+    const updEl = document.getElementById('psk-updated');
+    if (updEl && data.fetched_at) {
+      const d = new Date(data.fetched_at.slice(0, 19) + 'Z');
+      updEl.textContent = `${data.cached ? '(cached) ' : ''}${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · ${data.count ?? 0} spots`;
+    }
+
+    if (!data.spots?.length) {
+      pskSpotLayer.clearLayers();
+      if (legend) legend.style.display = 'none';
+      setPlaceholder('No spots found for the selected filters.');
+      return;
+    }
+
+    if (placeholder) placeholder.style.display = 'none';
+
+    // Try to get home station location for the home marker
+    let homeLat = null, homeLon = null;
+    try {
+      const loc = await apiGet('/settings/location');
+      homeLat = loc.lat; homeLon = loc.lon;
+    } catch { /* ignore */ }
+
+    pskSpotLayer.clearLayers();
+    // Keep terminator below spots after clearing
+    if (pskTerminator) pskTerminator.bringToBack();
+    const bandCounts = {};
+
+    // Add home station marker
+    if (homeLat != null && homeLon != null) {
+      L.marker([homeLat, homeLon], {
+        icon: L.divIcon({
+          html: `<i class="bi bi-house-fill" style="color:#fbbf24;font-size:1.1rem;filter:drop-shadow(0 0 3px #000)"></i>`,
+          iconSize: [18, 18], iconAnchor: [9, 9], className: '',
+        }),
+        zIndexOffset: 1000,
+      }).addTo(pskSpotLayer).bindTooltip(`${callsign} (your station)`, { direction: 'right' });
+    }
+
+    // Jitter tracker to spread markers that share the same grid square
+    const jitterMap = {};
+
+    for (const spot of data.spots) {
+      const otherCall = direction === 'senderCallsign' ? spot.receiverCallsign : spot.senderCallsign;
+      const otherLoc  = direction === 'senderCallsign' ? spot.receiverLocator  : spot.senderLocator;
+      const ll = maidenToLatLon(otherLoc);
+      if (!ll) continue;
+
+      const color   = BAND_COLORS[spot.band] ?? '#94a3b8';
+      bandCounts[spot.band] = (bandCounts[spot.band] ?? 0) + 1;
+
+      // Jitter: offset overlapping spots by a tiny amount
+      const jKey = `${Math.round(ll[0]*100)},${Math.round(ll[1]*100)}`;
+      const n    = jitterMap[jKey] ?? 0;
+      jitterMap[jKey] = n + 1;
+      const jLat = ll[0] + (n % 5) * 0.08 * Math.cos((n * 137.5) * Math.PI / 180);
+      const jLon = ll[1] + (n % 5) * 0.08 * Math.sin((n * 137.5) * Math.PI / 180);
+
+      const snrStr = spot.snr != null ? `${spot.snr > 0 ? '+' : ''}${spot.snr}` : '?';
+      const sColor = snrColor(spot.snr);
+      const t      = spot.timestamp ? new Date(spot.timestamp * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '--';
+
+      const marker = L.circleMarker([jLat, jLon], {
+        radius: 7, color: '#0f172a', weight: 1,
+        fillColor: color, fillOpacity: 0.85,
+      });
+
+      // Popup with full details on click
+      marker.bindPopup(
+        `<b>${escHtml(otherCall)}</b><br>` +
+        `Locator: ${escHtml(otherLoc || '--')}<br>` +
+        `Band: ${escHtml(spot.band)} &nbsp; Mode: ${escHtml(spot.mode)}<br>` +
+        `SNR: <span style="color:${sColor};font-weight:600">${escHtml(snrStr)} dB</span><br>` +
+        `Time: ${escHtml(t)}`,
+        { className: 'psk-popup' }
+      );
+
+      marker.addTo(pskSpotLayer);
+
+      // Plain floating text label — no balloon, no box
+      L.marker([jLat, jLon], {
+        icon: L.divIcon({
+          html: `<div class="psk-spot-label"><span style="font-weight:700;color:#ffffff">${escHtml(otherCall)}</span><br><span style="color:${sColor}">${escHtml(snrStr)} dB</span></div>`,
+          iconSize: null,
+          iconAnchor: [-10, 8],
+          className: '',
+        }),
+        interactive: false,
+        keyboard: false,
+      }).addTo(pskSpotLayer);
+    }
+
+    // Build legend (only bands present in results)
+    if (legend) {
+      const BAND_ORDER = ['160m','80m','60m','40m','30m','20m','17m','15m','12m','10m','6m','2m'];
+      const items = BAND_ORDER
+        .filter(b => bandCounts[b])
+        .map(b => `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px">
+            <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${BAND_COLORS[b]};flex-shrink:0"></span>
+            <span style="color:#e2e8f0">${b}</span>
+            <span style="color:#64748b">(${bandCounts[b]})</span>
+          </span>`)
+        .join('');
+      legend.innerHTML = `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:2px;color:#94a3b8">
+        <span style="margin-right:6px;font-weight:600">Band:</span>${items}
+        <span style="margin-left:auto;color:#64748b">SNR: </span>
+        ${['≥+10','0 to +10','-10 to 0','-20 to -10','< -20'].map((l,i) => {
+          const c = ['#4ade80','#86efac','#fde047','#fb923c','#f87171'][i];
+          return `<span style="display:inline-flex;align-items:center;gap:3px;margin-left:6px">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c}"></span>
+            <span style="color:#94a3b8">${l}</span></span>`;
+        }).join('')}
+      </div>`;
+      legend.style.display = 'block';
+    }
+
+  } catch (e) {
+    setPlaceholder(`Error: ${e.message}`);
+  }
 }
 
 // ── Weather loading ──────────────────────────────────────────────────────────
@@ -1027,15 +1426,17 @@ function renderDxHeatmap({ region, bands, continents, counts }) {
   const thBase = 'font-size:0.63rem;color:#b0c0d8;text-transform:uppercase;letter-spacing:0.03em;padding:2px 4px;text-align:center;font-weight:600;white-space:nowrap';
   const headers = continents.map(c => `<th style="${thBase}">${c}</th>`).join('');
 
-  const rows = bands.map(band => {
+  const rows = bands.map((band, i) => {
+    const rowBg = i % 2 === 0 ? '#0d1626' : '#111e30';
     const cells = continents.map(cont => {
       const count = counts[band]?.[cont] ?? 0;
       const { bg, fg } = dxcHeatColor(count);
+      const cellBg = count === 0 ? rowBg : bg;
       const display = count === 0 ? '' : String(count);
-      return `<td style="background:${bg};color:${fg};text-align:center;padding:3px 4px;border:1px solid #060e18;font-size:0.72rem;font-weight:${count > 0 ? '700' : '400'};min-width:28px">${display}</td>`;
+      return `<td style="background:${cellBg};color:${fg};text-align:center;padding:3px 4px;border:1px solid #060e18;font-size:0.72rem;font-weight:${count > 0 ? '700' : '400'};min-width:28px">${display}</td>`;
     }).join('');
-    return `<tr>
-      <td style="color:#c8d8ee;font-size:0.72rem;padding:3px 8px 3px 2px;white-space:nowrap;font-weight:600">${escHtml(band)}</td>
+    return `<tr style="background:${rowBg}">
+      <td style="background:${rowBg};color:#c8d8ee;font-size:0.72rem;padding:3px 8px 3px 2px;white-space:nowrap;font-weight:600">${escHtml(band)}</td>
       ${cells}
     </tr>`;
   }).join('');

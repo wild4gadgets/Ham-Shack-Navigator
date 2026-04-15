@@ -50,6 +50,19 @@ export async function navigate(forceHash) {
 
   navbar.style.display = getToken() ? '' : 'none';
 
+  // Show station callsign in navbar
+  const callsignEl = document.getElementById('nav-callsign');
+  if (callsignEl) {
+    if (getToken()) {
+      try {
+        const loc = await apiGet('/settings/location');
+        callsignEl.textContent = loc.callsign ? loc.callsign.replace(/0/g, 'Ø') + ' — ' : '';
+      } catch { /* ignore */ }
+    } else {
+      callsignEl.textContent = '';
+    }
+  }
+
   // Show/hide admin-only nav items
   const usersNavLink = document.getElementById('nav-users');
   if (usersNavLink) usersNavLink.style.display = isAdmin() ? '' : 'none';
