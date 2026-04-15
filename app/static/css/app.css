@@ -178,11 +178,12 @@ label, .form-label, .form-text, .form-check-label { color: #e0e0e0 !important; }
 }
 
 .seg-clock-label {
-  font-size: 0.55rem;
-  color: #a01000;
+  font-size: 0.65rem;
+  color: #ff4422;
   letter-spacing: 0.15em;
   text-transform: uppercase;
   font-family: monospace;
+  font-weight: bold;
 }
 
 /* Each digit cell */

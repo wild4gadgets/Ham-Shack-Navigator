@@ -79,6 +79,17 @@ async def get_lightning(db: AsyncSession = Depends(get_db), _: User = Depends(ge
     }
 
 
+@router.get("/alerts")
+async def get_alerts(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Return active NWS weather alerts for the configured location."""
+    nws_cache = await get_cached(db, "nws_alerts")
+    if not nws_cache:
+        return {"alerts": [], "outside_coverage": False}
+    nws = nws_cache.get("data", {})
+    outside = nws.get("note") == "outside_nws_coverage"
+    return {"alerts": nws.get("alerts", []), "outside_coverage": outside}
+
+
 @router.post("/refresh")
 async def refresh_weather(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     results = await fetch_all(db)

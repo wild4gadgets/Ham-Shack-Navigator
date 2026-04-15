@@ -168,9 +168,25 @@ async def fetch_nws_alerts(db: AsyncSession) -> dict | None:
             if f.get("properties", {}).get("event") in _NWS_WARNING_EVENTS
         ]
 
+        all_alerts = [
+            {
+                "event":     f["properties"].get("event", ""),
+                "headline":  f["properties"].get("headline", ""),
+                "severity":  f["properties"].get("severity", "Unknown"),
+                "urgency":   f["properties"].get("urgency", "Unknown"),
+                "certainty": f["properties"].get("certainty", "Unknown"),
+                "areaDesc":  f["properties"].get("areaDesc", ""),
+                "effective": f["properties"].get("effective", ""),
+                "expires":   f["properties"].get("expires", ""),
+            }
+            for f in data.get("features", [])
+            if f.get("properties", {}).get("event")
+        ]
+
         result = {
             "lightningDistance": 0.0 if active_warnings else None,
             "active_warnings": active_warnings,
+            "alerts": all_alerts,
         }
         await _save_cache(db, "nws_alerts", result)
         return result

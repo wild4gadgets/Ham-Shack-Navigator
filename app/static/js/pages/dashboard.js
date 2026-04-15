@@ -94,6 +94,7 @@ export async function renderDashboard(container) {
           <div class="card-body p-2" id="forecast-strip">
             <div class="text-muted text-center">Loading...</div>
           </div>
+          <div id="alerts-strip" style="display:none"></div>
         </div>
       </div>
 
@@ -408,6 +409,38 @@ function owmIconColor(weather) {
   return '#94a3b8';
 }
 
+function renderAlerts(alerts) {
+  const el = document.getElementById('alerts-strip');
+  if (!el) return;
+  if (!alerts.length) {
+    el.style.display = 'none';
+    el.innerHTML = '';
+    return;
+  }
+
+  const severityStyle = {
+    'Extreme':  { bg: '#450a0a', border: '#ef4444', text: '#fca5a5', icon: 'bi-exclamation-octagon-fill' },
+    'Severe':   { bg: '#431407', border: '#f97316', text: '#fdba74', icon: 'bi-exclamation-triangle-fill' },
+    'Moderate': { bg: '#422006', border: '#eab308', text: '#fde047', icon: 'bi-exclamation-triangle'      },
+    'Minor':    { bg: '#1e3a5f', border: '#60a5fa', text: '#bfdbfe', icon: 'bi-info-circle'               },
+  };
+
+  const rows = alerts.map(a => {
+    const s = severityStyle[a.severity] || { bg: '#1e293b', border: '#475569', text: '#94a3b8', icon: 'bi-info-circle' };
+    const expires = a.expires ? new Date(a.expires).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : '';
+    return `<div style="background:${s.bg};border-left:4px solid ${s.border};padding:8px 10px;margin:0">
+      <div style="display:flex;align-items:center;gap:6px;color:${s.text};font-weight:700;font-size:0.9rem">
+        <i class="bi ${s.icon}"></i>${a.event}
+      </div>
+      ${a.headline ? `<div style="color:#cbd5e1;font-size:0.8rem;margin-top:2px">${a.headline}</div>` : ''}
+      ${expires ? `<div style="color:#64748b;font-size:0.75rem;margin-top:2px">Expires: ${expires}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  el.innerHTML = rows;
+  el.style.display = 'block';
+}
+
 function renderForecast(fList, metric) {
   const el = document.getElementById('forecast-strip');
   if (!el) return;
@@ -432,12 +465,12 @@ function renderForecast(fList, metric) {
     const popColor = pop >= 60 ? '#60a5fa' : pop >= 30 ? '#93c5fd' : '#64748b';
     const leftPad = indent ? 'padding-left:10px;' : '';
     return `
-      <div class="d-flex align-items-center gap-1 py-1" style="${leftPad}border-bottom:1px solid #1e2a3a;font-size:0.78rem" title="${desc}">
-        <span style="width:50px;flex-shrink:0;white-space:nowrap;color:#94a3b8">${timeLabel}</span>
-        <i class="bi ${icon}" style="font-size:1rem;color:${iconColor};flex-shrink:0;margin-left:4px"></i>
-        <span style="font-weight:600;color:#f1f5f9;width:34px;flex-shrink:0">${temp}${tempUnit}</span>
-        <span style="color:#64748b;flex-shrink:0">${windSpeed != null ? windSpeed + ' ' + windUnit : ''}</span>
-        <span style="color:${popColor};flex-shrink:0;margin-left:auto">${pop > 0 ? '💧' + pop + '%' : ''}</span>
+      <div class="d-flex align-items-center gap-2 py-1" style="${leftPad}border-bottom:1px solid #1e2a3a;font-size:1rem" title="${desc}">
+        <span style="width:70px;flex-shrink:0;white-space:nowrap;color:#94a3b8">${timeLabel}</span>
+        <i class="bi ${icon}" style="font-size:1.1rem;color:${iconColor};flex-shrink:0"></i>
+        <span style="font-weight:600;color:#f1f5f9;width:52px;flex-shrink:0;white-space:nowrap">${temp}${tempUnit}</span>
+        <span style="color:#64748b;flex-shrink:0;white-space:nowrap">${windSpeed != null ? windSpeed + ' ' + windUnit : ''}</span>
+        <span style="color:${popColor};flex-shrink:0;margin-left:auto;white-space:nowrap">${pop > 0 ? '💧' + pop + '%' : ''}</span>
       </div>`;
   };
 
@@ -454,12 +487,13 @@ function renderForecast(fList, metric) {
 
 async function loadWeather() {
   try {
-    const [current, forecast, realtime, loc, lightning] = await Promise.all([
+    const [current, forecast, realtime, loc, lightning, alertsData] = await Promise.all([
       apiGet('/weather/current'),
       apiGet('/weather/forecast'),
       apiGet('/weather/realtime'),
       apiGet('/settings/location'),
       apiGet('/weather/lightning'),
+      apiGet('/weather/alerts').catch(() => ({ alerts: [] })),
     ]);
 
     const metric = (loc.units || 'imperial') === 'metric';
@@ -483,6 +517,7 @@ async function loadWeather() {
       // Forecast min/max from the 24h forecast list
       const fList = forecast.data?.list || [];
       renderForecast(fList, metric);
+      renderAlerts(alertsData?.alerts || []);
       const fTemps = fList.flatMap(e => [e.main?.temp_min, e.main?.temp_max]).filter(t => t != null);
       const forecastMin = fTemps.length ? Math.min(...fTemps) : null;
       const forecastMax = fTemps.length ? Math.max(...fTemps) : null;
@@ -541,16 +576,19 @@ async function loadWeather() {
       const lightEl   = document.getElementById('lightning-value');
       const lightUnit = document.getElementById('lightning-unit');
       const lightDesc = document.getElementById('lightning-desc');
-      if (lightUnit) lightUnit.textContent = metric ? 'km away' : 'miles away';
       if (lightEl) {
         const km    = lightning?.lightningDistance;
         const miles = lightning?.lightningMiles;
         if (km != null) {
           lightEl.textContent = metric ? km.toFixed(1) : miles.toFixed(1);
+          lightEl.style.fontSize = '';
+          if (lightUnit) lightUnit.textContent = metric ? 'km away' : 'miles away';
           if (lightDesc) lightDesc.textContent = lightning.source || '';
         } else {
-          lightEl.textContent = metric ? '> 400' : '> 248';
-          if (lightDesc) lightDesc.textContent = 'No lightning detected';
+          lightEl.textContent = metric ? 'None detected within 400 kilometers' : 'None detected within 250 miles';
+          lightEl.style.fontSize = '1.5rem';
+          if (lightUnit) lightUnit.textContent = '';
+          if (lightDesc) lightDesc.textContent = '';
         }
       }
     }
