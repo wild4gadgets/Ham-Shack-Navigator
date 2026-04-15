@@ -186,7 +186,7 @@ export async function renderDashboard(container) {
                 <label class="form-label mb-1" style="font-size:0.75rem;color:#94a3b8">Direction</label>
                 <select id="psk-tile-direction" class="form-select form-select-sm" style="width:160px">
                   <option value="senderCallsign">Heard by others</option>
-                  <option value="receiverCallsign">Heard from others</option>
+                  <option value="receiverCallsign">Heard by callsign</option>
                 </select>
               </div>
               <div>
