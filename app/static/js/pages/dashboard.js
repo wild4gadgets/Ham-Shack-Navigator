@@ -303,7 +303,8 @@ export async function renderDashboard(container) {
 
   document.getElementById('btn-system-toggle').addEventListener('click', async () => {
     if (!isAdmin()) return;
-    const isUp = systemState.last === 'Startup';
+    const effectiveStatus = computeDeviceStatusFromPins() ?? systemState.device_status ?? 'unknown';
+    const isUp = effectiveStatus === 'up' || effectiveStatus === 'partial';
     const targetName = isUp ? 'Shutdown' : 'Startup';
     const targetId = isUp ? systemState.shutdown_id : systemState.startup_id;
     if (!targetId) return;
@@ -357,16 +358,37 @@ function cleanup() {
   radarPlaying = false;
 }
 
+function computeDeviceStatusFromPins() {
+  // null  = unreachable ('?') — counts as down
+  // false = off           — counts as down
+  // true  = on            — counts as up
+  const values = Object.values(pinStates);
+  if (!values.length) return null; // no pins configured; caller falls back to backend status
+  const onCount = values.filter(v => v === true).length;
+  if (onCount === values.length) return 'up';
+  if (onCount === 0)             return 'down';
+  return 'partial';
+}
+
+function updateSystemStatusButton() {
+  const btn = document.getElementById('btn-system-toggle');
+  if (!btn) return;
+  // Pin states are the ground truth (they reflect actual device reachability, including
+  // '?' for unreachable devices).  Fall back to the backend-computed status only when
+  // no dashboard pins have been configured.
+  const ds = computeDeviceStatusFromPins() ?? systemState.device_status ?? 'unknown';
+  const labels  = { up: 'System Up', partial: 'Partially Up', down: 'System Down', unknown: 'Status Unknown' };
+  const classes = { up: 'btn-success', partial: 'btn-warning', down: 'btn-danger', unknown: 'btn-secondary' };
+  btn.textContent = labels[ds] ?? 'Status Unknown';
+  btn.className   = `btn btn-sm ${classes[ds] ?? 'btn-secondary'}`;
+  btn.disabled    = !isAdmin();
+}
+
 async function loadSystemState() {
   try {
     systemState = await apiGet('/workflows/system-state');
   } catch { return; }
-  const btn = document.getElementById('btn-system-toggle');
-  if (!btn) return;
-  const isUp = systemState.last === 'Startup';
-  btn.textContent = isUp ? 'System Up' : 'System Down';
-  btn.className = `btn btn-sm ${isUp ? 'btn-success' : 'btn-danger'}`;
-  btn.disabled = !isAdmin();
+  updateSystemStatusButton();
 }
 
 async function loadAll() {
@@ -1408,6 +1430,7 @@ async function pollPinStates() {
 
   await Promise.all(promises);
   renderPins();
+  updateSystemStatusButton();
 }
 
 async function togglePin(type, id) {
@@ -1656,12 +1679,26 @@ async function loadDxCluster() {
   }
 }
 
-function connectWS() {
+async function connectWS() {
   const token = getToken();
   if (!token) return;
 
+  // Fetch a short-lived one-time ticket so the long-lived JWT never appears in
+  // server access logs (WebSocket URLs are logged in full by nginx).
+  let ticket;
+  try {
+    const resp = await fetch('/api/v1/auth/ws-ticket', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    if (!resp.ok) return;
+    ({ ticket } = await resp.json());
+  } catch {
+    return;
+  }
+
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const url = `${proto}//${location.host}/ws/dashboard?token=${encodeURIComponent(token)}`;
+  const url = `${proto}//${location.host}/ws/dashboard?ticket=${encodeURIComponent(ticket)}`;
   ws = new WebSocket(url);
 
   ws.onmessage = (evt) => {

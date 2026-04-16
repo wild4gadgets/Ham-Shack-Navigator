@@ -7,7 +7,7 @@ from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
 
 from database import AsyncSessionLocal
-from dependencies import get_db, get_current_user
+from dependencies import get_db, get_current_user, require_admin
 from models import User, Workflow, WorkflowStep, KasaPort, ShellyChannel, ShellyDevice, Setting, ScheduledWorkflow
 from schemas import (
     WorkflowCreate, WorkflowResponse, WorkflowStepsRequest, WorkflowStepResponse,
@@ -218,15 +218,96 @@ async def put_steps(
 
 @router.get("/system-state")
 async def get_system_state(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    """Return the last system workflow that ran and the IDs of Startup/Shutdown workflows."""
+    """Return the last system workflow that ran, the IDs of Startup/Shutdown workflows,
+    and a live device_status ('up' | 'down' | 'partial' | 'unknown') derived from the
+    actual current state of every device the Startup workflow turns on."""
     startup = (await db.execute(select(Workflow).where(Workflow.name == "Startup", Workflow.is_system == True))).scalar_one_or_none()
     shutdown = (await db.execute(select(Workflow).where(Workflow.name == "Shutdown", Workflow.is_system == True))).scalar_one_or_none()
     row = (await db.execute(select(Setting).where(Setting.key == "last_system_workflow"))).scalar_one_or_none()
     last = json.loads(row.value) if row else None
+
+    device_status = "unknown"
+
+    if startup:
+        steps_result = await db.execute(
+            select(WorkflowStep)
+            .options(
+                selectinload(WorkflowStep.kasa_port).selectinload(KasaPort.device),
+                selectinload(WorkflowStep.shelly_channel).selectinload(ShellyChannel.device),
+            )
+            .where(WorkflowStep.workflow_id == startup.id, WorkflowStep.action == "on")
+        )
+        on_steps = steps_result.scalars().all()
+
+        if on_steps:
+            # Collect unique devices and which port/channel indices matter
+            kasa_checks: dict[int, dict] = {}   # device_id → {ip, type, ports: set}
+            shelly_checks: dict[int, dict] = {}  # device_id → {ip, count, gen, channels: set}
+
+            for step in on_steps:
+                if step.kasa_port_id and step.kasa_port:
+                    dev = step.kasa_port.device
+                    if dev.id not in kasa_checks:
+                        kasa_checks[dev.id] = {"ip": dev.ip_address, "type": dev.device_type, "ports": set()}
+                    kasa_checks[dev.id]["ports"].add(step.kasa_port.port_index)
+                elif step.shelly_channel_id and step.shelly_channel:
+                    dev = step.shelly_channel.device
+                    if dev.id not in shelly_checks:
+                        shelly_checks[dev.id] = {"ip": dev.ip_address, "count": dev.channel_count, "gen": dev.generation, "channels": set()}
+                    shelly_checks[dev.id]["channels"].add(step.shelly_channel.channel_index)
+
+            # Query all devices concurrently; treat unreachable devices as all-off
+            kasa_ids = list(kasa_checks)
+            shelly_ids = list(shelly_checks)
+
+            kasa_results = await asyncio.gather(
+                *[kasa_service.get_port_states(kasa_checks[did]["ip"], kasa_checks[did]["type"]) for did in kasa_ids],
+                return_exceptions=True,
+            )
+            shelly_results = await asyncio.gather(
+                *[shelly_service.get_channel_states(shelly_checks[did]["ip"], shelly_checks[did]["count"], shelly_checks[did]["gen"]) for did in shelly_ids],
+                return_exceptions=True,
+            )
+
+            on_count = 0
+            off_count = 0
+
+            for did, result in zip(kasa_ids, kasa_results):
+                if isinstance(result, Exception):
+                    off_count += len(kasa_checks[did]["ports"])
+                else:
+                    state_map = {s["port_index"]: s["is_on"] for s in result}
+                    for pi in kasa_checks[did]["ports"]:
+                        if state_map.get(pi, False):
+                            on_count += 1
+                        else:
+                            off_count += 1
+
+            for did, result in zip(shelly_ids, shelly_results):
+                if isinstance(result, Exception):
+                    off_count += len(shelly_checks[did]["channels"])
+                else:
+                    state_map = {s["channel_index"]: s["is_on"] for s in result}
+                    for ci in shelly_checks[did]["channels"]:
+                        if state_map.get(ci, False):
+                            on_count += 1
+                        else:
+                            off_count += 1
+
+            total = on_count + off_count
+            if total > 0:
+                if on_count == total:
+                    device_status = "up"
+                elif off_count == total:
+                    device_status = "down"
+                else:
+                    device_status = "partial"
+
     return {
         "last": last,
         "startup_id": startup.id if startup else None,
         "shutdown_id": shutdown.id if shutdown else None,
+        "device_status": device_status,
     }
 
 
@@ -235,7 +316,7 @@ async def run_workflow(
     workflow_id: int,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
 ):
     result = await db.execute(select(Workflow).where(Workflow.id == workflow_id))
     wf = result.scalar_one_or_none()

@@ -9,7 +9,7 @@ from models import User
 router = APIRouter(prefix="/dxcluster", tags=["dxcluster"])
 
 # DXWatch public API — returns the most recent N spots as a JSON dict
-DXWATCH_URL = "http://www.dxwatch.com/dxsd1/s.php"
+DXWATCH_URL = "https://www.dxwatch.com/dxsd1/s.php"
 
 FREQ_BANDS = [
     (1800,   2000,   "160m"),

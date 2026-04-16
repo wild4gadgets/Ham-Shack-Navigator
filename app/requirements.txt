@@ -12,3 +12,4 @@ apscheduler==3.10.4
 python-multipart==0.0.17
 pydantic==2.10.3
 pydantic-settings==2.6.1
+slowapi==0.1.9

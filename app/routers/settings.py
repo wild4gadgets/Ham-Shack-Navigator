@@ -327,7 +327,8 @@ async def test_smtp(db: AsyncSession = Depends(get_db), _: User = Depends(requir
         await send_test_email(db)
         return {"detail": "Test email sent"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("SMTP test failed: %s", e)
+        raise HTTPException(status_code=500, detail="Test failed — check server logs")
 
 
 # --- Notifications ---
@@ -380,7 +381,8 @@ async def test_ifttt(db: AsyncSession = Depends(get_db), _: User = Depends(requi
         await send_ifttt_test(db)
         return {"detail": "Test event sent"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("IFTTT test failed: %s", e)
+        raise HTTPException(status_code=500, detail="Test failed — check server logs")
 
 
 # --- Telegram ---
@@ -411,7 +413,8 @@ async def test_telegram(db: AsyncSession = Depends(get_db), _: User = Depends(re
         await send_telegram_test(db)
         return {"detail": "Test message sent"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Telegram test failed: %s", e)
+        raise HTTPException(status_code=500, detail="Test failed — check server logs")
 
 
 # --- Home Assistant ---
@@ -458,7 +461,8 @@ async def test_home_assistant(db: AsyncSession = Depends(get_db), _: User = Depe
         await push_ha_test(db)
         return {"detail": "Test state pushed to Home Assistant"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Home Assistant test failed: %s", e)
+        raise HTTPException(status_code=500, detail="Test failed — check server logs")
 
 
 # --- Kasa Settings ---

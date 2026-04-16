@@ -22,11 +22,14 @@ _zi.ZoneInfo = _ZoneInfoCompat
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.staticfiles import StaticFiles
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from database import init_db
 from ws_manager import manager
-from auth import verify_token
+from auth import consume_ws_ticket
 from scheduler import start_scheduler, shutdown_scheduler
+from limiter import limiter
 
 from routers import (
     setup as setup_router,
@@ -57,7 +60,15 @@ async def lifespan(app: FastAPI):
     await shutdown_scheduler()
 
 
-app = FastAPI(title="Ham Shack Cockpit", lifespan=lifespan)
+app = FastAPI(
+    title="Ham Shack Cockpit",
+    lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # API routers
 prefix = "/api/v1"
@@ -86,10 +97,8 @@ async def health():
 
 
 @app.websocket("/ws/dashboard")
-async def websocket_dashboard(websocket: WebSocket, token: str = Query(...)):
-    try:
-        verify_token(token)
-    except Exception:
+async def websocket_dashboard(websocket: WebSocket, ticket: str = Query(...)):
+    if not consume_ws_ticket(ticket):
         await websocket.close(code=4001)
         return
 

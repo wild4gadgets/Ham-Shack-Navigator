@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
 
-from dependencies import get_db, get_current_user
+from dependencies import get_db, get_current_user, require_admin
 from models import User, ShutdownStep, KasaPort
 from schemas import ShutdownSequenceRequest, ShutdownStepResponse
 from services.shutdown_service import execute_shutdown
@@ -25,7 +25,7 @@ async def get_sequence(db: AsyncSession = Depends(get_db), _: User = Depends(get
 async def put_sequence(
     body: ShutdownSequenceRequest,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user)
+    _: User = Depends(require_admin)
 ):
     # Validate steps
     for step in body.steps:
@@ -57,7 +57,7 @@ async def put_sequence(
 
 
 @router.post("/trigger")
-async def trigger_shutdown(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def trigger_shutdown(db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     await set_last_shutdown(db)
     asyncio.create_task(_run_shutdown_bg("Manual trigger"))
     return {"detail": "Shutdown sequence triggered"}

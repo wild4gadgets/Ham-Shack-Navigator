@@ -13,15 +13,18 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from fastapi import HTTPException
 from dependencies import get_db, get_current_user, require_admin
 from models import Setting, User, WeatherCache
 from schemas import PskReporterSettings
+
+VALID_DIRECTIONS = {"senderCallsign", "receiverCallsign"}
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/pskreporter", tags=["pskreporter"])
 
 PSK_API = "https://retrieve.pskreporter.info/query"
-CACHE_TTL = 240  # 4 minutes — ensures 5-min frontend refresh always gets fresh data
+CACHE_TTL = 300  # 5 minutes — matches PSKReporter's rate limit to avoid empty responses
 
 BAND_RANGES = {
     "160m": (1_800_000,   2_000_000),
@@ -88,7 +91,7 @@ async def _fetch_from_api(callsign: str, direction: str, mode: str | None, times
         direction:          callsign.upper(),
         "flowStartSeconds": str(timespan),
         "rptlimit":         "500",
-        "appcontact":       "ham-shack-cockpit",
+        "appcontact":       "k0ehr@arrl.net",
     }
     if mode:
         params["mode"] = mode
@@ -171,6 +174,9 @@ async def get_spots(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
+    if direction not in VALID_DIRECTIONS:
+        raise HTTPException(status_code=400, detail=f"direction must be one of: {', '.join(VALID_DIRECTIONS)}")
+
     callsign = callsign.strip().upper()
     if not callsign:
         return {"spots": [], "cached": False, "error": "No callsign provided"}

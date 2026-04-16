@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from dependencies import get_db, get_current_user
+from dependencies import get_db, get_current_user, require_admin
 from models import User, Setting
 from services.monitoring_service import is_in_cooldown, log_event, set_last_shutdown
 from ws_manager import manager
@@ -58,7 +58,7 @@ async def get_status(db: AsyncSession = Depends(get_db), _: User = Depends(get_c
 
 
 @router.post("/enable")
-async def enable_monitoring(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def enable_monitoring(db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     monitoring = await _get_monitoring(db)
     monitoring["enabled"] = True
     await _save_monitoring(db, monitoring)
@@ -68,7 +68,7 @@ async def enable_monitoring(db: AsyncSession = Depends(get_db), _: User = Depend
 
 
 @router.post("/disable")
-async def disable_monitoring(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def disable_monitoring(db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     monitoring = await _get_monitoring(db)
     monitoring["enabled"] = False
     await _save_monitoring(db, monitoring)
@@ -89,7 +89,7 @@ async def webhook_trigger(request: Request, db: AsyncSession = Depends(get_db)):
     if not stored_secret:
         raise HTTPException(status_code=403, detail="Webhook not enabled — configure an incoming secret in IFTTT settings first")
 
-    provided = request.headers.get("X-Webhook-Secret") or request.query_params.get("secret")
+    provided = request.headers.get("X-Webhook-Secret")
     if not provided or not secrets.compare_digest(provided.encode(), stored_secret.encode()):
         raise HTTPException(status_code=403, detail="Invalid webhook secret")
 

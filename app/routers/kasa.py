@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from dependencies import get_db, get_current_user
+from dependencies import get_db, get_current_user, require_admin
 from models import User, KasaDevice, KasaPort
 from schemas import (
     KasaDeviceCreate, KasaDeviceUpdate, KasaPortUpdate, KasaPortControl,
@@ -27,7 +27,7 @@ async def list_devices(db: AsyncSession = Depends(get_db), _: User = Depends(get
 
 
 @router.post("/devices", response_model=KasaDeviceResponse, status_code=201)
-async def add_device(body: KasaDeviceCreate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def add_device(body: KasaDeviceCreate, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     device = KasaDevice(
         name=body.name,
         device_type=body.device_type,
@@ -55,7 +55,7 @@ async def add_device(body: KasaDeviceCreate, db: AsyncSession = Depends(get_db),
 @router.put("/devices/{device_id}", response_model=KasaDeviceResponse)
 async def update_device(
     device_id: int, body: KasaDeviceUpdate,
-    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)
+    db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)
 ):
     result = await db.execute(
         select(KasaDevice).options(selectinload(KasaDevice.ports)).where(KasaDevice.id == device_id)
@@ -72,7 +72,7 @@ async def update_device(
 
 
 @router.delete("/devices/{device_id}", status_code=204)
-async def delete_device(device_id: int, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def delete_device(device_id: int, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     result = await db.execute(select(KasaDevice).where(KasaDevice.id == device_id))
     device = result.scalar_one_or_none()
     if not device:
@@ -133,7 +133,7 @@ async def update_port(
 @router.post("/ports/{port_id}/control")
 async def control_port(
     port_id: int, body: KasaPortControl,
-    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)
+    db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)
 ):
     result = await db.execute(
         select(KasaPort).options(selectinload(KasaPort.device)).where(KasaPort.id == port_id)
