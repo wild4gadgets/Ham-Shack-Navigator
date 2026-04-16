@@ -211,6 +211,11 @@ class PskReporterSettings(BaseModel):
     default_timespan: int = -3600
 
 
+class FlexRadioSettings(BaseModel):
+    ip: str = ""
+    enabled: bool = False
+
+
 # --- Kasa ---
 class KasaDeviceCreate(BaseModel):
     name: str

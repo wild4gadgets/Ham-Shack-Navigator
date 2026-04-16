@@ -48,18 +48,19 @@ export async function renderDashboard(container) {
       <!-- Monitoring Control -->
       <div class="col-12">
         <div class="card">
-          <div class="card-header d-flex justify-content-between align-items-center">
-            <span><i class="bi bi-shield-check me-2"></i>Monitoring</span>
-            <div class="d-flex gap-2">
+          <div class="card-header d-flex align-items-center gap-2 flex-wrap">
+            <span class="me-1"><i class="bi bi-shield-check me-2"></i>Monitoring</span>
+            <div id="monitoring-status-area"><span class="text-muted">Loading...</span></div>
+            <div id="dashboard-pins" class="d-flex flex-wrap gap-1 align-items-center"></div>
+            <div class="ms-auto d-flex align-items-center gap-2">
               <button id="btn-system-toggle" class="btn btn-sm btn-secondary" disabled>...</button>
               <button id="btn-refresh" class="btn btn-sm btn-outline-light">
                 <i class="bi bi-arrow-clockwise"></i> Refresh
               </button>
             </div>
           </div>
-          <div class="card-body d-flex align-items-center flex-wrap gap-2">
-            <div id="monitoring-status-area"><span class="text-muted">Loading...</span></div>
-            <div id="dashboard-pins" class="d-flex flex-wrap gap-1 align-items-center"></div>
+          <div class="card-body d-flex align-items-center flex-wrap gap-2 py-2">
+            <div id="flexradio-status" class="d-flex align-items-center gap-1"></div>
             <div class="ms-auto"><small id="weather-update-time" class="text-white-50"></small></div>
           </div>
         </div>
@@ -392,7 +393,7 @@ async function loadSystemState() {
 }
 
 async function loadAll() {
-  await Promise.all([loadMonitoringStatus(), loadWeather(), loadRecentEvents(), loadRadar(), loadPins(), loadSolarData(), loadSystemState(), loadDxCluster(), initPskTile()]);
+  await Promise.all([loadMonitoringStatus(), loadFlexRadioStatus(), loadWeather(), loadRecentEvents(), loadRadar(), loadPins(), loadSolarData(), loadSystemState(), loadDxCluster(), initPskTile()]);
   if (solarRefreshTimer) clearInterval(solarRefreshTimer);
   solarRefreshTimer = setInterval(() => { if (!destroyed) loadSolarData(); }, 30 * 60 * 1000);
   if (dxcRefreshTimer) clearInterval(dxcRefreshTimer);
@@ -432,6 +433,24 @@ async function loadMonitoringStatus() {
     }
   } catch (e) {
     console.error('Status load failed:', e);
+  }
+}
+
+async function loadFlexRadioStatus() {
+  const el = document.getElementById('flexradio-status');
+  if (!el) return;
+  try {
+    const s = await apiGet('/flexradio/status');
+    if (!s.freq_mhz) {
+      el.innerHTML = '<span class="fw-bold text-danger">Radio Offline</span>';
+      return;
+    }
+    // Format freq: "14.225000" → "14.225" (trim trailing zeros beyond 3 decimals)
+    const mhz = parseFloat(s.freq_mhz).toFixed(3);
+    const mode = s.mode ? `<span class="badge ms-1" style="background:#0dcaf0;color:#000">${escHtml(s.mode)}</span>` : '';
+    el.innerHTML = `<span class="fw-bold text-info me-1">Radio Status:</span><i class="bi bi-broadcast text-info"></i><span class="fw-bold text-info">${escHtml(mhz)}</span><span class="fw-bold text-info">MHz</span>${mode}`;
+  } catch {
+    el.innerHTML = '';
   }
 }
 
@@ -1706,6 +1725,7 @@ async function connectWS() {
       const msg = JSON.parse(evt.data);
       if (msg.type === 'weather_update') loadWeather();
       if (msg.type === 'monitoring_status') loadMonitoringStatus();
+      if (msg.type === 'flexradio_update') loadFlexRadioStatus();
       if (msg.type === 'new_event') loadRecentEvents();
       if (msg.type === 'workflow_complete') {
         if (!msg.success && msg.error) alert(`Workflow failed: ${msg.error}`);

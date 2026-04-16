@@ -17,7 +17,7 @@ from models import User, Setting
 from schemas import (
     LocationSettings, LocationProfile, ApiKeySettings, ThresholdSettings, SmtpSettings,
     NotificationSettings, KasaSettings, IftttSettings, TelegramSettings, HomeAssistantSettings,
-    DxclusterSettings,
+    DxclusterSettings, FlexRadioSettings,
 )
 import scheduler as sched
 
@@ -488,4 +488,19 @@ async def get_dxcluster(db: AsyncSession = Depends(get_db), _: User = Depends(ge
 @router.put("/dxcluster")
 async def put_dxcluster(body: DxclusterSettings, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     await _save_setting(db, "dxcluster", body.model_dump())
+    return {"detail": "Saved"}
+
+
+# --- FlexRadio ---
+@router.get("/flexradio")
+async def get_flexradio(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    data = await _get_setting(db, "flexradio")
+    return data or {"ip": "", "enabled": False}
+
+
+@router.put("/flexradio")
+async def put_flexradio(body: FlexRadioSettings, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
+    await _save_setting(db, "flexradio", body.model_dump())
+    from services.flexradio_service import start_listener
+    start_listener()
     return {"detail": "Saved"}

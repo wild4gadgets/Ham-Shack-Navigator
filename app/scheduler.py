@@ -503,7 +503,11 @@ async def start_scheduler():
         logger.warning("Could not seed Blitzortung location: %s", e)
 
     _blitzortung_task = asyncio.create_task(_blitzortung_listener())
-    logger.info("Scheduler and Blitzortung listener started")
+
+    from services.flexradio_service import start_listener as _start_flex
+    _start_flex()
+
+    logger.info("Scheduler, Blitzortung listener, and FlexRadio listener started")
 
 
 async def shutdown_scheduler():
@@ -515,6 +519,10 @@ async def shutdown_scheduler():
         except asyncio.CancelledError:
             pass
         _blitzortung_task = None
+
+    from services.flexradio_service import stop_listener as _stop_flex
+    _stop_flex()
+
     if _scheduler and _scheduler.running:
         _scheduler.shutdown(wait=False)
         logger.info("Scheduler stopped")

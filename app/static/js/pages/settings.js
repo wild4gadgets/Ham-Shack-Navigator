@@ -12,6 +12,7 @@ import { renderHomeAssistantTab } from '../components/settings/home-assistant.js
 import { renderAccountTab } from '../components/settings/account.js';
 import { renderDxclusterTab } from '../components/settings/dxcluster.js';
 import { renderPskReporterTab } from '../components/settings/pskreporter.js';
+import { renderFlexRadioTab } from '../components/settings/flexradio.js';
 import { isAdmin } from '../state.js';
 
 // Full NAV — admin sees all, readonly sees only notifications + account
@@ -21,6 +22,7 @@ const ADMIN_NAV = [
   { id: 'thresholds', label: 'Thresholds', icon: 'sliders' },
   { id: 'dxcluster',    label: 'DX Cluster',    icon: 'reception-4'   },
   { id: 'pskreporter', label: 'PSK Reporter',  icon: 'broadcast-pin' },
+  { id: 'flexradio',   label: 'FlexRadio',     icon: 'broadcast'     },
   {
     groupId: 'controls', label: 'Controls', icon: 'toggles',
     children: [
@@ -66,6 +68,7 @@ const RENDERERS = {
   'home-assistant': renderHomeAssistantTab,
   dxcluster:        renderDxclusterTab,
   pskreporter:      renderPskReporterTab,
+  flexradio:        renderFlexRadioTab,
   account:          renderAccountTab,
 };
 

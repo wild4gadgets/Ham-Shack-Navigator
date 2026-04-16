@@ -19,6 +19,9 @@ class _ZoneInfoCompat(_OrigZoneInfo):
 
 _zi.ZoneInfo = _ZoneInfoCompat
 
+import logging
+logging.basicConfig(level=logging.INFO)
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.staticfiles import StaticFiles
@@ -49,6 +52,7 @@ from routers import (
     dxcluster as dxcluster_router,
     pskreporter as pskreporter_router,
     qrz as qrz_router,
+    flexradio as flexradio_router,
 )
 
 
@@ -89,6 +93,7 @@ app.include_router(solar_router.router, prefix=prefix)
 app.include_router(dxcluster_router.router, prefix=prefix)
 app.include_router(pskreporter_router.router, prefix=prefix)
 app.include_router(qrz_router.router, prefix=prefix)
+app.include_router(flexradio_router.router, prefix=prefix)
 
 
 @app.get("/api/v1/health")
