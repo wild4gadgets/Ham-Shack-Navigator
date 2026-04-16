@@ -445,10 +445,15 @@ async function loadFlexRadioStatus() {
       el.innerHTML = '<span class="fw-bold text-danger">Radio Offline</span>';
       return;
     }
-    // Format freq: "14.225000" → "14.225" (trim trailing zeros beyond 3 decimals)
     const mhz = parseFloat(s.freq_mhz).toFixed(3);
-    const mode = s.mode ? `<span class="badge ms-1" style="background:#0dcaf0;color:#000">${escHtml(s.mode)}</span>` : '';
-    el.innerHTML = `<span class="fw-bold text-info me-1">Radio Status:</span><i class="bi bi-broadcast text-info"></i><span class="fw-bold text-info">${escHtml(mhz)}</span><span class="fw-bold text-info">MHz</span>${mode}`;
+    const mode = s.mode ? `<span class="badge ms-2" style="background:#00e676;color:#000">${escHtml(s.mode)}</span>` : '';
+    const power = s.rf_power != null ? `<span class="badge ms-1" style="background:#00e676;color:#000">${s.rf_power}W</span>` : '';
+    const isTx = s.tx_state && s.tx_state !== 'READY';
+    const rxtx = s.tx_state != null
+      ? `<span class="badge ms-1" style="background:${isTx ? '#dc3545' : '#198754'};color:#fff">${isTx ? 'TX' : 'RX'}</span>`
+      : '';
+    const freq = `<span class="badge ms-1" style="background:#00e676;color:#000">${escHtml(mhz)} MHz</span>`;
+    el.innerHTML = `<span class="freq-retro me-1">Radio Status</span>${freq}${mode}${power}${rxtx}`;
   } catch {
     el.innerHTML = '';
   }

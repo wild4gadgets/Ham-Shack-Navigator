@@ -265,3 +265,10 @@ label, .form-label, .form-text, .form-check-label { color: #e0e0e0 !important; }
   background: #ff2200;
   box-shadow: 0 0 4px #ff2200;
 }
+
+/* ── Retro frequency display ────────────────────────────────────────────────── */
+.freq-retro {
+  font-weight: bold;
+  font-size: 1rem;
+  color: #00e676;
+}

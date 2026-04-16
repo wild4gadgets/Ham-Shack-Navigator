@@ -30,7 +30,9 @@ FLEX_PORT = 4992
 _flex_task: asyncio.Task | None = None
 _flex_state: dict = {
     "connected": False,
-    "slices": {},       # {slice_index: {"freq": str, "mode": str, "in_use": str}}
+    "slices": {},       # {slice_index: {"RF_frequency": str, "mode": str, "in_use": str}}
+    "transmit": {},     # {"rfpower": str, ...}
+    "interlock": {},    # {"state": "READY" | "TRANSMITTING" | ...}
     "updated_at": None,
 }
 
@@ -40,6 +42,8 @@ def get_state() -> dict:
     return {
         "connected": _flex_state["connected"],
         "slices": {k: dict(v) for k, v in _flex_state["slices"].items()},
+        "transmit": dict(_flex_state["transmit"]),
+        "interlock": dict(_flex_state["interlock"]),
         "updated_at": _flex_state["updated_at"],
     }
 
@@ -86,10 +90,14 @@ async def _flex_listener():
             fail_count = 0
             _flex_state["connected"] = True
 
-            # Identify client and subscribe to all slice status updates
+            # Identify client and subscribe to slice + transmit status updates
             writer.write(f"C{seq}|client program Ham-Shack-Cockpit\n".encode())
             seq += 1
             writer.write(f"C{seq}|sub slice all\n".encode())
+            seq += 1
+            writer.write(f"C{seq}|sub tx all\n".encode())
+            seq += 1
+            writer.write(f"C{seq}|sub interlock all\n".encode())
             seq += 1
             await writer.drain()
 
@@ -114,6 +122,8 @@ async def _flex_listener():
                 # Status message format: S<handle>|<type> key=value ...
                 if text.startswith("S"):
                     _, _, body = text.partition("|")
+
+                    # Slice status
                     m = re.match(r"slice\s+(\d+)\s+(.*)", body)
                     if m:
                         slice_idx = int(m.group(1))
@@ -133,6 +143,34 @@ async def _flex_listener():
                                     "type": "flexradio_update",
                                     "freq": new_freq,
                                     "mode": _flex_state["slices"][0].get("mode", ""),
+                                })
+
+                    # Transmit status
+                    m = re.match(r"transmit\s+(.*)", body)
+                    if m:
+                        kv = _parse_kv(m.group(1))
+                        if "rfpower" in kv:
+                            old_power = _flex_state["transmit"].get("rfpower")
+                            _flex_state["transmit"].update(kv)
+                            _flex_state["updated_at"] = datetime.now(timezone.utc).isoformat()
+                            if kv["rfpower"] != old_power:
+                                await manager.broadcast({
+                                    "type": "flexradio_update",
+                                    "rfpower": kv["rfpower"],
+                                })
+
+                    # Interlock status (PTT / TX state)
+                    m = re.match(r"interlock\s+(.*)", body)
+                    if m:
+                        kv = _parse_kv(m.group(1))
+                        if "state" in kv:
+                            old_ilock = _flex_state["interlock"].get("state")
+                            _flex_state["interlock"].update(kv)
+                            _flex_state["updated_at"] = datetime.now(timezone.utc).isoformat()
+                            if kv["state"] != old_ilock:
+                                await manager.broadcast({
+                                    "type": "flexradio_update",
+                                    "interlock_state": kv["state"],
                                 })
 
         except Exception as exc:
