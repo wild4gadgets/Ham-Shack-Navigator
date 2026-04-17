@@ -445,6 +445,29 @@ async function loadMonitoringStatus() {
   }
 }
 
+function amateurBand(mhz) {
+  const f = parseFloat(mhz);
+  if (f >= 0.1357  && f <= 0.1378) return '2200m';
+  if (f >= 0.472   && f <= 0.479)  return '630m';
+  if (f >= 1.8     && f <= 2.0)    return '160m';
+  if (f >= 3.5     && f <= 4.0)    return '80m';
+  if (f >= 5.06    && f <= 5.45)   return '60m';
+  if (f >= 7.0     && f <= 7.3)    return '40m';
+  if (f >= 10.1    && f <= 10.15)  return '30m';
+  if (f >= 14.0    && f <= 14.35)  return '20m';
+  if (f >= 18.068  && f <= 18.168) return '17m';
+  if (f >= 21.0    && f <= 21.45)  return '15m';
+  if (f >= 24.89   && f <= 24.99)  return '12m';
+  if (f >= 28.0    && f <= 29.7)   return '10m';
+  if (f >= 50.0    && f <= 54.0)   return '6m';
+  if (f >= 144.0   && f <= 148.0)  return '2m';
+  if (f >= 222.0   && f <= 225.0)  return '1.25m';
+  if (f >= 420.0   && f <= 450.0)  return '70cm';
+  if (f >= 902.0   && f <= 928.0)  return '33cm';
+  if (f >= 1240.0  && f <= 1300.0) return '23cm';
+  return null;
+}
+
 async function loadFlexRadioStatus() {
   const el = document.getElementById('flexradio-status');
   if (!el) return;
@@ -463,8 +486,11 @@ async function loadFlexRadioStatus() {
     const rxtx = s.tx_state != null
       ? `<span class="badge ms-1" style="background:${isTx ? '#dc3545' : '#198754'};color:#fff">${isTx ? 'TX' : 'RX'}</span>`
       : '';
-    const freq = `<span class="badge ms-1" style="background:#00e676;color:#000">${escHtml(mhz)} MHz</span>`;
-    el.innerHTML = `<span class="freq-retro me-1">Radio Status</span>${freq}${mode}${power}${rxtx}`;
+    const band = amateurBand(mhz);
+    const freq = `<span class="badge ms-1" style="background:#00e676;color:#000">${escHtml(mhz)} MHz${band ? ' · ' + band : ''}</span>`;
+    const swrColor = s.swr == null ? '' : s.swr <= 2.0 ? '#198754' : s.swr <= 3.0 ? '#fd7e14' : '#dc3545';
+    const swr = s.swr != null ? `<span class="badge ms-1" style="background:${swrColor};color:#fff">SWR ${s.swr}:1</span>` : '';
+    el.innerHTML = `<span class="freq-retro me-1">FlexRadio Status</span>${freq}${mode}${power}${rxtx}${swr}`;
   } catch {
     pskRadioOffline = false;
     el.innerHTML = '';

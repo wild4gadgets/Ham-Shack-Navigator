@@ -30,11 +30,24 @@ FLEX_PORT = 4992
 _flex_task: asyncio.Task | None = None
 _flex_state: dict = {
     "connected": False,
-    "slices": {},       # {slice_index: {"RF_frequency": str, "mode": str, "in_use": str}}
-    "transmit": {},     # {"rfpower": str, ...}
-    "interlock": {},    # {"state": "READY" | "TRANSMITTING" | ...}
+    "slices": {},        # {slice_index: {"RF_frequency": str, "mode": str, "in_use": str}}
+    "transmit": {},      # {"rfpower": str, ...}
+    "interlock": {},     # {"state": "READY" | "TRANSMITTING" | ...}
+    "meters": {},        # {meter_id: float}
+    "meter_names": {},   # {meter_id: str}
     "updated_at": None,
 }
+
+
+def _get_swr() -> float | None:
+    names = _flex_state["meter_names"]
+    meters = _flex_state["meters"]
+    for mid, name in names.items():
+        if "swr" in name.lower():
+            val = meters.get(mid)
+            if val is not None:
+                return round(val, 2)
+    return None
 
 
 def get_state() -> dict:
@@ -44,6 +57,7 @@ def get_state() -> dict:
         "slices": {k: dict(v) for k, v in _flex_state["slices"].items()},
         "transmit": dict(_flex_state["transmit"]),
         "interlock": dict(_flex_state["interlock"]),
+        "swr": _get_swr(),
         "updated_at": _flex_state["updated_at"],
     }
 
@@ -90,7 +104,7 @@ async def _flex_listener():
             fail_count = 0
             _flex_state["connected"] = True
 
-            # Identify client and subscribe to slice + transmit status updates
+            # Identify client and subscribe to slice + transmit + meter status updates
             writer.write(f"C{seq}|client program Ham-Shack-Cockpit\n".encode())
             seq += 1
             writer.write(f"C{seq}|sub slice all\n".encode())
@@ -98,6 +112,10 @@ async def _flex_listener():
             writer.write(f"C{seq}|sub tx all\n".encode())
             seq += 1
             writer.write(f"C{seq}|sub interlock all\n".encode())
+            seq += 1
+            writer.write(f"C{seq}|sub meter all\n".encode())
+            seq += 1
+            writer.write(f"C{seq}|meter list\n".encode())
             seq += 1
             await writer.drain()
 
@@ -172,6 +190,35 @@ async def _flex_listener():
                                     "type": "flexradio_update",
                                     "interlock_state": kv["state"],
                                 })
+
+                    # Meter definition: S<h>|meter <id>.<key>=<val>#<id>.<key>=<val>#...
+                    m = re.match(r"meter\s+(\d+)\.", body)
+                    if m:
+                        meter_id = int(m.group(1))
+                        nam = re.search(r'\.nam=([^#\s]+)', body)
+                        if nam:
+                            _flex_state["meter_names"][meter_id] = nam.group(1)
+                            logger.info("FlexRadio meter %d = %s", meter_id, nam.group(1))
+
+                # Meter update: M<handle>|<id>=<value> ...
+                if text.startswith("M"):
+                    _, _, body = text.partition("|")
+                    old_swr = _get_swr()
+                    for mv in re.finditer(r'(\d+)=(-?[\d.]+)', body):
+                        _flex_state["meters"][int(mv.group(1))] = float(mv.group(2))
+                    new_swr = _get_swr()
+                    if new_swr is not None and new_swr != old_swr:
+                        await manager.broadcast({
+                            "type": "flexradio_update",
+                            "swr": new_swr,
+                        })
+
+                # Command response: R<seq>|0|<data> — parse meter list names
+                if text.startswith("R"):
+                    parts = text.split("|", 2)
+                    if len(parts) == 3 and parts[1] == "0" and parts[2]:
+                        for nm in re.finditer(r'(\d+)\.name=([^,\s]+)', parts[2]):
+                            _flex_state["meter_names"][int(nm.group(1))] = nm.group(2)
 
         except Exception as exc:
             fail_count += 1

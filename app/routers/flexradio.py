@@ -22,5 +22,6 @@ async def get_flexradio_status(_: User = Depends(get_current_user)):
         "in_use": primary.get("in_use") if connected else None,
         "rf_power": int(rf_power_raw) if rf_power_raw is not None else None,
         "tx_state": interlock_state,
+        "swr": state.get("swr") if connected else None,
         "updated_at": state.get("updated_at"),
     }
