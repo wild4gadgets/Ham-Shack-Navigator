@@ -31,6 +31,7 @@ let pskRefreshTimer = null;
 let pskCountdownTimer = null;
 let pskNextRefreshAt = null;
 let pskPaused = false;
+let pskRadioOffline = false;
 let pskMap = null;
 let pskSpotLayer = null;
 let pskTerminator = null;
@@ -163,9 +164,17 @@ export async function renderDashboard(container) {
           <div class="card-header d-flex justify-content-between align-items-center">
             <span><i class="bi bi-broadcast-pin me-2"></i>PSK Reporter Spots</span>
             <div class="d-flex align-items-center gap-2">
+              <div class="d-flex align-items-center gap-1">
+                <input type="text" id="psk-qrz-input" class="form-control form-control-sm"
+                  placeholder="Callsign" style="width:100px;text-transform:uppercase" maxlength="12" />
+                <button id="btn-psk-qrz" class="btn btn-sm btn-outline-info" title="QRZ Lookup">QRZ</button>
+              </div>
               <small id="psk-updated" class="text-white-50"></small>
               <button id="btn-psk-pause" class="btn btn-sm btn-outline-warning" title="Pause auto-refresh">
                 <i class="bi bi-pause-fill"></i>
+              </button>
+              <button id="btn-psk-center" class="btn btn-sm btn-outline-info" title="Center map on your station">
+                Center
               </button>
               <button id="btn-psk-refresh" class="btn btn-sm btn-outline-light" title="Refresh now">
                 <i class="bi bi-arrow-clockwise"></i>
@@ -442,19 +451,22 @@ async function loadFlexRadioStatus() {
   try {
     const s = await apiGet('/flexradio/status');
     if (!s.freq_mhz) {
+      pskRadioOffline = true;
       el.innerHTML = '<span class="fw-bold text-danger">Radio Offline</span>';
       return;
     }
+    pskRadioOffline = false;
     const mhz = parseFloat(s.freq_mhz).toFixed(3);
     const mode = s.mode ? `<span class="badge ms-2" style="background:#00e676;color:#000">${escHtml(s.mode)}</span>` : '';
     const power = s.rf_power != null ? `<span class="badge ms-1" style="background:#00e676;color:#000">${s.rf_power}W</span>` : '';
-    const isTx = s.tx_state && s.tx_state !== 'READY';
+    const isTx = s.tx_state === 'TRANSMITTING' || s.tx_state === 'PTT_REQUESTED';
     const rxtx = s.tx_state != null
       ? `<span class="badge ms-1" style="background:${isTx ? '#dc3545' : '#198754'};color:#fff">${isTx ? 'TX' : 'RX'}</span>`
       : '';
     const freq = `<span class="badge ms-1" style="background:#00e676;color:#000">${escHtml(mhz)} MHz</span>`;
     el.innerHTML = `<span class="freq-retro me-1">Radio Status</span>${freq}${mode}${power}${rxtx}`;
   } catch {
+    pskRadioOffline = false;
     el.innerHTML = '';
   }
 }
@@ -819,6 +831,31 @@ async function initPskTile() {
   }
 
   document.getElementById('btn-psk-fetch')?.addEventListener('click', () => loadPskSpots());
+  const qrzInput = document.getElementById('psk-qrz-input');
+  document.getElementById('btn-psk-qrz')?.addEventListener('click', () => {
+    const call = qrzInput?.value.trim().toUpperCase();
+    if (call) openQrzModal(call);
+  });
+  qrzInput?.addEventListener('input', () => {
+    qrzInput.value = qrzInput.value.toUpperCase();
+  });
+  qrzInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const call = qrzInput.value.trim();
+      if (call) openQrzModal(call);
+    }
+  });
+
+  document.getElementById('btn-psk-center')?.addEventListener('click', async () => {
+    if (!pskMap) return;
+    try {
+      const loc = await apiGet('/settings/location');
+      if (loc?.lat && loc?.lon) {
+        pskMap.setView([loc.lat, loc.lon], 4);
+      }
+    } catch { /* ignore */ }
+  });
+
   document.getElementById('btn-psk-refresh')?.addEventListener('click', async () => {
     const btn = document.getElementById('btn-psk-refresh');
     if (btn) btn.disabled = true;
@@ -830,7 +867,7 @@ async function initPskTile() {
 
   if (pskRefreshTimer) clearInterval(pskRefreshTimer);
   pskRefreshTimer = setInterval(() => {
-    if (!destroyed && !pskPaused) {
+    if (!destroyed && !pskPaused && !pskRadioOffline) {
       pskNextRefreshAt = Date.now() + PSK_INTERVAL_MS;
       loadPskSpots();
     }
@@ -844,7 +881,9 @@ async function initPskTile() {
     const updEl = document.getElementById('psk-updated');
     if (!updEl) return;
     const base = updEl.dataset.base || '';
-    if (pskPaused) {
+    if (pskRadioOffline) {
+      updEl.textContent = base + (base ? ' · ' : '') + 'paused (radio offline)';
+    } else if (pskPaused) {
       updEl.textContent = base + (base ? ' · ' : '') + 'paused';
     } else if (pskNextRefreshAt) {
       const remaining = Math.max(0, Math.ceil((pskNextRefreshAt - Date.now()) / 1000));
@@ -1481,7 +1520,10 @@ async function togglePin(type, id) {
 
 async function loadSolarData() {
   try {
-    const text = await apiFetchXml('/solar/data');
+    const [text, mufData] = await Promise.all([
+      apiFetchXml('/solar/data'),
+      apiGet('/solar/muf').catch(() => null),
+    ]);
     const doc = new DOMParser().parseFromString(text, 'application/xml');
     const get = tag => doc.querySelector(tag)?.textContent?.trim() ?? '--';
 
@@ -1504,6 +1546,7 @@ async function loadSolarData() {
       signalNoise: get('signalnoise'),
       updated: get('updated'),
       bands,
+      muf: mufData?.muf_3000 ?? null,
     });
   } catch (e) {
     console.error('Solar data load failed:', e);
@@ -1540,6 +1583,14 @@ function solarXrayColor(x) {
   return '#94a3b8';
 }
 
+function mufColor(mhz) {
+  if (mhz === null || mhz === undefined) return '#94a3b8';
+  if (mhz >= 20) return '#198754';
+  if (mhz >= 14) return '#fbbf24';
+  if (mhz >= 7)  return '#fd7e14';
+  return '#dc3545';
+}
+
 function conditionColor(cond) {
   if (!cond || cond === '--') return '#475569';
   switch (cond.toLowerCase()) {
@@ -1550,27 +1601,29 @@ function conditionColor(cond) {
   }
 }
 
-function renderSolarData({ sfi, sunspots, kIndex, aIndex, xray, geoField, solarWind, signalNoise, updated, bands }) {
+function renderSolarData({ sfi, sunspots, kIndex, aIndex, xray, geoField, solarWind, signalNoise, updated, bands, muf }) {
   const card = document.getElementById('solar-card');
   if (!card) return;
 
   const updEl = document.getElementById('solar-updated');
   if (updEl && updated !== '--') updEl.textContent = `Updated: ${updated}`;
 
+  const mufLabel = muf !== null ? `${muf} MHz` : '--';
   const indices = [
-    { label: 'SFI',        value: sfi,       color: '#60a5fa' },
-    { label: 'Sunspots',   value: sunspots,  color: '#a78bfa' },
-    { label: 'K-index',    value: kIndex,    color: solarKColor(kIndex) },
-    { label: 'A-index',    value: aIndex,    color: solarAColor(aIndex) },
-    { label: 'X-ray',      value: xray,      color: solarXrayColor(xray) },
-    { label: 'Geomag',     value: geoField,  color: '#94a3b8' },
+    { label: 'SFI',        value: sfi,        color: '#60a5fa' },
+    { label: 'Sunspots',   value: sunspots,   color: '#a78bfa' },
+    { label: 'K-index',    value: kIndex,     color: solarKColor(kIndex) },
+    { label: 'A-index',    value: aIndex,     color: solarAColor(aIndex) },
+    { label: 'X-ray',      value: xray,       color: solarXrayColor(xray) },
+    { label: 'Geomag',     value: geoField,   color: '#94a3b8' },
     { label: 'Solar Wind', value: solarWind !== '--' ? solarWind + ' km/s' : '--', color: '#94a3b8' },
     { label: 'Sig/Noise',  value: signalNoise, color: '#94a3b8' },
+    { label: 'MUF',        value: mufLabel,   color: mufColor(muf) },
   ];
 
   // 4-column grid of index badges (2 rows of 4, more compact)
   const indexHTML = `
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px">
       ${indices.map(idx => `
         <div style="background:#0f3460;border-radius:5px;padding:3px 5px;text-align:center">
           <div style="font-size:0.58rem;color:#b0c0d8;text-transform:uppercase;letter-spacing:0.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${idx.label}</div>
