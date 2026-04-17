@@ -29,7 +29,7 @@ const ADMIN_NAV = [
       { id: 'kasa',           label: 'Kasa Devices',   icon: 'plug' },
       { id: 'shelly',         label: 'Shelly Devices', icon: 'toggles' },
       { id: 'home-assistant', label: 'Home Assistant', icon: 'house-gear' },
-      { id: 'ifttt',          label: 'IFTTT',          icon: 'arrow-left-right' },
+      { id: 'ifttt',          label: 'IFTTT Automations', icon: 'arrow-left-right' },
     ],
   },
   { id: 'workflows', label: 'Workflows', icon: 'diagram-3' },

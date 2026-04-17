@@ -14,6 +14,7 @@ from schemas import (
     ScheduledWorkflowCreate, ScheduledWorkflowUpdate, ScheduledWorkflowResponse,
 )
 from services import kasa_service, shelly_service, ifttt_service
+from services.monitoring_service import log_event
 from ws_manager import manager
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
@@ -41,6 +42,9 @@ async def _execute_workflow(workflow_id: int, workflow_name: str, is_system: boo
             elif step["type"] == "ifttt":
                 async with AsyncSessionLocal() as db:
                     cfg = await ifttt_service._get_ifttt_config(db)
+                    await log_event(db, "ifttt_step_started", "info",
+                        f"IFTTT event '{step['event_name']}' firing (workflow '{workflow_name}' step {i})",
+                        {"workflow_id": workflow_id, "workflow_name": workflow_name, "event_name": step["event_name"]})
                 if not cfg or not cfg.get("webhook_key"):
                     raise RuntimeError("IFTTT not configured (no webhook key)")
                 await ifttt_service._post_event(
@@ -50,14 +54,33 @@ async def _execute_workflow(workflow_id: int, workflow_name: str, is_system: boo
                     step.get("value2", ""),
                     step.get("value3", ""),
                 )
+                async with AsyncSessionLocal() as db:
+                    await log_event(db, "ifttt_step_completed", "info",
+                        f"IFTTT event '{step['event_name']}' sent successfully (workflow '{workflow_name}')",
+                        {"workflow_id": workflow_id, "workflow_name": workflow_name, "event_name": step["event_name"]})
                 if step["delay_after_sec"] > 0:
                     await asyncio.sleep(step["delay_after_sec"])
         except Exception as e:
             error = f"Step {i} failed: {e}"
+            if step["type"] == "ifttt":
+                async with AsyncSessionLocal() as db:
+                    await log_event(db, "ifttt_step_failed", "warning",
+                        f"IFTTT event '{step.get('event_name', '?')}' failed in workflow '{workflow_name}': {e}",
+                        {"workflow_id": workflow_id, "workflow_name": workflow_name,
+                         "event_name": step.get("event_name"), "error": str(e)})
             break
 
-    if not error and is_system and workflow_name in ("Startup", "Shutdown"):
-        async with AsyncSessionLocal() as db:
+    async with AsyncSessionLocal() as db:
+        if error:
+            await log_event(db, "workflow_failed", "warning",
+                f"Workflow '{workflow_name}' failed: {error}",
+                {"workflow_id": workflow_id, "workflow_name": workflow_name})
+        else:
+            await log_event(db, "workflow_completed", "info",
+                f"Workflow '{workflow_name}' completed successfully",
+                {"workflow_id": workflow_id, "workflow_name": workflow_name})
+
+        if not error and is_system and workflow_name in ("Startup", "Shutdown"):
             row = (await db.execute(select(Setting).where(Setting.key == "last_system_workflow"))).scalar_one_or_none()
             if row:
                 row.value = json.dumps(workflow_name)
@@ -92,6 +115,7 @@ async def create_workflow(
     db.add(wf)
     await db.commit()
     await db.refresh(wf)
+    await log_event(db, "workflow_created", "info", f"Workflow '{name}' created", {"workflow_id": wf.id})
     return wf
 
 
@@ -138,6 +162,7 @@ async def delete_workflow(
     await db.execute(delete(WorkflowStep).where(WorkflowStep.workflow_id == workflow_id))
     await db.delete(wf)
     await db.commit()
+    await log_event(db, "workflow_deleted", "info", f"Workflow '{wf.name}' deleted", {"workflow_id": workflow_id})
 
 
 @router.get("/{workflow_id}/steps", response_model=list[WorkflowStepResponse])
@@ -165,8 +190,16 @@ async def put_steps(
     _: User = Depends(get_current_user),
 ):
     result = await db.execute(select(Workflow).where(Workflow.id == workflow_id))
-    if not result.scalar_one_or_none():
+    wf_row = result.scalar_one_or_none()
+    if not wf_row:
         raise HTTPException(status_code=404, detail="Workflow not found")
+
+    # Snapshot existing IFTTT step event names before replacing
+    existing_steps = (await db.execute(
+        select(WorkflowStep).where(WorkflowStep.workflow_id == workflow_id)
+    )).scalars().all()
+    existing_ifttt = {s.ifttt_event_name for s in existing_steps if s.action == "ifttt" and s.ifttt_event_name}
+    incoming_ifttt = {s.ifttt_event_name for s in body.steps if s.action == "ifttt" and s.ifttt_event_name}
 
     for step in body.steps:
         if step.action == "pause":
@@ -207,6 +240,16 @@ async def put_steps(
         )
         db.add(step)
     await db.commit()
+
+    # Log IFTTT step additions and removals
+    for event_name in incoming_ifttt - existing_ifttt:
+        await log_event(db, "ifttt_step_added", "info",
+            f"IFTTT step '{event_name}' added to workflow '{wf_row.name}'",
+            {"workflow_id": workflow_id, "workflow_name": wf_row.name, "event_name": event_name})
+    for event_name in existing_ifttt - incoming_ifttt:
+        await log_event(db, "ifttt_step_removed", "info",
+            f"IFTTT step '{event_name}' removed from workflow '{wf_row.name}'",
+            {"workflow_id": workflow_id, "workflow_name": wf_row.name, "event_name": event_name})
 
     result = await db.execute(
         select(WorkflowStep)
@@ -367,6 +410,9 @@ async def run_workflow(
                 "generation": step.shelly_channel.device.generation,
             })
 
+    await log_event(db, "workflow_started", "info",
+        f"Workflow '{wf.name}' started ({len(steps_data)} steps)",
+        {"workflow_id": workflow_id, "workflow_name": wf.name, "step_count": len(steps_data)})
     background_tasks.add_task(_execute_workflow, workflow_id, wf.name, wf.is_system, steps_data)
     return {"running": True}
 

@@ -10,6 +10,7 @@ from schemas import (
     ShellyDeviceResponse, ShellyChannelResponse,
 )
 from services import shelly_service
+from services.monitoring_service import log_event
 
 router = APIRouter(prefix="/shelly", tags=["shelly"])
 
@@ -43,6 +44,9 @@ async def create_device(
     result = await db.execute(
         select(ShellyDevice).options(selectinload(ShellyDevice.channels)).where(ShellyDevice.id == device.id)
     )
+    await log_event(db, "shelly_device_added", "info",
+        f"Shelly device '{device.name}' added ({device.ip_address})",
+        {"device_id": device.id, "device_name": device.name, "ip": device.ip_address})
     return result.scalar_one()
 
 
@@ -80,8 +84,13 @@ async def delete_device(
     device = result.scalar_one_or_none()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
+    name = device.name
+    ip = device.ip_address
     await db.delete(device)
     await db.commit()
+    await log_event(db, "shelly_device_removed", "info",
+        f"Shelly device '{name}' removed ({ip})",
+        {"device_id": device_id, "device_name": name, "ip": ip})
 
 
 @router.get("/devices/{device_id}/states")
@@ -168,6 +177,10 @@ async def control_channel(
         raise HTTPException(status_code=404, detail="Channel not found")
     try:
         await shelly_service.control_channel(channel.device.ip_address, channel.channel_index, action, channel.device.generation)
+        label = channel.label or f"Channel {channel.channel_index}"
+        await log_event(db, "shelly_action", "info",
+            f"Shelly '{channel.device.name}' — {label} turned {action.upper()}",
+            {"device_name": channel.device.name, "channel_index": channel.channel_index, "label": label, "action": action})
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))

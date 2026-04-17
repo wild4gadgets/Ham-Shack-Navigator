@@ -10,6 +10,7 @@ from schemas import (
     KasaDeviceResponse, KasaPortResponse
 )
 from services import kasa_service
+from services.monitoring_service import log_event
 
 router = APIRouter(prefix="/kasa", tags=["kasa"])
 
@@ -49,6 +50,9 @@ async def add_device(body: KasaDeviceCreate, db: AsyncSession = Depends(get_db),
     result = await db.execute(
         select(KasaDevice).options(selectinload(KasaDevice.ports)).where(KasaDevice.id == device.id)
     )
+    await log_event(db, "kasa_device_added", "info",
+        f"Kasa device '{device.name}' added ({device.ip_address})",
+        {"device_id": device.id, "device_name": device.name, "ip": device.ip_address})
     return result.scalar_one()
 
 
@@ -77,8 +81,13 @@ async def delete_device(device_id: int, db: AsyncSession = Depends(get_db), _: U
     device = result.scalar_one_or_none()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
+    name = device.name
+    ip = device.ip_address
     await db.delete(device)
     await db.commit()
+    await log_event(db, "kasa_device_removed", "info",
+        f"Kasa device '{name}' removed ({ip})",
+        {"device_id": device_id, "device_name": name, "ip": ip})
 
 
 @router.get("/devices/{device_id}/states")
@@ -145,6 +154,10 @@ async def control_port(
         raise HTTPException(status_code=400, detail="Action must be 'on' or 'off'")
     try:
         await kasa_service.control_port(port.device.ip_address, port.device.device_type, port.port_index, body.action)
+        label = port.label or f"Port {port.port_index}"
+        await log_event(db, "kasa_action", "info",
+            f"Kasa '{port.device.name}' — {label} turned {body.action.upper()}",
+            {"device_name": port.device.name, "port_index": port.port_index, "label": label, "action": body.action})
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
