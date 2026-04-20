@@ -504,3 +504,20 @@ async def put_flexradio(body: FlexRadioSettings, db: AsyncSession = Depends(get_
     from services.flexradio_service import start_listener
     start_listener()
     return {"detail": "Saved"}
+
+
+# --- Remote Webhook API ---
+@router.get("/webhook")
+async def get_webhook(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    data = await _get_setting(db, "webhook_api")
+    if not data or not data.get("api_key"):
+        return {"api_key": None}
+    return {"api_key": _mask_key(data["api_key"])}
+
+
+@router.post("/webhook/regenerate-key")
+async def regenerate_webhook_key(db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
+    import secrets as _secrets
+    api_key = _secrets.token_hex(32)
+    await _save_setting(db, "webhook_api", {"api_key": api_key})
+    return {"api_key": api_key}

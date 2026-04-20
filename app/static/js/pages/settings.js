@@ -13,6 +13,7 @@ import { renderAccountTab } from '../components/settings/account.js';
 import { renderDxclusterTab } from '../components/settings/dxcluster.js';
 import { renderPskReporterTab } from '../components/settings/pskreporter.js';
 import { renderFlexRadioTab } from '../components/settings/flexradio.js';
+import { renderWebhookTab } from '../components/settings/webhook.js';
 import { isAdmin } from '../state.js';
 
 // Full NAV — admin sees all, readonly sees only notifications + account
@@ -33,6 +34,7 @@ const ADMIN_NAV = [
     ],
   },
   { id: 'workflows', label: 'Workflows', icon: 'diagram-3' },
+  { id: 'webhook', label: 'Remote Webhook', icon: 'link-45deg' },
   {
     groupId: 'notifications', label: 'Notifications', icon: 'bell',
     children: [
@@ -69,6 +71,7 @@ const RENDERERS = {
   dxcluster:        renderDxclusterTab,
   pskreporter:      renderPskReporterTab,
   flexradio:        renderFlexRadioTab,
+  webhook:          renderWebhookTab,
   account:          renderAccountTab,
 };
 

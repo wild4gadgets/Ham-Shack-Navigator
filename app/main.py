@@ -53,6 +53,7 @@ from routers import (
     pskreporter as pskreporter_router,
     qrz as qrz_router,
     flexradio as flexradio_router,
+    webhook as webhook_router,
 )
 
 
@@ -94,6 +95,7 @@ app.include_router(dxcluster_router.router, prefix=prefix)
 app.include_router(pskreporter_router.router, prefix=prefix)
 app.include_router(qrz_router.router, prefix=prefix)
 app.include_router(flexradio_router.router, prefix=prefix)
+app.include_router(webhook_router.router, prefix=prefix)
 
 
 @app.get("/api/v1/health")
