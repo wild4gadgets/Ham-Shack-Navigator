@@ -5,6 +5,7 @@ import { renderSettings } from './pages/settings.js';
 import { renderEvents } from './pages/events.js';
 import { renderWorkflows } from './pages/workflows.js';
 import { renderUsers } from './pages/users.js';
+import { renderHelp } from './pages/help.js';
 import { getToken, state, isAdmin } from './state.js';
 import { apiGet } from './api.js';
 
@@ -101,6 +102,8 @@ export async function navigate(forceHash) {
       return;
     }
     await renderUsers(app);
+  } else if (hash === '#/help') {
+    renderHelp(app);
   } else {
     app.innerHTML = '<div class="text-center mt-5"><h3>Page not found</h3><a href="#/dashboard">Go home</a></div>';
   }
