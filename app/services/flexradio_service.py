@@ -421,13 +421,6 @@ async def _flex_listener():
                                         "DAX audio: stream created (0x%08X)", stream_id
                                     )
                                     asyncio.create_task(_start_dax_udp(stream_id))
-                                    # Set AGC to slow so amplitude variation is
-                                    # preserved between CW elements.
-                                    if target_slice is not None:
-                                        writer.write(f"C{seq}|slice set {target_slice} agc_mode=slow\n".encode())
-                                        seq += 1
-                                        await writer.drain()
-                                        logger.info("DAX audio: AGC set to slow on slice %s for CW decode", target_slice)
                                 except ValueError:
                                     logger.warning(
                                         "DAX stream create: unexpected response %r", data
