@@ -21,6 +21,9 @@ _zi.ZoneInfo = _ZoneInfoCompat
 
 import logging
 logging.basicConfig(level=logging.INFO)
+logging.getLogger("asyncio").setLevel(logging.WARNING)
+logging.getLogger("uvicorn").setLevel(logging.WARNING)
+logging.getLogger("fastapi").setLevel(logging.WARNING)
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
@@ -54,6 +57,7 @@ from routers import (
     qrz as qrz_router,
     flexradio as flexradio_router,
     webhook as webhook_router,
+    cw as cw_router,
 )
 
 
@@ -96,6 +100,7 @@ app.include_router(pskreporter_router.router, prefix=prefix)
 app.include_router(qrz_router.router, prefix=prefix)
 app.include_router(flexradio_router.router, prefix=prefix)
 app.include_router(webhook_router.router, prefix=prefix)
+app.include_router(cw_router.router, prefix=prefix)
 
 
 @app.get("/api/v1/health")

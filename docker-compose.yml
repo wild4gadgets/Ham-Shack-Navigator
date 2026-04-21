@@ -9,6 +9,8 @@ services:
     volumes:
       - ./data:/data
       - ./app/static:/app/static:ro
+    ports:
+      - "4991:4991/udp"
     networks:
       - internal
     expose:

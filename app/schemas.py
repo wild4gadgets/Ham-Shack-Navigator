@@ -214,6 +214,10 @@ class PskReporterSettings(BaseModel):
 class FlexRadioSettings(BaseModel):
     ip: str = ""
     enabled: bool = False
+    dax_enabled: bool = True
+    dax_channel: int = 1
+    cw_tone_freq: float = 700.0
+    cw_threshold: float = 0.15
 
 
 # --- Kasa ---

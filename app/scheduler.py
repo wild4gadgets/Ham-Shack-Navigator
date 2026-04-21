@@ -505,10 +505,24 @@ async def start_scheduler():
 
     _blitzortung_task = asyncio.create_task(_blitzortung_listener())
 
-    from services.flexradio_service import start_listener as _start_flex
+    from services.flexradio_service import start_listener as _start_flex, get_dax_audio_queue
     _start_flex()
 
-    logger.info("Scheduler, Blitzortung listener, and FlexRadio listener started")
+    from services.cw_decoder_service import start_decoder as _start_cw, DEFAULT_TONE_FREQ, DEFAULT_THRESHOLD
+    _cw_settings: dict = {}
+    try:
+        async with AsyncSessionLocal() as _db:
+            _row = (await _db.execute(select(Setting).where(Setting.key == "flexradio"))).scalar_one_or_none()
+            _cw_settings = json.loads(_row.value) if _row else {}
+    except Exception:
+        pass
+    _start_cw(
+        get_dax_audio_queue(),
+        tone_freq=float(_cw_settings.get("cw_tone_freq", DEFAULT_TONE_FREQ)),
+        threshold=float(_cw_settings.get("cw_threshold", DEFAULT_THRESHOLD)),
+    )
+
+    logger.info("Scheduler, Blitzortung listener, FlexRadio listener, and CW decoder started")
 
 
 async def shutdown_scheduler():
@@ -520,6 +534,9 @@ async def shutdown_scheduler():
         except asyncio.CancelledError:
             pass
         _blitzortung_task = None
+
+    from services.cw_decoder_service import stop_decoder as _stop_cw
+    _stop_cw()
 
     from services.flexradio_service import stop_listener as _stop_flex
     _stop_flex()

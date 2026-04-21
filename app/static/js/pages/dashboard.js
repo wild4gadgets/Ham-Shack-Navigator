@@ -158,6 +158,31 @@ export async function renderDashboard(container) {
       <!-- Alerts -->
       <div class="col-12" id="alerts-area"></div>
 
+      <!-- CW Decoder -->
+      <div class="col-12" id="cw-tile-row" style="display:none">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-soundwave me-2"></i>CW Decoder</span>
+            <div class="d-flex gap-2 align-items-center">
+              <span id="cw-wpm" class="badge bg-secondary">-- WPM</span>
+              <span id="cw-snr" class="badge bg-secondary">SNR --</span>
+              <button id="btn-cw-clear" class="btn btn-sm btn-outline-secondary" title="Clear decoded text">
+                <i class="bi bi-trash"></i>
+              </button>
+            </div>
+          </div>
+          <div class="card-body p-2">
+            <div id="cw-text-display"
+              style="font-family:monospace;font-size:1rem;min-height:60px;max-height:160px;
+                     overflow-y:auto;white-space:pre-wrap;word-break:break-all;
+                     background:#0d0d1a;border:1px solid #2a2a4a;border-radius:4px;
+                     padding:8px;color:#00e676">
+              <span class="text-muted">Waiting for CW signal…</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- PSK Reporter Spots -->
       <div class="col-12">
         <div class="card">
@@ -333,6 +358,11 @@ export async function renderDashboard(container) {
       await loadSystemState();
     }
   });
+  document.getElementById('btn-cw-clear')?.addEventListener('click', () => {
+    const display = document.getElementById('cw-text-display');
+    if (display) display.textContent = '';
+  });
+
   document.getElementById('btn-refresh').addEventListener('click', async () => {
     const btn = document.getElementById('btn-refresh');
     btn.disabled = true;
@@ -473,12 +503,16 @@ async function loadFlexRadioStatus() {
   if (!el) return;
   try {
     const s = await apiGet('/flexradio/status');
-    if (!s.freq_mhz) {
+    const cwRow = document.getElementById('cw-tile-row');
+    if (!s.connected) {
       pskRadioOffline = true;
       el.innerHTML = '<span class="fw-bold text-danger">Radio Offline</span>';
+      if (cwRow) cwRow.style.display = 'none';
       return;
     }
     pskRadioOffline = false;
+    if (cwRow) cwRow.style.display = '';
+    if (!s.freq_mhz) return;
     const mhz = parseFloat(s.freq_mhz).toFixed(3);
     const mode = s.mode ? `<span class="badge ms-2" style="background:#00e676;color:#000">${escHtml(s.mode)}</span>` : '';
     const power = s.rf_power != null ? `<span class="badge ms-1" style="background:#00e676;color:#000">${s.rf_power}W</span>` : '';
@@ -494,6 +528,29 @@ async function loadFlexRadioStatus() {
   } catch {
     pskRadioOffline = false;
     el.innerHTML = '';
+  }
+}
+
+// ── CW Decoder tile ──────────────────────────────────────────────────────────
+
+function updateCwTile(msg) {
+  const row = document.getElementById('cw-tile-row');
+  if (row) row.style.display = '';
+
+  const display = document.getElementById('cw-text-display');
+  if (display && msg.text !== undefined) {
+    display.textContent = msg.text || '';
+    display.scrollTop = display.scrollHeight;
+  }
+
+  const wpmBadge = document.getElementById('cw-wpm');
+  if (wpmBadge) wpmBadge.textContent = `${msg.wpm ?? '--'} WPM`;
+
+  const snrBadge = document.getElementById('cw-snr');
+  if (snrBadge) {
+    const snr = msg.snr ?? null;
+    snrBadge.textContent = snr !== null ? `SNR ${snr} dB` : 'SNR --';
+    snrBadge.className = 'badge ' + (snr === null ? 'bg-secondary' : snr >= 10 ? 'bg-success' : snr >= 3 ? 'bg-warning text-dark' : 'bg-danger');
   }
 }
 
@@ -1810,6 +1867,7 @@ async function connectWS() {
       if (msg.type === 'weather_update') loadWeather();
       if (msg.type === 'monitoring_status') loadMonitoringStatus();
       if (msg.type === 'flexradio_update') loadFlexRadioStatus();
+      if (msg.type === 'cw_decode') updateCwTile(msg);
       if (msg.type === 'new_event') loadRecentEvents();
       if (msg.type === 'workflow_complete') {
         if (!msg.success && msg.error) alert(`Workflow failed: ${msg.error}`);

@@ -9,12 +9,22 @@ router = APIRouter(prefix="/flexradio", tags=["flexradio"])
 
 @router.get("/status")
 async def get_flexradio_status(_: User = Depends(get_current_user)):
-    """Return current FlexRadio slice 0 status (frequency, mode, connection state)."""
+    """Return current FlexRadio primary slice status (frequency, mode, connection state)."""
     state = get_state()
-    primary = state.get("slices", {}).get(0, {})
     connected = state.get("connected", False)
     rf_power_raw = state.get("transmit", {}).get("rfpower") if connected else None
     interlock_state = state.get("interlock", {}).get("state") if connected else None
+
+    # Find the primary slice: prefer in_use=1, fall back to first available
+    slices = state.get("slices", {})
+    primary = {}
+    for sdata in slices.values():
+        if sdata.get("in_use") == "1":
+            primary = sdata
+            break
+    if not primary and slices:
+        primary = next(iter(slices.values()))
+
     return {
         "connected": connected,
         "freq_mhz": primary.get("RF_frequency") if connected else None,
