@@ -9,6 +9,7 @@ import time as _time
 import urllib.request
 import xml.etree.ElementTree as ET
 from collections import deque
+import datetime as _dt
 from datetime import datetime, timezone
 
 import aiohttp
@@ -375,7 +376,7 @@ def add_scheduled_workflow_job(sw_id: int, run_time: str, days_of_week: list[int
         coalesce=True,
         replace_existing=True,
     )
-    logger.info("Scheduled workflow job %d: %s UTC on aps_days=%s", sw_id, run_time, aps_days)
+    logger.info("Scheduled workflow job %d: %s local on aps_days=%s", sw_id, run_time, aps_days)
 
 
 def remove_scheduled_workflow_job(sw_id: int):
@@ -468,7 +469,7 @@ async def _load_scheduled_workflow_jobs():
 
 async def start_scheduler():
     global _scheduler, _blitzortung_task
-    _scheduler = AsyncIOScheduler(timezone="UTC")
+    _scheduler = AsyncIOScheduler(timezone=_dt.datetime.now().astimezone().tzinfo)
 
     # Add poll job with default interval (will be updated when settings change)
     _scheduler.add_job(
@@ -547,6 +548,6 @@ def update_digest_time(time_str: str):
                 _digest_job_id,
                 trigger=CronTrigger(hour=hour, minute=minute),
             )
-            logger.info("Digest time updated to %s UTC", time_str)
+            logger.info("Digest time updated to %s local", time_str)
         except Exception as e:
             logger.error("Failed to update digest time: %s", e)
