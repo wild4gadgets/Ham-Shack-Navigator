@@ -501,8 +501,16 @@ async def get_flexradio(db: AsyncSession = Depends(get_db), _: User = Depends(ge
 @router.put("/flexradio")
 async def put_flexradio(body: FlexRadioSettings, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     await _save_setting(db, "flexradio", body.model_dump())
-    from services.flexradio_service import start_listener
+    from services.flexradio_service import start_listener, get_dax_audio_queue
+    from services.cw_decoder_service import start_decoder, stop_decoder
     start_listener()
+    if body.dax_enabled:
+        stop_decoder()
+        start_decoder(
+            get_dax_audio_queue(),
+            tone_freq=body.cw_tone_freq,
+            threshold=body.cw_threshold,
+        )
     return {"detail": "Saved"}
 
 
