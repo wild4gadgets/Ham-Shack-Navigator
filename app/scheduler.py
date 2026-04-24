@@ -481,7 +481,7 @@ async def start_scheduler():
         replace_existing=True,
     )
 
-    # Add digest job (default 06:00 UTC)
+    # Add digest job (default 06:00 local time)
     _scheduler.add_job(
         _daily_digest,
         trigger=CronTrigger(hour=6, minute=0),

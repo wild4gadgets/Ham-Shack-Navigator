@@ -43,7 +43,7 @@ export async function renderSmtpTab(container) {
           <hr />
           <div class="row">
             <div class="col-md-4 mb-3">
-              <label class="form-label">Daily Digest Time (UTC)</label>
+              <label class="form-label">Daily Digest Time (local time)</label>
               <input type="time" class="form-control" id="digest-time" value="${data.digest_time || '06:00'}" />
             </div>
             <div class="col-md-4 mb-3 d-flex align-items-end">

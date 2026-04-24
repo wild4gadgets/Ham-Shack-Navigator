@@ -332,21 +332,28 @@ async def _flex_listener():
                         slice_idx = int(m.group(1))
                         kv = _parse_kv(m.group(2))
                         old_freq = _flex_state["slices"].get(slice_idx, {}).get("RF_frequency")
+                        old_mode = _flex_state["slices"].get(slice_idx, {}).get("mode", "")
 
                         if slice_idx not in _flex_state["slices"]:
                             _flex_state["slices"][slice_idx] = {}
                         _flex_state["slices"][slice_idx].update(kv)
                         _flex_state["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-                        # Broadcast when primary slice frequency changes
+                        # Broadcast when primary slice frequency or mode changes
                         if slice_idx == 0:
                             new_freq = _flex_state["slices"][0].get("RF_frequency")
-                            if new_freq and new_freq != old_freq:
+                            new_mode = _flex_state["slices"][0].get("mode", "")
+                            freq_changed = new_freq and new_freq != old_freq
+                            mode_changed = new_mode != old_mode
+                            if freq_changed or mode_changed:
                                 await manager.broadcast({
                                     "type": "flexradio_update",
                                     "freq": new_freq,
-                                    "mode": _flex_state["slices"][0].get("mode", ""),
+                                    "mode": new_mode,
                                 })
+                            if mode_changed:
+                                from services.cw_decoder_service import set_cw_mode
+                                set_cw_mode(new_mode.upper() in {"CW", "CWL", "CWU"})
 
                     # Transmit status
                     m = re.match(r"transmit\s+(.*)", body)

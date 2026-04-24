@@ -165,6 +165,7 @@ _decoder_task: asyncio.Task | None = None
 _tone_freq: float = DEFAULT_TONE_FREQ
 _threshold: float = DEFAULT_THRESHOLD
 _enabled: bool = True
+_cw_mode: bool = False   # True only when the radio slice is in CW/CWL/CWU
 
 
 async def _decode_loop(queue: asyncio.Queue) -> None:
@@ -217,6 +218,9 @@ async def _decode_loop(queue: asyncio.Queue) -> None:
         except asyncio.CancelledError:
             logger.info("CW decoder task cancelled")
             return
+
+        if not _cw_mode:
+            continue  # drain queue without processing while not in CW mode
 
         # Unpack 16-bit signed big-endian samples
         n_samples = len(pcm_bytes) // 2
@@ -319,6 +323,14 @@ def stop_decoder() -> None:
     if _decoder_task and not _decoder_task.done():
         _decoder_task.cancel()
         _decoder_task = None
+
+
+def set_cw_mode(active: bool) -> None:
+    """Enable or disable decoding based on the radio slice mode."""
+    global _cw_mode
+    if _cw_mode != active:
+        _cw_mode = active
+        logger.info("CW decoder %s", "activated" if active else "suspended (non-CW mode)")
 
 
 def get_status() -> dict:

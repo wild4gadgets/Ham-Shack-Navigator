@@ -193,7 +193,7 @@ function render(container) {
               <select class="form-select" id="sched-workflow-id">${workflowOptions || '<option disabled>No workflows configured</option>'}</select>
             </div>
             <div class="mb-3">
-              <label class="form-label">Run Time <small class="text-muted">(UTC)</small></label>
+              <label class="form-label">Run Time <small class="text-muted">(local time)</small></label>
               <input type="time" class="form-control" id="sched-run-time" value="06:00" />
             </div>
             <div class="mb-3">
@@ -676,7 +676,7 @@ function renderScheduledWfList() {
       <div class="d-flex align-items-center px-3 py-2" style="border-bottom:1px solid #2a2a4a">
         <span class="flex-grow-1" style="color:#e0e0e0">
           <strong>${sw.workflow_name}</strong>
-          <span class="ms-2 text-muted small">${sw.run_time} UTC</span>
+          <span class="ms-2 text-muted small">${sw.run_time} local</span>
           <span class="ms-2">${dayBadges}</span>
         </span>
         <div class="form-check form-switch me-3 mb-0">

@@ -511,7 +511,8 @@ async function loadFlexRadioStatus() {
       return;
     }
     pskRadioOffline = false;
-    if (cwRow) cwRow.style.display = '';
+    const isCwMode = ['CW', 'CWL', 'CWU'].includes((s.mode || '').toUpperCase());
+    if (cwRow) cwRow.style.display = isCwMode ? '' : 'none';
     if (!s.freq_mhz) return;
     const mhz = parseFloat(s.freq_mhz).toFixed(3);
     const mode = s.mode ? `<span class="badge ms-2" style="background:#00e676;color:#000">${escHtml(s.mode)}</span>` : '';
@@ -534,9 +535,6 @@ async function loadFlexRadioStatus() {
 // ── CW Decoder tile ──────────────────────────────────────────────────────────
 
 function updateCwTile(msg) {
-  const row = document.getElementById('cw-tile-row');
-  if (row) row.style.display = '';
-
   const display = document.getElementById('cw-text-display');
   if (display && msg.text !== undefined) {
     display.textContent = msg.text || '';

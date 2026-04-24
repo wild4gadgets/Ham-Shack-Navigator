@@ -302,10 +302,7 @@ docker compose logs app -f</pre>
   <p>These names are case-sensitive. The system also tracks the last executed system workflow in the database for Home Assistant integration.</p>
 
   <h4 style="color:#7eb8f7;margin-top:1.5rem">Scheduling Workflows</h4>
-  <p>Any workflow can be scheduled to run automatically. In the Workflows page, find a workflow and click <strong>Add Schedule</strong>. Set the UTC time (HH:MM) and select which days of the week it should run. Multiple schedules can be assigned to the same workflow. Schedules can be enabled or disabled without deleting them.</p>
-  <div class="alert alert-warning mt-2 mb-2" style="background:#2a2a1a;border-color:#6a6a1a;color:#e0d080;font-size:0.875rem">
-    <i class="bi bi-exclamation-triangle me-2"></i>All scheduled times are in <strong>UTC</strong>. Convert from your local time accordingly.
-  </div>
+  <p>Any workflow can be scheduled to run automatically. In the Workflows page, find a workflow and click <strong>Add Schedule</strong>. Set the local time (HH:MM) and select which days of the week it should run. Multiple schedules can be assigned to the same workflow. Schedules can be enabled or disabled without deleting them.</p>
 
   <h4 style="color:#7eb8f7;margin-top:1.5rem">Running a Workflow Manually</h4>
   <p>From the Workflows page, click the <strong>Run</strong> button next to any workflow. A 202 Accepted response means the workflow has been queued. Check the Events log to confirm completion. Workflows execute steps sequentially in the background — the UI does not block while they run.</p>
@@ -354,7 +351,7 @@ docker compose logs app -f</pre>
     <li>SMTP host, port (default 587), username, and password</li>
     <li>From address and To address</li>
     <li>Use the <strong>Test</strong> button to verify your configuration before relying on it</li>
-    <li><strong>Daily digest</strong> — optional daily status email sent at a configured UTC time</li>
+    <li><strong>Daily digest</strong> — optional daily status email sent at a configured local time</li>
   </ul>
   <p>Gmail users: use an App Password (not your regular password) and SMTP host <code>smtp.gmail.com</code> on port 587.</p>
 
@@ -563,7 +560,7 @@ docker compose logs app --tail=50</pre>
     <div class="card" style="background:#1a1a2e;border-color:#2a2a4a">
       <div class="card-body">
         <strong style="color:#7eb8f7">Scheduled workflow did not run</strong>
-        <p class="mt-1 mb-0">Schedules use UTC time. Verify the schedule is enabled and that the UTC time you configured matches your intended local time. Check the Events log for <code>workflow_started</code> or <code>workflow_failed</code> entries around the scheduled time.</p>
+        <p class="mt-1 mb-0">Schedules use local time. Verify the schedule is enabled and that the time you configured matches your intent. Check the Events log for <code>workflow_started</code> or <code>workflow_failed</code> entries around the scheduled time.</p>
       </div>
     </div>
 
