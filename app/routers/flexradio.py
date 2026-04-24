@@ -1,10 +1,26 @@
-from fastapi import APIRouter, Depends
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 from dependencies import get_current_user
 from models import User
-from services.flexradio_service import get_state
+from services.flexradio_service import get_state, send_command
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/flexradio", tags=["flexradio"])
+
+
+VALID_MODES = {"AM", "CW", "DIGL", "DIGU", "LSB", "RTTY", "USB"}
+
+
+class TuneRequest(BaseModel):
+    freq_mhz: float
+
+
+class ModeRequest(BaseModel):
+    mode: str
 
 
 @router.get("/status")
@@ -35,3 +51,40 @@ async def get_flexradio_status(_: User = Depends(get_current_user)):
         "swr": state.get("swr") if connected else None,
         "updated_at": state.get("updated_at"),
     }
+
+
+@router.post("/tune")
+async def tune_slice(body: TuneRequest, _: User = Depends(get_current_user)):
+    """Tune the primary slice to a new frequency (MHz)."""
+    state = get_state()
+    if not state.get("connected"):
+        raise HTTPException(status_code=503, detail="Radio not connected")
+    slice_idx = 0
+    for idx, sdata in state.get("slices", {}).items():
+        if sdata.get("in_use") == "1":
+            slice_idx = idx
+            break
+    ok = await send_command(f"slice t {slice_idx} {body.freq_mhz:.6f}")
+    if not ok:
+        raise HTTPException(status_code=503, detail="Radio not connected")
+    return {"ok": True}
+
+
+@router.post("/mode")
+async def set_mode(body: ModeRequest, _: User = Depends(get_current_user)):
+    """Set the mode of the active slice."""
+    mode = body.mode.upper()
+    if mode not in VALID_MODES:
+        raise HTTPException(status_code=400, detail=f"Invalid mode. Valid modes: {sorted(VALID_MODES)}")
+    state = get_state()
+    if not state.get("connected"):
+        raise HTTPException(status_code=503, detail="Radio not connected")
+    slice_idx = 0
+    for idx, sdata in state.get("slices", {}).items():
+        if sdata.get("in_use") == "1":
+            slice_idx = idx
+            break
+    ok = await send_command(f"slice set {slice_idx} mode={mode}")
+    if not ok:
+        raise HTTPException(status_code=503, detail="Radio not connected")
+    return {"ok": True}

@@ -37,6 +37,9 @@ let pskSpotLayer = null;
 let pskTerminator = null;
 let pskTerminatorTimer = null;
 let systemState = { last: null, startup_id: null, shutdown_id: null };
+let cwLine1 = '';
+let cwLine2 = '';
+let _cwCharsPerLine = 0;  // measured on first use
 
 function escHtml(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -63,6 +66,32 @@ export async function renderDashboard(container) {
           <div class="card-body d-flex align-items-center flex-wrap gap-2 py-2">
             <div id="flexradio-status" class="d-flex align-items-center gap-1"></div>
             <div class="ms-auto"><small id="weather-update-time" class="text-white-50"></small></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CW Decoder -->
+      <div class="col-12" id="cw-tile-row" style="display:none">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-soundwave me-2"></i>CW Decoder</span>
+            <div class="d-flex gap-2 align-items-center">
+              <span id="cw-wpm" class="badge bg-secondary">-- WPM</span>
+              <span id="cw-snr" class="badge bg-secondary">SNR --</span>
+              <button id="btn-cw-clear" class="btn btn-sm btn-outline-secondary" title="Clear decoded text">
+                <i class="bi bi-trash"></i>
+              </button>
+            </div>
+          </div>
+          <div class="card-body p-2">
+            <div id="cw-text-display"
+              style="font-family:monospace;font-size:1rem;height:52px;
+                     overflow:hidden;
+                     background:#0d0d1a;border:1px solid #2a2a4a;border-radius:4px;
+                     padding:8px;color:#00e676">
+              <div id="cw-line1" style="white-space:pre;overflow:hidden;height:24px;line-height:24px"><span class="text-muted">Waiting for CW signal…</span></div>
+              <div id="cw-line2" style="white-space:pre;overflow:hidden;height:24px;line-height:24px"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -157,31 +186,6 @@ export async function renderDashboard(container) {
 
       <!-- Alerts -->
       <div class="col-12" id="alerts-area"></div>
-
-      <!-- CW Decoder -->
-      <div class="col-12" id="cw-tile-row" style="display:none">
-        <div class="card">
-          <div class="card-header d-flex justify-content-between align-items-center">
-            <span><i class="bi bi-soundwave me-2"></i>CW Decoder</span>
-            <div class="d-flex gap-2 align-items-center">
-              <span id="cw-wpm" class="badge bg-secondary">-- WPM</span>
-              <span id="cw-snr" class="badge bg-secondary">SNR --</span>
-              <button id="btn-cw-clear" class="btn btn-sm btn-outline-secondary" title="Clear decoded text">
-                <i class="bi bi-trash"></i>
-              </button>
-            </div>
-          </div>
-          <div class="card-body p-2">
-            <div id="cw-text-display"
-              style="font-family:monospace;font-size:1rem;min-height:60px;max-height:160px;
-                     overflow-y:auto;white-space:pre-wrap;word-break:break-all;
-                     background:#0d0d1a;border:1px solid #2a2a4a;border-radius:4px;
-                     padding:8px;color:#00e676">
-              <span class="text-muted">Waiting for CW signal…</span>
-            </div>
-          </div>
-        </div>
-      </div>
 
       <!-- PSK Reporter Spots -->
       <div class="col-12">
@@ -306,6 +310,39 @@ export async function renderDashboard(container) {
       </div>
     </div>
 
+    <!-- Tune Frequency Modal -->
+    <div class="modal fade" id="tune-modal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-sm">
+        <div class="modal-content" style="background:#12122a;border:1px solid #2a2a4a;color:#e0e0e0">
+          <div class="modal-header" style="border-color:#2a2a4a">
+            <h5 class="modal-title">Tune Frequency</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <label class="form-label small text-muted mb-1">Frequency (MHz)</label>
+            <input type="text" id="tune-modal-input" class="form-control" placeholder="14.0740" />
+          </div>
+          <div class="modal-footer" style="border-color:#2a2a4a">
+            <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" id="btn-tune-modal-submit" class="btn btn-sm btn-success">Tune</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mode Picker Modal -->
+    <div class="modal fade" id="mode-modal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-sm">
+        <div class="modal-content" style="background:#12122a;border:1px solid #2a2a4a;color:#e0e0e0">
+          <div class="modal-header" style="border-color:#2a2a4a">
+            <h5 class="modal-title">Select Mode</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body d-grid gap-2" id="mode-modal-buttons"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- QRZ Lookup Modal -->
     <div class="modal fade" id="qrz-modal" tabindex="-1" aria-hidden="true">
       <div class="modal-dialog modal-lg">
@@ -358,9 +395,83 @@ export async function renderDashboard(container) {
       await loadSystemState();
     }
   });
-  document.getElementById('btn-cw-clear')?.addEventListener('click', () => {
-    const display = document.getElementById('cw-text-display');
-    if (display) display.textContent = '';
+  document.getElementById('btn-cw-clear')?.addEventListener('click', async () => {
+    cwLine1 = '';
+    cwLine2 = '';
+    _cwLastText = '';
+    _cwCharsPerLine = 0;
+    const l1 = document.getElementById('cw-line1');
+    const l2 = document.getElementById('cw-line2');
+    if (l1) l1.textContent = '';
+    if (l2) l2.textContent = '';
+    try { await apiPost('/cw/clear', {}); } catch (_) { /* best-effort */ }
+  });
+
+  document.getElementById('flexradio-status')?.addEventListener('click', e => {
+    const freqBadge = e.target.closest('#flex-freq-badge');
+    if (freqBadge) { openTuneModal(freqBadge.dataset.freq); return; }
+    const modeBadge = e.target.closest('#flex-mode-badge');
+    if (modeBadge) openModeModal(modeBadge.dataset.mode);
+  });
+
+  function openTuneModal(currentFreq) {
+    const input = document.getElementById('tune-modal-input');
+    if (input) input.value = currentFreq;
+    const modalEl = document.getElementById('tune-modal');
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
+    modalEl.addEventListener('shown.bs.modal', () => {
+      input?.select();
+    }, { once: true });
+  }
+
+  document.getElementById('btn-tune-modal-submit')?.addEventListener('click', async () => {
+    const input = document.getElementById('tune-modal-input');
+    const btn = document.getElementById('btn-tune-modal-submit');
+    const freq = parseFloat(input?.value);
+    if (!freq || isNaN(freq)) return;
+    btn.disabled = true;
+    btn.textContent = '…';
+    try {
+      await apiPost('/flexradio/tune', { freq_mhz: freq });
+      bootstrap.Modal.getInstance(document.getElementById('tune-modal'))?.hide();
+    } catch (e) {
+      alert(`Tune failed: ${e.message}`);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Tune';
+    }
+  });
+
+  document.getElementById('tune-modal-input')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('btn-tune-modal-submit')?.click();
+  });
+
+  const MODES = ['AM', 'CW', 'DIGL', 'DIGU', 'LSB', 'RTTY', 'USB'];
+
+  function openModeModal(currentMode) {
+    const container = document.getElementById('mode-modal-buttons');
+    if (container) {
+      container.innerHTML = MODES.map(m => {
+        const active = m === (currentMode || '').toUpperCase();
+        return `<button class="btn btn-sm ${active ? 'btn-success' : 'btn-outline-secondary'}" data-mode-pick="${m}">${m}</button>`;
+      }).join('');
+    }
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('mode-modal')).show();
+  }
+
+  document.getElementById('mode-modal-buttons')?.addEventListener('click', async e => {
+    const btn = e.target.closest('[data-mode-pick]');
+    if (!btn) return;
+    const mode = btn.dataset.modePick;
+    btn.disabled = true;
+    try {
+      await apiPost('/flexradio/mode', { mode });
+      bootstrap.Modal.getInstance(document.getElementById('mode-modal'))?.hide();
+    } catch (err) {
+      alert(`Mode change failed: ${err.message}`);
+      btn.disabled = false;
+    }
   });
 
   document.getElementById('btn-refresh').addEventListener('click', async () => {
@@ -515,14 +626,14 @@ async function loadFlexRadioStatus() {
     if (cwRow) cwRow.style.display = isCwMode ? '' : 'none';
     if (!s.freq_mhz) return;
     const mhz = parseFloat(s.freq_mhz).toFixed(3);
-    const mode = s.mode ? `<span class="badge ms-2" style="background:#00e676;color:#000">${escHtml(s.mode)}</span>` : '';
+    const mode = s.mode ? `<span id="flex-mode-badge" class="badge ms-2" style="background:#00e676;color:#000;cursor:pointer" data-mode="${escHtml(s.mode)}">${escHtml(s.mode)}</span>` : '';
     const power = s.rf_power != null ? `<span class="badge ms-1" style="background:#00e676;color:#000">${s.rf_power}W</span>` : '';
     const isTx = s.tx_state === 'TRANSMITTING' || s.tx_state === 'PTT_REQUESTED';
     const rxtx = s.tx_state != null
       ? `<span class="badge ms-1" style="background:${isTx ? '#dc3545' : '#198754'};color:#fff">${isTx ? 'TX' : 'RX'}</span>`
       : '';
     const band = amateurBand(mhz);
-    const freq = `<span class="badge ms-1" style="background:#00e676;color:#000">${escHtml(mhz)} MHz${band ? ' · ' + band : ''}</span>`;
+    const freq = `<span id="flex-freq-badge" class="badge ms-1" style="background:#00e676;color:#000;cursor:pointer" data-freq="${parseFloat(s.freq_mhz).toFixed(4)}">${escHtml(mhz)} MHz${band ? ' · ' + band : ''}</span>`;
     const swrColor = s.swr == null ? '' : s.swr <= 2.0 ? '#198754' : s.swr <= 3.0 ? '#fd7e14' : '#dc3545';
     const swr = s.swr != null ? `<span class="badge ms-1" style="background:${swrColor};color:#fff">SWR ${s.swr}:1</span>` : '';
     el.innerHTML = `<span class="freq-retro me-1">FlexRadio Status</span>${freq}${mode}${power}${rxtx}${swr}`;
@@ -534,11 +645,47 @@ async function loadFlexRadioStatus() {
 
 // ── CW Decoder tile ──────────────────────────────────────────────────────────
 
-function updateCwTile(msg) {
+let _cwLastText = '';
+
+function _measureCwCharsPerLine() {
   const display = document.getElementById('cw-text-display');
-  if (display && msg.text !== undefined) {
-    display.textContent = msg.text || '';
-    display.scrollTop = display.scrollHeight;
+  if (!display) return 80;
+  const probe = document.createElement('span');
+  probe.style.cssText = 'font-family:monospace;font-size:1rem;visibility:hidden;position:absolute;white-space:pre';
+  probe.textContent = 'M';
+  display.appendChild(probe);
+  const charWidth = probe.getBoundingClientRect().width || 9.6;
+  display.removeChild(probe);
+  const innerWidth = display.clientWidth - 16;  // 8px padding each side
+  return Math.max(20, Math.floor(innerWidth / charWidth));
+}
+
+function updateCwTile(msg) {
+  if (msg.text !== undefined && msg.text !== _cwLastText) {
+    const incoming = msg.text || '';
+    let newChars = incoming.length > _cwLastText.length ? incoming.slice(_cwLastText.length) : incoming;
+    _cwLastText = incoming;
+
+    if (!_cwCharsPerLine) _cwCharsPerLine = _measureCwCharsPerLine();
+    const cpl = _cwCharsPerLine;
+
+    // Fill line1 first, then line2; when line2 fills, scroll up
+    for (const ch of newChars) {
+      if (cwLine2.length === 0 && cwLine1.length < cpl) {
+        cwLine1 += ch;
+      } else {
+        cwLine2 += ch;
+        if (cwLine2.length >= cpl) {
+          cwLine1 = cwLine2;
+          cwLine2 = '';
+        }
+      }
+    }
+
+    const l1 = document.getElementById('cw-line1');
+    const l2 = document.getElementById('cw-line2');
+    if (l1) l1.textContent = cwLine1;
+    if (l2) l2.textContent = cwLine2;
   }
 
   const wpmBadge = document.getElementById('cw-wpm');

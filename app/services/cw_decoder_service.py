@@ -6,7 +6,7 @@ applies the Goertzel algorithm to detect tone on/off, then feeds a timing
 state machine that converts dit/dah sequences to ASCII via a Morse dictionary.
 
 Audio format assumed: 16-bit signed big-endian, mono, 48 000 Hz.
-Goertzel is computed over 512-sample blocks (~21 ms windows).
+Goertzel is computed over 256-sample blocks (~5.3 ms windows).
 Pure-Python implementation — no numpy — keeps CPU use low on Pi 4.
 """
 import asyncio
@@ -21,13 +21,13 @@ logger = logging.getLogger(__name__)
 
 # ── Tuneable constants ────────────────────────────────────────────────────────
 SAMPLE_RATE       = 48_000     # Hz — FlexRadio DAX RX streams at 48 kHz
-BLOCK_SIZE        = 512        # samples per Goertzel window (~21 ms)
+BLOCK_SIZE        = 256        # samples per Goertzel window (~5.3 ms)
 DEFAULT_TONE_FREQ = 700.0      # Hz — CW sidetone to detect
-DEFAULT_THRESHOLD = 0.15       # relative power threshold for tone-on detection
+DEFAULT_THRESHOLD = 0.15       # minimum adaptive threshold floor (relative power)
 CHAR_GAP_FACTOR   = 2.2        # inter-character gap = 2.2 × dit duration
 WORD_GAP_FACTOR   = 4.5        # inter-word gap = 4.5 × dit duration
 WPM_SMOOTH        = 0.15       # EMA coefficient for WPM smoothing
-MIN_DIT_MS        = 30         # ignore events shorter than this (noise floor)
+MIN_DIT_MS        = 20         # ignore events shorter than this (noise floor)
 MAX_DIT_MS        = 200        # dit longer than this → treat as dah minimum
 MAX_ELEMENT_MS    = 800        # element longer than this is startup/gap noise — discard
 SNR_SMOOTH        = 0.2        # EMA coefficient for SNR estimate
@@ -71,9 +71,11 @@ def _goertzel_power(samples: list[float], target_freq: float, sample_rate: int) 
 
     power = s1 * s1 + s2 * s2 - coeff * s1 * s2
 
-    # Normalise against RMS energy of block
+    # Normalise against RMS energy of block.
+    # Floor at 1e-6: near-silent blocks have undefined ratio and would
+    # corrupt the adaptive threshold EMAs if allowed through.
     energy = sum(x * x for x in samples)
-    if energy < 1e-12:
+    if energy < 1e-6:
         return 0.0
     return power / energy
 
@@ -170,6 +172,7 @@ _cw_mode: bool = False   # True only when the radio slice is in CW/CWL/CWU
 
 async def _decode_loop(queue: asyncio.Queue) -> None:
     sm = _CWStateMachine()
+    _sm_ref.register(sm)
     sample_buf: list[float] = []
 
     tone_on = False
@@ -179,17 +182,19 @@ async def _decode_loop(queue: asyncio.Queue) -> None:
 
     # Adaptive threshold: tracks separate on/off power levels and thresholds at
     # their geometric mean.  Immune to AGC-induced level shifts.
-    pwr_hi: float = 0.5    # EMA of power while tone is on
+    # _threshold (from settings) acts as a hard floor so the UI control matters.
+    pwr_hi: float = 0.1    # EMA of power while tone is on
     pwr_lo: float = 0.001  # EMA of power while tone is off
-    HI_SMOOTH = 0.05
-    LO_SMOOTH = 0.05
+    HI_SMOOTH = 0.10
+    LO_SMOOTH = 0.10
 
-    # Symmetric debounce: require consecutive blocks in the same state before
-    # committing a transition.  Filters 1-block AGC/filter ring-down artifacts.
-    # At 5 WPM (W1AW slow) dits are 240ms = 22 blocks; at 40 WPM ~3 blocks.
-    # 2 blocks on = 21ms min tone, 3 blocks off = 32ms min silence.
+    # Debounce: require this many consecutive blocks in the new state before
+    # committing a transition.  With BLOCK_SIZE=256 at 48 kHz each block is
+    # ~5.3 ms.  2 blocks = ~10.7 ms minimum event — safe for CW up to ~55 WPM.
+    # OLD MIN_OFF_BLOCKS=5 required 53 ms silence which swallowed inter-element
+    # gaps at 25 WPM (gap=48 ms), causing elements to merge and nothing decoded.
     MIN_ON_BLOCKS  = 2
-    MIN_OFF_BLOCKS = 5
+    MIN_OFF_BLOCKS = 2
     high_count: int = 0    # consecutive above-threshold block counter
     low_count: int  = 0    # consecutive below-threshold block counter
 
@@ -243,10 +248,14 @@ async def _decode_loop(queue: asyncio.Queue) -> None:
                 noise_ema = 0.98 * noise_ema + 0.02 * power
             sm.update_snr(power, noise_ema)
 
-            # Adaptive threshold: geometric mean of the on/off power EMAs.
+            # Adaptive threshold: geometric mean of the on/off power EMAs,
+            # floored by _threshold so the settings control has a real effect.
             # Compute raw_on first, then update EMAs based on it so ring-down
             # blocks don't corrupt pwr_hi during the OFF debounce window.
-            adapt_thr = math.sqrt(max(pwr_hi, 1e-6) * max(pwr_lo, 1e-9))
+            adapt_thr = max(
+                math.sqrt(max(pwr_hi, 1e-6) * max(pwr_lo, 1e-9)),
+                _threshold,
+            )
             raw_on = power >= adapt_thr
             if raw_on:
                 pwr_hi = (1 - HI_SMOOTH) * pwr_hi + HI_SMOOTH * power
@@ -331,6 +340,28 @@ def set_cw_mode(active: bool) -> None:
     if _cw_mode != active:
         _cw_mode = active
         logger.info("CW decoder %s", "activated" if active else "suspended (non-CW mode)")
+
+
+def clear_decoder_text() -> None:
+    """Reset the state machine's decoded text buffer (called by the clear endpoint)."""
+    _sm_ref.clear()
+
+
+class _SmRef:
+    """Thin wrapper so clear_decoder_text() can reach the live state machine."""
+    def __init__(self) -> None:
+        self._sm: _CWStateMachine | None = None
+
+    def register(self, sm: _CWStateMachine) -> None:
+        self._sm = sm
+
+    def clear(self) -> None:
+        if self._sm is not None:
+            self._sm._decoded.clear()
+            self._sm._symbol_buf = ""
+
+
+_sm_ref = _SmRef()
 
 
 def get_status() -> dict:

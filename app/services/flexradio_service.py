@@ -39,6 +39,8 @@ FLEX_PORT = 4992
 DAX_UDP_PORT = 4991   # UDP port the radio sends VITA-49 audio frames to
 
 _flex_task: asyncio.Task | None = None
+_writer: asyncio.StreamWriter | None = None
+_seq: int = 0
 _flex_state: dict = {
     "connected": False,
     "slices": {},        # {slice_index: {"RF_frequency": str, "mode": str, "in_use": str}}
@@ -196,6 +198,18 @@ def _get_swr() -> float | None:
     return None
 
 
+async def send_command(cmd: str) -> bool:
+    """Send a raw command to the radio. Returns False if not connected."""
+    global _seq
+    if _writer is None or _writer.is_closing():
+        return False
+    _seq += 1
+    logger.debug("FlexRadio TX C%d|%s", _seq, cmd)
+    _writer.write(f"C{_seq}|{cmd}\n".encode())
+    await _writer.drain()
+    return True
+
+
 def get_state() -> dict:
     """Return a shallow copy of the current radio state."""
     return {
@@ -246,7 +260,8 @@ async def _flex_listener():
         dax_enabled = settings.get("dax_enabled", True)
         dax_channel = int(settings.get("dax_channel", 1))
 
-        seq = 1
+        global _writer, _seq
+        _seq = 1
         dax_create_seq: int | None = None
         dax_stream_created = False
         connect_time: float | None = None
@@ -256,6 +271,7 @@ async def _flex_listener():
                 asyncio.open_connection(ip, FLEX_PORT),
                 timeout=10,
             )
+            _writer = writer
             logger.info("FlexRadio connected to %s:%d", ip, FLEX_PORT)
             fail_count = 0
             _flex_state["connected"] = True
@@ -265,22 +281,22 @@ async def _flex_listener():
             # "client gui" causes the radio to create a Pi-owned slice which
             # then takes ownership of DAX channel 1, preventing our stream
             # from targeting the operator's CW slice.
-            writer.write(f"C{seq}|client program Ham-Shack-Cockpit\n".encode())
-            seq += 1
+            writer.write(f"C{_seq}|client program Ham-Shack-Cockpit\n".encode())
+            _seq += 1
             # Register the UDP port so the radio knows where to send VITA-49 frames.
             # Without this command the radio sends no directed UDP at all.
-            writer.write(f"C{seq}|client udpport {DAX_UDP_PORT}\n".encode())
-            seq += 1
-            writer.write(f"C{seq}|sub slice all\n".encode())
-            seq += 1
-            writer.write(f"C{seq}|sub tx all\n".encode())
-            seq += 1
-            writer.write(f"C{seq}|sub interlock all\n".encode())
-            seq += 1
-            writer.write(f"C{seq}|sub meter all\n".encode())
-            seq += 1
-            writer.write(f"C{seq}|meter list\n".encode())
-            seq += 1
+            writer.write(f"C{_seq}|client udpport {DAX_UDP_PORT}\n".encode())
+            _seq += 1
+            writer.write(f"C{_seq}|sub slice all\n".encode())
+            _seq += 1
+            writer.write(f"C{_seq}|sub tx all\n".encode())
+            _seq += 1
+            writer.write(f"C{_seq}|sub interlock all\n".encode())
+            _seq += 1
+            writer.write(f"C{_seq}|sub meter all\n".encode())
+            _seq += 1
+            writer.write(f"C{_seq}|meter list\n".encode())
+            _seq += 1
             await writer.drain()
             # DAX stream create is deferred 3 s to let slice status arrive first
 
@@ -294,13 +310,13 @@ async def _flex_listener():
                         elapsed = asyncio.get_event_loop().time() - connect_time
                         if elapsed >= 3.0:
                             target_slice = _find_cw_slice()
-                            cmd = f"C{seq}|stream create type=dax_rx dax_channel={dax_channel}"
+                            cmd = f"C{_seq}|stream create type=dax_rx dax_channel={dax_channel}"
                             if target_slice is not None:
                                 cmd += f" slice={target_slice}"
                             cmd += "\n"
-                            dax_create_seq = seq
+                            dax_create_seq = _seq
                             writer.write(cmd.encode())
-                            seq += 1
+                            _seq += 1
                             await writer.drain()
                             dax_stream_created = True
                             logger.info(
@@ -309,8 +325,8 @@ async def _flex_listener():
                             )
                     else:
                         # Keepalive ping
-                        writer.write(f"C{seq}|ping\n".encode())
-                        seq += 1
+                        writer.write(f"C{_seq}|ping\n".encode())
+                        _seq += 1
                         await writer.drain()
                     continue
 
@@ -414,6 +430,9 @@ async def _flex_listener():
                         code = parts[1]
                         data = parts[2]
 
+                        if code != "0":
+                            logger.warning("FlexRadio command R%s error %s: %s", resp_seq, code, data.strip())
+
                         # Meter list names
                         if code == "0" and data:
                             for nm in re.finditer(r'(\d+)\.name=([^,\s]+)', data):
@@ -444,6 +463,7 @@ async def _flex_listener():
             log("FlexRadio connection error (attempt %d, %s): %s", fail_count, ip, exc)
 
         finally:
+            _writer = None
             _flex_state["connected"] = False
             _stop_dax_udp()
 
