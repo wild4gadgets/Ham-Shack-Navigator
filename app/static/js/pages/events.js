@@ -89,7 +89,7 @@ function renderTable(result) {
       <tbody>
         ${result.items.map(ev => `
           <tr>
-            <td><small>${new Date(ev.created_at).toLocaleString()}</small></td>
+            <td><small>${new Date(ev.created_at.slice(0, 19) + 'Z').toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'medium' })}</small></td>
             <td><small class="font-monospace">${ev.event_type}</small></td>
             <td><span class="badge ${severityClass[ev.severity] || 'bg-secondary'}">${ev.severity}</span></td>
             <td><small>${ev.message}</small></td>

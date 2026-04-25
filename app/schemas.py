@@ -218,6 +218,8 @@ class FlexRadioSettings(BaseModel):
     dax_channel: int = 1
     cw_tone_freq: float = 700.0
     cw_threshold: float = 0.15
+    freq_step_small_khz: float = 500.0
+    freq_step_large_khz: float = 1000.0
 
 
 # --- Kasa ---

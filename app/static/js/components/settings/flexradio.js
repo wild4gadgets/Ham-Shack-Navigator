@@ -6,10 +6,12 @@ export async function renderFlexRadioTab(container) {
   container.innerHTML = '<div class="text-muted p-3">Loading...</div>';
   const data = await apiGet('/settings/flexradio');
 
-  const daxEnabled   = data.dax_enabled  ?? true;
-  const daxChannel   = data.dax_channel  ?? 1;
-  const cwToneFreq   = data.cw_tone_freq ?? 700;
-  const cwThreshold  = data.cw_threshold ?? 0.15;
+  const daxEnabled      = data.dax_enabled        ?? true;
+  const daxChannel      = data.dax_channel        ?? 1;
+  const cwToneFreq      = data.cw_tone_freq       ?? 700;
+  const cwThreshold     = data.cw_threshold       ?? 0.15;
+  const stepSmallKhz    = data.freq_step_small_khz ?? 500.0;
+  const stepLargeKhz    = data.freq_step_large_khz ?? 1000.0;
 
   container.innerHTML = `
     <div class="card">
@@ -70,6 +72,24 @@ export async function renderFlexRadioTab(container) {
             </div>
           </div>
 
+          <hr style="border-color:#2a2a4a">
+          <h6 class="text-white-50 mb-3">Frequency Step Sizes</h6>
+
+          <div class="row mb-3">
+            <div class="col">
+              <label class="form-label">Small Step (kHz)</label>
+              <input type="number" class="form-control" id="flex-step-small"
+                min="0.001" step="0.001" value="${stepSmallKhz}" style="${INP}">
+              <div class="form-text">Step size for &lt; / &gt; buttons and , / . keys.</div>
+            </div>
+            <div class="col">
+              <label class="form-label">Large Step (kHz)</label>
+              <input type="number" class="form-control" id="flex-step-large"
+                min="0.001" step="0.001" value="${stepLargeKhz}" style="${INP}">
+              <div class="form-text">Step size for &lt;&lt; / &gt;&gt; buttons and &lt; / &gt; keys.</div>
+            </div>
+          </div>
+
           <button type="submit" class="btn btn-primary">Save</button>
         </form>
       </div>
@@ -96,12 +116,14 @@ export async function renderFlexRadioTab(container) {
     const msg = document.getElementById('flex-msg');
     try {
       await apiPut('/settings/flexradio', {
-        ip:            document.getElementById('flex-ip').value.trim(),
-        enabled:       document.getElementById('flex-enabled').checked,
-        dax_enabled:   document.getElementById('flex-dax-enabled').checked,
-        dax_channel:   parseInt(document.getElementById('flex-dax-channel').value, 10),
-        cw_tone_freq:  parseFloat(document.getElementById('flex-cw-tone-freq').value),
-        cw_threshold:  parseFloat(document.getElementById('flex-cw-threshold').value),
+        ip:                   document.getElementById('flex-ip').value.trim(),
+        enabled:              document.getElementById('flex-enabled').checked,
+        dax_enabled:          document.getElementById('flex-dax-enabled').checked,
+        dax_channel:          parseInt(document.getElementById('flex-dax-channel').value, 10),
+        cw_tone_freq:         parseFloat(document.getElementById('flex-cw-tone-freq').value),
+        cw_threshold:         parseFloat(document.getElementById('flex-cw-threshold').value),
+        freq_step_small_khz:  parseFloat(document.getElementById('flex-step-small').value),
+        freq_step_large_khz:  parseFloat(document.getElementById('flex-step-large').value),
       });
       msg.className = 'alert alert-success';
       msg.textContent = 'FlexRadio settings saved.';

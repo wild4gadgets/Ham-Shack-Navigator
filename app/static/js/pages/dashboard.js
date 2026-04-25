@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from '../api.js';
+import { apiGet, apiPost, apiPut } from '../api.js';
 import { getToken, isAdmin } from '../state.js';
 
 async function apiFetchXml(path) {
@@ -12,6 +12,7 @@ async function apiFetchXml(path) {
 let ws = null;
 let pingInterval = null;
 let destroyed = false;
+let pskZoomHandler = null;
 let radarMap = null;
 let radarLayer = null;
 let lightningLayer = null;
@@ -40,6 +41,8 @@ let systemState = { last: null, startup_id: null, shutdown_id: null };
 let cwLine1 = '';
 let cwLine2 = '';
 let _cwCharsPerLine = 0;  // measured on first use
+let flexFreqSteps = { small: 500.0, large: 1000.0 };
+let _optimisticFreqMhz = null;
 
 function escHtml(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -48,34 +51,52 @@ function escHtml(s) {
 export async function renderDashboard(container) {
   destroyed = false;
   container.innerHTML = `
-    <div class="row g-3">
-      <!-- Monitoring Control -->
-      <div class="col-12">
+    <div id="dashboard-rows" class="d-flex flex-column gap-3">
+
+      <!-- Monitoring Control — fixed, never draggable -->
+      <div class="db-section" data-section="monitoring">
         <div class="card">
-          <div class="card-header d-flex align-items-center gap-2 flex-wrap">
+          <div class="card-header monitoring-header d-flex align-items-center gap-2 flex-wrap">
             <span class="me-1"><i class="bi bi-shield-check me-2"></i>Monitoring</span>
             <div id="monitoring-status-area"><span class="text-muted">Loading...</span></div>
             <div id="dashboard-pins" class="d-flex flex-wrap gap-1 align-items-center"></div>
             <div class="ms-auto d-flex align-items-center gap-2">
               <button id="btn-system-toggle" class="btn btn-sm btn-secondary" disabled>...</button>
+              <button id="btn-reset-layout" class="btn btn-sm btn-outline-secondary" title="Reset tile layout to default">
+                <i class="bi bi-layout-three-columns"></i>
+              </button>
               <button id="btn-refresh" class="btn btn-sm btn-outline-light">
                 <i class="bi bi-arrow-clockwise"></i> Refresh
               </button>
             </div>
           </div>
           <div class="card-body d-flex align-items-center flex-wrap gap-2 py-2">
-            <div id="flexradio-status" class="d-flex align-items-center gap-1"></div>
+            <div id="flexradio-status" class="d-flex flex-wrap align-items-center gap-1"></div>
             <div class="ms-auto"><small id="weather-update-time" class="text-white-50"></small></div>
           </div>
         </div>
       </div>
 
-      <!-- CW Decoder -->
-      <div class="col-12" id="cw-tile-row" style="display:none">
+      <!-- CW Decoder — independent draggable -->
+      <div class="db-section db-draggable" data-section="cw" id="cw-tile-row" style="display:none">
+        <div class="drag-handle"><i class="bi bi-grip-horizontal"></i></div>
         <div class="card">
-          <div class="card-header d-flex justify-content-between align-items-center">
+          <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
             <span><i class="bi bi-soundwave me-2"></i>CW Decoder</span>
-            <div class="d-flex gap-2 align-items-center">
+            <div class="d-flex gap-2 align-items-center flex-wrap">
+              <label class="d-flex align-items-center gap-1 mb-0" title="CW tone frequency in Hz (200–1200)">
+                <small class="text-muted">Tone</small>
+                <input type="number" id="cw-tone-input" min="200" max="1200" step="10" value="700"
+                  class="form-control form-control-sm" style="width:72px"
+                  title="CW tone frequency (200–1200 Hz)">
+                <small class="text-muted">Hz</small>
+              </label>
+              <label class="d-flex align-items-center gap-1 mb-0" title="Detection threshold floor — higher = less sensitive (0.01–0.50)">
+                <small class="text-muted">Thr</small>
+                <input type="range" id="cw-thresh-slider" min="0.01" max="0.50" step="0.01" value="0.15"
+                  style="width:72px;cursor:pointer" title="Detection threshold (0.01–0.50)">
+                <small id="cw-thresh-val" class="text-muted" style="width:2.8em;text-align:right">0.15</small>
+              </label>
               <span id="cw-wpm" class="badge bg-secondary">-- WPM</span>
               <span id="cw-snr" class="badge bg-secondary">SNR --</span>
               <button id="btn-cw-clear" class="btn btn-sm btn-outline-secondary" title="Clear decoded text">
@@ -96,49 +117,53 @@ export async function renderDashboard(container) {
         </div>
       </div>
 
-      <!-- Weather Cards - square tiles -->
-      <div class="col-12 col-md-4 col-lg-2">
-        <div class="card">
-          <div class="card-header"><i class="bi bi-wind me-2"></i>Wind</div>
-          <div class="card-body p-1 weather-tile-body" id="wind-card" style="overflow:hidden">
-            <div class="text-muted text-center pt-3">Loading...</div>
+      <!-- Weather Group: Wind + Temperature + Lightning -->
+      <div class="db-section db-draggable" data-section="weather">
+        <div class="drag-handle"><i class="bi bi-grip-horizontal"></i></div>
+        <div class="row g-3">
+          <div class="col-12 col-md-4">
+            <div class="card">
+              <div class="card-header"><i class="bi bi-wind me-2"></i>Wind</div>
+              <div class="card-body p-1 weather-tile-body" id="wind-card" style="overflow:hidden">
+                <div class="text-muted text-center pt-3">Loading...</div>
+              </div>
+            </div>
+          </div>
+          <div class="col-12 col-md-4">
+            <div class="card">
+              <div class="card-header"><i class="bi bi-thermometer-half me-2"></i>Temperature</div>
+              <div class="card-body p-1 weather-tile-body" id="temp-card" style="overflow:hidden">
+                <div class="text-muted text-center pt-3">Loading...</div>
+              </div>
+            </div>
+          </div>
+          <div class="col-12 col-md-4">
+            <div class="card">
+              <div class="card-header"><i class="bi bi-lightning-charge me-2"></i>Lightning</div>
+              <div class="card-body d-flex flex-column justify-content-center align-items-center weather-tile-body" id="lightning-card">
+                <div class="weather-value" id="lightning-value">--</div>
+                <div class="weather-unit" id="lightning-unit">miles away</div>
+                <div class="mt-2 text-muted" id="lightning-desc"></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      <div class="col-12 col-md-4 col-lg-2">
-        <div class="card">
-          <div class="card-header"><i class="bi bi-thermometer-half me-2"></i>Temperature</div>
-          <div class="card-body p-1 weather-tile-body" id="temp-card" style="overflow:hidden">
-            <div class="text-muted text-center pt-3">Loading...</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="col-12 col-md-4 col-lg-2">
-        <div class="card">
-          <div class="card-header"><i class="bi bi-lightning-charge me-2"></i>Lightning</div>
-          <div class="card-body d-flex flex-column justify-content-center align-items-center weather-tile-body" id="lightning-card">
-            <div class="weather-value" id="lightning-value">--</div>
-            <div class="weather-unit" id="lightning-unit">miles away</div>
-            <div class="mt-2 text-muted" id="lightning-desc"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 24-Hour Forecast -->
-      <div class="col-12 col-lg-6">
+      <!-- 24-Hour Forecast — group draggable -->
+      <div class="db-section db-draggable" data-section="forecast">
+        <div class="drag-handle"><i class="bi bi-grip-horizontal"></i></div>
         <div class="card">
           <div class="card-header"><i class="bi bi-calendar-range me-2"></i>24-Hr Forecast</div>
           <div class="card-body p-2" id="forecast-strip">
             <div class="text-muted text-center">Loading...</div>
           </div>
-          <div id="alerts-strip" style="display:none"></div>
         </div>
       </div>
 
-      <!-- Radar -->
-      <div class="col-12 col-lg-6">
+      <!-- Local Radar — independent draggable -->
+      <div class="db-section db-draggable" data-section="radar">
+        <div class="drag-handle"><i class="bi bi-grip-horizontal"></i></div>
         <div class="card">
           <div class="card-header d-flex justify-content-between align-items-center">
             <span><i class="bi bi-broadcast me-2"></i>Local Radar</span>
@@ -153,11 +178,11 @@ export async function renderDashboard(container) {
         </div>
       </div>
 
-      <!-- Right column: Solar Propagation + DX Band Activity stacked -->
-      <div class="col-12 col-lg-6">
+      <!-- Solar Propagation + DX Band Activity — group draggable -->
+      <div class="db-section db-draggable" data-section="solar">
+        <div class="drag-handle"><i class="bi bi-grip-horizontal"></i></div>
         <div class="row g-3">
-          <!-- Solar Propagation -->
-          <div class="col-12">
+          <div class="col-12 col-lg-6">
             <div class="card">
               <div class="card-header d-flex justify-content-between align-items-center">
                 <span><i class="bi bi-sun me-2"></i>Solar / Propagation</span>
@@ -168,9 +193,7 @@ export async function renderDashboard(container) {
               </div>
             </div>
           </div>
-
-          <!-- DX Band Activity -->
-          <div class="col-12">
+          <div class="col-12 col-lg-6">
             <div class="card">
               <div class="card-header d-flex justify-content-between align-items-center">
                 <span><i class="bi bi-reception-4 me-2"></i>Band Activity</span>
@@ -184,11 +207,15 @@ export async function renderDashboard(container) {
         </div>
       </div>
 
-      <!-- Alerts -->
-      <div class="col-12" id="alerts-area"></div>
+      <!-- Warnings & Alerts — group draggable -->
+      <div class="db-section db-draggable" data-section="alerts" style="display:none">
+        <div class="drag-handle"><i class="bi bi-grip-horizontal"></i></div>
+        <div id="alerts-area"></div>
+      </div>
 
-      <!-- PSK Reporter Spots -->
-      <div class="col-12">
+      <!-- PSK Reporter Spots — independent draggable -->
+      <div class="db-section db-draggable" data-section="psk">
+        <div class="drag-handle"><i class="bi bi-grip-horizontal"></i></div>
         <div class="card">
           <div class="card-header d-flex justify-content-between align-items-center">
             <span><i class="bi bi-broadcast-pin me-2"></i>PSK Reporter Spots</span>
@@ -294,12 +321,13 @@ export async function renderDashboard(container) {
         </div>
       </div>
 
-      <!-- Recent Events -->
-      <div class="col-12">
+      <!-- Recent Events — independent draggable -->
+      <div class="db-section db-draggable" data-section="events">
+        <div class="drag-handle"><i class="bi bi-grip-horizontal"></i></div>
         <div class="card">
           <div class="card-header d-flex justify-content-between">
             <span><i class="bi bi-clock-history me-2"></i>Recent Events</span>
-            <a href="#/events" class="btn btn-sm btn-outline-light">View All</a>
+            <button class="btn btn-sm btn-outline-light" id="btn-view-all-events">View All</button>
           </div>
           <div class="card-body p-0">
             <div id="recent-events-table">
@@ -363,10 +391,71 @@ export async function renderDashboard(container) {
         </div>
       </div>
     </div>
+
+    <!-- Event Log Modal -->
+    <div class="modal fade" id="events-modal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content" style="background:#12122a;border:1px solid #2a2a4a;color:#e0e0e0">
+          <div class="modal-header" style="border-color:#2a2a4a">
+            <h5 class="modal-title"><i class="bi bi-clock-history me-2"></i>Event Log</h5>
+            <div class="d-flex gap-2 ms-3">
+              <select id="em-filter-type" class="form-select form-select-sm" style="width:auto">
+                <option value="">All Types</option>
+                <option>shutdown_triggered</option>
+                <option>wind_alert</option>
+                <option>lightning_alert</option>
+                <option>weather_alert</option>
+                <option>email_sent</option>
+                <option>kasa_action</option>
+                <option>monitoring_armed</option>
+                <option>monitoring_disarmed</option>
+                <option>login</option>
+                <option>error</option>
+                <option>info</option>
+              </select>
+              <select id="em-filter-severity" class="form-select form-select-sm" style="width:auto">
+                <option value="">All Severities</option>
+                <option>info</option>
+                <option>warning</option>
+                <option>critical</option>
+              </select>
+            </div>
+            <button type="button" class="btn-close btn-close-white ms-auto" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body p-0" id="em-body">
+            <div class="text-center text-muted p-4">Loading…</div>
+          </div>
+          <div class="modal-footer justify-content-center" style="border-color:#2a2a4a" id="em-pagination"></div>
+        </div>
+      </div>
+    </div>
   `;
 
   await loadAll();
   connectWS();
+  await restoreTileOrder();
+  initDashboardDnD();
+
+  if (pskZoomHandler) document.removeEventListener('keydown', pskZoomHandler);
+  pskZoomHandler = (e) => {
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+    if ((e.key === '+' || e.key === '=') && !e.ctrlKey && !e.metaKey) {
+      pskMap?.zoomIn();
+      radarMap?.zoomIn();
+    } else if (e.key === '-' && !e.ctrlKey && !e.metaKey) {
+      pskMap?.zoomOut();
+      radarMap?.zoomOut();
+    } else if (e.key === ',' && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      stepFreq(-flexFreqSteps.small);
+    } else if (e.key === '.' && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      stepFreq(flexFreqSteps.small);
+    } else if (e.key === '<' && !e.ctrlKey && !e.metaKey) {
+      stepFreq(-flexFreqSteps.large);
+    } else if (e.key === '>' && !e.ctrlKey && !e.metaKey) {
+      stepFreq(flexFreqSteps.large);
+    }
+  };
+  document.addEventListener('keydown', pskZoomHandler);
 
   if (!isAdmin()) {
     document.getElementById('btn-system-toggle').disabled = true;
@@ -407,7 +496,43 @@ export async function renderDashboard(container) {
     try { await apiPost('/cw/clear', {}); } catch (_) { /* best-effort */ }
   });
 
+  // CW params: load current values then wire controls
+  try {
+    const cwStatus = await apiGet('/cw/status');
+    const toneInput  = document.getElementById('cw-tone-input');
+    const thrSlider  = document.getElementById('cw-thresh-slider');
+    const thrVal     = document.getElementById('cw-thresh-val');
+    if (toneInput && cwStatus.tone_freq) toneInput.value = cwStatus.tone_freq;
+    if (thrSlider && cwStatus.threshold)  { thrSlider.value = cwStatus.threshold; if (thrVal) thrVal.textContent = Number(cwStatus.threshold).toFixed(2); }
+  } catch (_) { /* decoder not running yet */ }
+
+  let _cwParamTimer = null;
+  function scheduleCwParamSave() {
+    clearTimeout(_cwParamTimer);
+    _cwParamTimer = setTimeout(async () => {
+      const tone = parseFloat(document.getElementById('cw-tone-input')?.value);
+      const thr  = parseFloat(document.getElementById('cw-thresh-slider')?.value);
+      try { await apiPut('/cw/params', { tone_freq: tone, threshold: thr }); } catch (_) { /* best-effort */ }
+    }, 400);
+  }
+
+  document.getElementById('cw-tone-input')?.addEventListener('change', scheduleCwParamSave);
+  document.getElementById('cw-thresh-slider')?.addEventListener('input', e => {
+    const v = document.getElementById('cw-thresh-val');
+    if (v) v.textContent = parseFloat(e.target.value).toFixed(2);
+    scheduleCwParamSave();
+  });
+
   document.getElementById('flexradio-status')?.addEventListener('click', e => {
+    const stepBtn = e.target.closest('.freq-step-btn');
+    if (stepBtn) {
+      const dir = stepBtn.dataset.step;
+      if (dir === '-large') stepFreq(-flexFreqSteps.large);
+      else if (dir === '-small') stepFreq(-flexFreqSteps.small);
+      else if (dir === '+small') stepFreq(flexFreqSteps.small);
+      else if (dir === '+large') stepFreq(flexFreqSteps.large);
+      return;
+    }
     const freqBadge = e.target.closest('#flex-freq-badge');
     if (freqBadge) { openTuneModal(freqBadge.dataset.freq); return; }
     const modeBadge = e.target.closest('#flex-mode-badge');
@@ -484,11 +609,128 @@ export async function renderDashboard(container) {
     setTimeout(() => { btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Refresh'; }, 2500);
   });
 
+  document.getElementById('btn-reset-layout')?.addEventListener('click', async () => {
+    await apiPut('/settings/dashboard-layout', { order: DEFAULT_TILE_ORDER });
+    cleanup();
+    renderDashboard(container);
+  });
+
+  // Events modal
+  let emPage = 1;
+  async function loadEventsModal(page) {
+    emPage = page;
+    const type = document.getElementById('em-filter-type')?.value || '';
+    const sev  = document.getElementById('em-filter-severity')?.value || '';
+    let q = `/events?page=${page}&page_size=50`;
+    if (type) q += `&event_type=${encodeURIComponent(type)}`;
+    if (sev)  q += `&severity=${encodeURIComponent(sev)}`;
+    const body = document.getElementById('em-body');
+    if (!body) return;
+    try {
+      const result = await apiGet(q);
+      const sevClass = { info: 'badge-info', warning: 'badge-warning', critical: 'badge-critical' };
+      if (!result.items?.length) {
+        body.innerHTML = '<div class="text-center text-muted p-4">No events found</div>';
+      } else {
+        body.innerHTML = `
+          <table class="table table-dark table-sm table-hover mb-0">
+            <thead class="sticky-top"><tr>
+              <th>Time</th><th>Type</th><th>Severity</th><th>Message</th><th>Metadata</th>
+            </tr></thead>
+            <tbody>${result.items.map(ev => `<tr>
+              <td><small>${new Date(ev.created_at.slice(0,19)+'Z').toLocaleString(undefined,{dateStyle:'short',timeStyle:'medium'})}</small></td>
+              <td><small class="font-monospace">${ev.event_type}</small></td>
+              <td><span class="badge ${sevClass[ev.severity]||'bg-secondary'}">${ev.severity}</span></td>
+              <td><small>${ev.message}</small></td>
+              <td><small class="text-muted">${ev.meta ? JSON.stringify(JSON.parse(ev.meta)).substring(0,80) : ''}</small></td>
+            </tr>`).join('')}</tbody>
+          </table>
+          <div class="p-2 text-muted text-end"><small>Total: ${result.total} events</small></div>`;
+      }
+      // Pagination
+      const pg = document.getElementById('em-pagination');
+      if (pg) {
+        if (result.pages <= 1) { pg.innerHTML = ''; }
+        else {
+          const cur = result.page, pages = result.pages;
+          let html = `<ul class="pagination pagination-sm mb-0">
+            <li class="page-item ${cur===1?'disabled':''}"><a class="page-link" href="#" data-p="${cur-1}">&laquo;</a></li>`;
+          for (let p = Math.max(1,cur-2); p <= Math.min(pages,cur+2); p++)
+            html += `<li class="page-item ${p===cur?'active':''}"><a class="page-link" href="#" data-p="${p}">${p}</a></li>`;
+          html += `<li class="page-item ${cur===pages?'disabled':''}"><a class="page-link" href="#" data-p="${cur+1}">&raquo;</a></li></ul>`;
+          pg.innerHTML = html;
+          pg.querySelectorAll('[data-p]').forEach(el => el.addEventListener('click', e => {
+            e.preventDefault();
+            const p = parseInt(el.dataset.p);
+            if (p >= 1 && p <= pages) loadEventsModal(p);
+          }));
+        }
+      }
+    } catch (err) {
+      body.innerHTML = `<div class="alert alert-danger m-3">Failed to load events: ${err.message}</div>`;
+    }
+  }
+
+  document.getElementById('btn-view-all-events')?.addEventListener('click', () => {
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('events-modal')).show();
+    loadEventsModal(1);
+  });
+  document.getElementById('em-filter-type')?.addEventListener('change', () => loadEventsModal(1));
+  document.getElementById('em-filter-severity')?.addEventListener('change', () => loadEventsModal(1));
+
   return cleanup;
+}
+
+const DEFAULT_TILE_ORDER = [
+  'monitoring', 'cw', 'weather', 'forecast', 'radar', 'solar', 'alerts', 'psk', 'events',
+];
+
+async function restoreTileOrder() {
+  try {
+    const data = await apiGet('/settings/dashboard-layout');
+    const order = (data.order && data.order.length) ? data.order : DEFAULT_TILE_ORDER;
+    const parent = document.getElementById('dashboard-rows');
+    if (!parent) return;
+    order.forEach(id => {
+      const el = parent.querySelector(`[data-section="${id}"]`);
+      if (el) parent.appendChild(el);
+    });
+    // Monitoring is always first regardless of saved order
+    const mon = parent.querySelector('[data-section="monitoring"]');
+    if (mon) parent.insertBefore(mon, parent.firstChild);
+  } catch (_) { /* fall through to default order on error */ }
+}
+
+async function saveTileOrder() {
+  const order = Array.from(
+    document.querySelectorAll('#dashboard-rows .db-section')
+  ).map(s => s.dataset.section);
+  try { await apiPut('/settings/dashboard-layout', { order }); } catch (_) {}
+}
+
+function initDashboardDnD() {
+  const container = document.getElementById('dashboard-rows');
+  if (!container || typeof Sortable === 'undefined') return;
+
+  container.querySelectorAll('.drag-handle').forEach(h => {
+    h.title = 'Drag to reorder';
+  });
+
+  Sortable.create(container, {
+    handle: '.drag-handle',
+    animation: 150,
+    draggable: '.db-draggable',
+    onEnd: () => {
+      saveTileOrder();
+      radarMap?.invalidateSize();
+      pskMap?.invalidateSize();
+    },
+  });
 }
 
 function cleanup() {
   destroyed = true;
+  if (pskZoomHandler) { document.removeEventListener('keydown', pskZoomHandler); pskZoomHandler = null; }
   if (pinPollTimer) { clearInterval(pinPollTimer); pinPollTimer = null; }
   if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
   if (solarRefreshTimer) { clearInterval(solarRefreshTimer); solarRefreshTimer = null; }
@@ -543,6 +785,7 @@ async function loadSystemState() {
 }
 
 async function loadAll() {
+  await loadFlexSettings();
   await Promise.all([loadMonitoringStatus(), loadFlexRadioStatus(), loadWeather(), loadRecentEvents(), loadRadar(), loadPins(), loadSolarData(), loadSystemState(), loadDxCluster(), initPskTile()]);
   if (solarRefreshTimer) clearInterval(solarRefreshTimer);
   solarRefreshTimer = setInterval(() => { if (!destroyed) loadSolarData(); }, 30 * 60 * 1000);
@@ -609,6 +852,38 @@ function amateurBand(mhz) {
   return null;
 }
 
+async function loadFlexSettings() {
+  try {
+    const s = await apiGet('/settings/flexradio');
+    flexFreqSteps.small = s.freq_step_small_khz ?? 500.0;
+    flexFreqSteps.large = s.freq_step_large_khz ?? 1000.0;
+  } catch { /* keep defaults */ }
+}
+
+async function stepFreq(deltaKhz) {
+  const badge = document.getElementById('flex-freq-badge');
+  if (!badge) return;
+  const currentMhz = parseFloat(badge.dataset.freq);
+  if (isNaN(currentMhz)) return;
+  const newMhz = parseFloat((currentMhz + deltaKhz / 1000).toFixed(6));
+  if (newMhz <= 0) return;
+  // Optimistic update: reflect new freq immediately so rapid presses stack
+  // and the badge text doesn't wait for the radio's WS confirmation.
+  const newBand = amateurBand(newMhz.toFixed(3));
+  badge.dataset.freq = newMhz.toFixed(4);
+  badge.textContent = `${newMhz.toFixed(3)} MHz${newBand ? ' · ' + newBand : ''}`;
+  _optimisticFreqMhz = newMhz;
+  try {
+    await apiPost('/flexradio/tune', { freq_mhz: newMhz });
+  } catch {
+    // Revert display if the command failed
+    const oldBand = amateurBand(currentMhz.toFixed(3));
+    badge.dataset.freq = currentMhz.toFixed(4);
+    badge.textContent = `${currentMhz.toFixed(3)} MHz${oldBand ? ' · ' + oldBand : ''}`;
+    _optimisticFreqMhz = null;
+  }
+}
+
 async function loadFlexRadioStatus() {
   const el = document.getElementById('flexradio-status');
   if (!el) return;
@@ -625,7 +900,20 @@ async function loadFlexRadioStatus() {
     const isCwMode = ['CW', 'CWL', 'CWU'].includes((s.mode || '').toUpperCase());
     if (cwRow) cwRow.style.display = isCwMode ? '' : 'none';
     if (!s.freq_mhz) return;
-    const mhz = parseFloat(s.freq_mhz).toFixed(3);
+    // If we have an optimistic freq from a recent step, use it until the server
+    // confirms the new value — prevents the badge from briefly reverting to the
+    // pre-step frequency when an unrelated WS event fires before the radio
+    // has sent its updated RF_frequency over TCP.
+    const serverFreq = parseFloat(s.freq_mhz);
+    let displayFreq = serverFreq;
+    if (_optimisticFreqMhz !== null) {
+      if (Math.abs(serverFreq - _optimisticFreqMhz) < 0.0005) {
+        _optimisticFreqMhz = null; // server confirmed our step
+      } else {
+        displayFreq = _optimisticFreqMhz; // server hasn't caught up yet
+      }
+    }
+    const mhz = displayFreq.toFixed(3);
     const mode = s.mode ? `<span id="flex-mode-badge" class="badge ms-2" style="background:#00e676;color:#000;cursor:pointer" data-mode="${escHtml(s.mode)}">${escHtml(s.mode)}</span>` : '';
     const power = s.rf_power != null ? `<span class="badge ms-1" style="background:#00e676;color:#000">${s.rf_power}W</span>` : '';
     const isTx = s.tx_state === 'TRANSMITTING' || s.tx_state === 'PTT_REQUESTED';
@@ -633,7 +921,11 @@ async function loadFlexRadioStatus() {
       ? `<span class="badge ms-1" style="background:${isTx ? '#dc3545' : '#198754'};color:#fff">${isTx ? 'TX' : 'RX'}</span>`
       : '';
     const band = amateurBand(mhz);
-    const freq = `<span id="flex-freq-badge" class="badge ms-1" style="background:#00e676;color:#000;cursor:pointer" data-freq="${parseFloat(s.freq_mhz).toFixed(4)}">${escHtml(mhz)} MHz${band ? ' · ' + band : ''}</span>`;
+    const btnStyle = 'background:#1a1f2e;color:#00e676;border:1px solid #00e676;padding:1px 5px;font-size:0.7rem;line-height:1.4;border-radius:3px;cursor:pointer';
+    const freqStepBtns = `<button class="freq-step-btn ms-1" data-step="-large" style="${btnStyle}" title="Decrease ${flexFreqSteps.large} kHz">&lt;&lt;</button><button class="freq-step-btn ms-1" data-step="-small" style="${btnStyle}" title="Decrease ${flexFreqSteps.small} kHz">&lt;</button>`;
+    const freqBadge = `<span id="flex-freq-badge" class="badge ms-1" style="background:#00e676;color:#000;cursor:pointer" data-freq="${displayFreq.toFixed(4)}">${escHtml(mhz)} MHz${band ? ' · ' + band : ''}</span>`;
+    const freqStepBtnsR = `<button class="freq-step-btn ms-1" data-step="+small" style="${btnStyle}" title="Increase ${flexFreqSteps.small} kHz">&gt;</button><button class="freq-step-btn ms-1" data-step="+large" style="${btnStyle}" title="Increase ${flexFreqSteps.large} kHz">&gt;&gt;</button>`;
+    const freq = freqStepBtns + freqBadge + freqStepBtnsR;
     const swrColor = s.swr == null ? '' : s.swr <= 2.0 ? '#198754' : s.swr <= 3.0 ? '#fd7e14' : '#dc3545';
     const swr = s.swr != null ? `<span class="badge ms-1" style="background:${swrColor};color:#fff">SWR ${s.swr}:1</span>` : '';
     el.innerHTML = `<span class="freq-retro me-1">FlexRadio Status</span>${freq}${mode}${power}${rxtx}${swr}`;
@@ -831,10 +1123,11 @@ function owmIconColor(weather) {
 }
 
 function renderAlerts(alerts) {
-  const el = document.getElementById('alerts-strip');
-  if (!el) return;
+  const section = document.querySelector('[data-section="alerts"]');
+  const el = document.getElementById('alerts-area');
+  if (!el || !section) return;
   if (!alerts.length) {
-    el.style.display = 'none';
+    section.style.display = 'none';
     el.innerHTML = '';
     return;
   }
@@ -849,7 +1142,7 @@ function renderAlerts(alerts) {
   const rows = alerts.map(a => {
     const s = severityStyle[a.severity] || { bg: '#1e293b', border: '#475569', text: '#94a3b8', icon: 'bi-info-circle' };
     const expires = a.expires ? new Date(a.expires).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : '';
-    return `<div style="background:${s.bg};border-left:4px solid ${s.border};padding:8px 10px;margin:0">
+    return `<div style="background:${s.bg};border-left:4px solid ${s.border};padding:8px 10px;margin:0;border-radius:4px">
       <div style="display:flex;align-items:center;gap:6px;color:${s.text};font-weight:700;font-size:0.9rem">
         <i class="bi ${s.icon}"></i>${a.event}
       </div>
@@ -859,7 +1152,7 @@ function renderAlerts(alerts) {
   }).join('');
 
   el.innerHTML = rows;
-  el.style.display = 'block';
+  section.style.display = '';
 }
 
 function renderForecast(fList, metric) {
@@ -956,7 +1249,7 @@ async function initPskTile() {
   if (!pskMap) {
     const pskMapEl = document.getElementById('psk-map');
     const minZoom = Math.ceil(Math.log2((pskMapEl.clientHeight || 500) / 256));
-    pskMap = L.map('psk-map', { zoomControl: true, attributionControl: true, worldCopyJump: true, minZoom }).setView([20, 0], 2);
+    pskMap = L.map('psk-map', { zoomControl: true, attributionControl: true, worldCopyJump: true, minZoom, scrollWheelZoom: false }).setView([20, 0], 2);
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       attribution: '&copy; <a href="https://www.esri.com/">Esri</a>, Maxar, Earthstar Geographics',
       maxZoom: 19,
@@ -1474,9 +1767,6 @@ async function loadWeather() {
       }
     }
 
-    const alerts = document.getElementById('alerts-area');
-    if (alerts) alerts.innerHTML = '';
-
   } catch (e) {
     console.error('Weather load failed:', e);
   }
@@ -1492,7 +1782,7 @@ async function loadRadar() {
 
     // Init map only once
     if (!radarMap) {
-      radarMap = L.map('radar-map', { zoomControl: true, attributionControl: true }).setView([lat, lon], radarHomeZoom);
+      radarMap = L.map('radar-map', { zoomControl: true, attributionControl: true, scrollWheelZoom: false }).setView([lat, lon], radarHomeZoom);
 
       // Home button control
       const HomeControl = L.Control.extend({
@@ -1621,7 +1911,7 @@ async function loadRecentEvents() {
         <tbody>
           ${items.slice(0, 10).map(ev => `
             <tr>
-              <td><small>${new Date(ev.created_at).toLocaleString()}</small></td>
+              <td><small>${new Date(ev.created_at.slice(0, 19) + 'Z').toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}</small></td>
               <td><small>${ev.event_type}</small></td>
               <td><span class="badge badge-${ev.severity}">${ev.severity}</span></td>
               <td><small>${ev.message}</small></td>
@@ -2020,9 +2310,11 @@ async function connectWS() {
       }
       if (msg.type === 'shutdown_alert') {
         const alertDiv = document.getElementById('alerts-area');
+        const alertSection = document.querySelector('[data-section="alerts"]');
         if (alertDiv) {
-          alertDiv.innerHTML = `<div class="alert alert-danger"><strong>SHUTDOWN TRIGGERED:</strong> ${msg.reason}</div>`;
+          alertDiv.innerHTML = `<div class="alert alert-danger mb-0"><strong>SHUTDOWN TRIGGERED:</strong> ${msg.reason}</div>`;
         }
+        if (alertSection) alertSection.style.display = '';
         loadRecentEvents();
       }
     } catch {}

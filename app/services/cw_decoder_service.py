@@ -342,6 +342,16 @@ def set_cw_mode(active: bool) -> None:
         logger.info("CW decoder %s", "activated" if active else "suspended (non-CW mode)")
 
 
+def update_params(tone_freq: float | None = None, threshold: float | None = None) -> None:
+    """Update decoder parameters live — takes effect on the next block."""
+    global _tone_freq, _threshold
+    if tone_freq is not None:
+        _tone_freq = max(200.0, min(1200.0, float(tone_freq)))
+    if threshold is not None:
+        _threshold = max(0.01, min(0.50, float(threshold)))
+    logger.info("CW params updated — freq=%.0f Hz threshold=%.2f", _tone_freq, _threshold)
+
+
 def clear_decoder_text() -> None:
     """Reset the state machine's decoded text buffer (called by the clear endpoint)."""
     _sm_ref.clear()

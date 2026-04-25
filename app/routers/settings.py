@@ -495,7 +495,10 @@ async def put_dxcluster(body: DxclusterSettings, db: AsyncSession = Depends(get_
 @router.get("/flexradio")
 async def get_flexradio(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     data = await _get_setting(db, "flexradio")
-    return data or {"ip": "", "enabled": False}
+    # Merge stored values over schema defaults so new fields always appear
+    # even for DB rows saved before those fields were added.
+    defaults = FlexRadioSettings().model_dump()
+    return {**defaults, **(data or {})}
 
 
 @router.put("/flexradio")
@@ -529,3 +532,22 @@ async def regenerate_webhook_key(db: AsyncSession = Depends(get_db), _: User = D
     api_key = _secrets.token_hex(32)
     await _save_setting(db, "webhook_api", {"api_key": api_key})
     return {"api_key": api_key}
+
+
+# --- Dashboard Layout ---
+_DEFAULT_TILE_ORDER = [
+    "monitoring", "cw", "weather", "forecast",
+    "radar", "solar", "alerts", "psk", "events",
+]
+
+@router.get("/dashboard-layout")
+async def get_dashboard_layout(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    data = await _get_setting(db, f"dashboard_layout_{user.id}")
+    return data or {"order": _DEFAULT_TILE_ORDER}
+
+
+@router.put("/dashboard-layout")
+async def put_dashboard_layout(body: dict, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    order = body.get("order", [])
+    await _save_setting(db, f"dashboard_layout_{user.id}", {"order": order})
+    return {"detail": "Saved"}

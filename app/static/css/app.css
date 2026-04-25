@@ -13,6 +13,33 @@ body {
 
 .navbar { border-bottom: 1px solid #333; }
 
+/* ── Navbar: responsive mobile layout ───────────────────────────────────────── */
+@media (max-width: 767px) {
+  /* Two-row layout: brand on row 1, nav pills on row 2 */
+  #navbar .container-fluid {
+    flex-wrap: wrap;
+    padding: 6px 10px;
+    gap: 0;
+  }
+  /* Brand stays on its own row */
+  #navbar .navbar-brand {
+    flex: 0 0 auto;
+    font-size: 0.9rem;
+    padding: 4px 0;
+  }
+  /* Hide clocks — too wide for mobile */
+  #navbar .flex-grow-1 { display: none !important; }
+  /* Pills: forced to second row, scrollable, no page overflow */
+  #navbar .container-fluid > div:last-child {
+    flex: 0 0 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: 2px 0 6px;
+    gap: 6px;
+  }
+  #navbar .container-fluid > div:last-child::-webkit-scrollbar { display: none; }
+}
+
 .card {
   background-color: var(--card-bg);
   border: 1px solid #2a2a4a;
@@ -122,6 +149,27 @@ body {
   .solar-bands {
     width: 100%;
   }
+
+  /* Monitoring: wrap FlexRadio status badges on tablet */
+  #flexradio-status { align-items: flex-start; }
+}
+
+@media (max-width: 575px) {
+  /* Monitoring card header: stack label, status, pins, and buttons vertically */
+  .monitoring-header > .ms-auto {
+    margin-left: 0 !important;
+    width: 100%;
+  }
+
+  /* FlexRadio badges: single vertical column on phones */
+  #flexradio-status {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  /* Weather update time: own line */
+  #weather-update-time { display: block; margin-top: 4px; }
 }
 
 #radar-map { border-radius: 0 0 4px 4px; }
@@ -272,3 +320,22 @@ label, .form-label, .form-text, .form-check-label { color: #e0e0e0 !important; }
   font-size: 1rem;
   color: #00e676;
 }
+
+/* ── Dashboard drag-and-drop ─────────────────────────────────────────────────── */
+.drag-handle {
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  color: #555580;
+  border-radius: 4px 4px 0 0;
+  background: rgba(255,255,255,0.03);
+  user-select: none;
+  transition: color 0.15s, background 0.15s;
+  margin-bottom: 0;
+}
+.drag-handle:hover { color: #9999cc; background: rgba(255,255,255,0.08); }
+.drag-handle:active { cursor: grabbing; color: #bbbbee; }
+.db-section.sortable-ghost { opacity: 0.35; }
+.db-section.sortable-chosen { outline: 2px solid #0d6efd; border-radius: 4px; }

@@ -1,6 +1,6 @@
 import asyncio
 from fastapi import APIRouter, Depends
-from services.cw_decoder_service import get_status, clear_decoder_text, _goertzel_power, SAMPLE_RATE, BLOCK_SIZE
+from services.cw_decoder_service import get_status, clear_decoder_text, update_params, _goertzel_power, SAMPLE_RATE, BLOCK_SIZE
 from services.flexradio_service import get_dax_audio_queue
 from dependencies import get_current_user
 from models import User
@@ -18,6 +18,16 @@ async def cw_clear(_: User = Depends(get_current_user)):
     """Clear the decoded text buffer in the running CW decoder."""
     clear_decoder_text()
     return {"ok": True}
+
+
+@router.put("/params")
+async def cw_set_params(body: dict, _: User = Depends(get_current_user)):
+    """Update tone frequency and/or detection threshold live."""
+    update_params(
+        tone_freq=body.get("tone_freq"),
+        threshold=body.get("threshold"),
+    )
+    return get_status()
 
 
 @router.get("/freq-sweep")

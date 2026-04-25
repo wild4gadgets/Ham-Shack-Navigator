@@ -79,6 +79,16 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+
+@app.middleware("http")
+async def no_cache_static(request, call_next):
+    response = await call_next(request)
+    path = request.url.path.split("?")[0]
+    if path.endswith((".js", ".css", ".html")) or path == "/":
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 # API routers
 prefix = "/api/v1"
 app.include_router(setup_router.router, prefix=prefix)
