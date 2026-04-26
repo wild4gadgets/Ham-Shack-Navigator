@@ -829,6 +829,12 @@ async function loadMonitoringStatus() {
   }
 }
 
+function formatFlexFreq(mhz) {
+  const s = parseFloat(mhz).toFixed(6);
+  const [intPart, decPart] = s.split('.');
+  return `${intPart}.${decPart.slice(0, 3)}.${decPart.slice(3)}`;
+}
+
 function amateurBand(mhz) {
   const f = parseFloat(mhz);
   if (f >= 0.1357  && f <= 0.1378) return '2200m';
@@ -870,16 +876,16 @@ async function stepFreq(deltaKhz) {
   // Optimistic update: reflect new freq immediately so rapid presses stack
   // and the badge text doesn't wait for the radio's WS confirmation.
   const newBand = amateurBand(newMhz.toFixed(3));
-  badge.dataset.freq = newMhz.toFixed(4);
-  badge.textContent = `${newMhz.toFixed(3)} MHz${newBand ? ' · ' + newBand : ''}`;
+  badge.dataset.freq = newMhz.toFixed(6);
+  badge.textContent = `${formatFlexFreq(newMhz)} MHz${newBand ? ' · ' + newBand : ''}`;
   _optimisticFreqMhz = newMhz;
   try {
     await apiPost('/flexradio/tune', { freq_mhz: newMhz });
   } catch {
     // Revert display if the command failed
     const oldBand = amateurBand(currentMhz.toFixed(3));
-    badge.dataset.freq = currentMhz.toFixed(4);
-    badge.textContent = `${currentMhz.toFixed(3)} MHz${oldBand ? ' · ' + oldBand : ''}`;
+    badge.dataset.freq = currentMhz.toFixed(6);
+    badge.textContent = `${formatFlexFreq(currentMhz)} MHz${oldBand ? ' · ' + oldBand : ''}`;
     _optimisticFreqMhz = null;
   }
 }
@@ -913,7 +919,8 @@ async function loadFlexRadioStatus() {
         displayFreq = _optimisticFreqMhz; // server hasn't caught up yet
       }
     }
-    const mhz = displayFreq.toFixed(3);
+    const mhz = displayFreq.toFixed(3); // kept for band lookup
+    const freqDisplay = formatFlexFreq(displayFreq);
     const mode = s.mode ? `<span id="flex-mode-badge" class="badge ms-2" style="background:#00e676;color:#000;cursor:pointer" data-mode="${escHtml(s.mode)}">${escHtml(s.mode)}</span>` : '';
     const power = s.rf_power != null ? `<span class="badge ms-1" style="background:#00e676;color:#000">${s.rf_power}W</span>` : '';
     const isTx = s.tx_state === 'TRANSMITTING' || s.tx_state === 'PTT_REQUESTED';
@@ -923,7 +930,7 @@ async function loadFlexRadioStatus() {
     const band = amateurBand(mhz);
     const btnStyle = 'background:#1a1f2e;color:#00e676;border:1px solid #00e676;padding:1px 5px;font-size:0.7rem;line-height:1.4;border-radius:3px;cursor:pointer';
     const freqStepBtns = `<button class="freq-step-btn ms-1" data-step="-large" style="${btnStyle}" title="Decrease ${flexFreqSteps.large} kHz">&lt;&lt;</button><button class="freq-step-btn ms-1" data-step="-small" style="${btnStyle}" title="Decrease ${flexFreqSteps.small} kHz">&lt;</button>`;
-    const freqBadge = `<span id="flex-freq-badge" class="badge ms-1" style="background:#00e676;color:#000;cursor:pointer" data-freq="${displayFreq.toFixed(4)}">${escHtml(mhz)} MHz${band ? ' · ' + band : ''}</span>`;
+    const freqBadge = `<span id="flex-freq-badge" class="badge ms-1" style="background:#00e676;color:#000;cursor:pointer" data-freq="${displayFreq.toFixed(6)}">${escHtml(freqDisplay)} MHz${band ? ' · ' + band : ''}</span>`;
     const freqStepBtnsR = `<button class="freq-step-btn ms-1" data-step="+small" style="${btnStyle}" title="Increase ${flexFreqSteps.small} kHz">&gt;</button><button class="freq-step-btn ms-1" data-step="+large" style="${btnStyle}" title="Increase ${flexFreqSteps.large} kHz">&gt;&gt;</button>`;
     const freq = freqStepBtns + freqBadge + freqStepBtnsR;
     const swrColor = s.swr == null ? '' : s.swr <= 2.0 ? '#198754' : s.swr <= 3.0 ? '#fd7e14' : '#dc3545';
