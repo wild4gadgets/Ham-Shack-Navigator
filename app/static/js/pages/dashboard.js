@@ -43,6 +43,13 @@ let cwLine2 = '';
 let _cwCharsPerLine = 0;  // measured on first use
 let flexFreqSteps = { small: 50.0, large: 100.0 };
 let _optimisticFreqMhz = null;
+const _bandFreqMemory = {};
+const _HF_BANDS = ['160m','80m','60m','40m','30m','20m','17m','15m','12m','10m'];
+const _BAND_DEFAULTS = {
+  '160m': 1.900, '80m': 3.750, '60m': 5.358,
+  '40m': 7.150, '30m': 10.125, '20m': 14.175,
+  '17m': 18.118, '15m': 21.225, '12m': 24.940, '10m': 28.850,
+};
 
 function escHtml(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -340,15 +347,18 @@ export async function renderDashboard(container) {
 
     <!-- Tune Frequency Modal -->
     <div class="modal fade" id="tune-modal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-sm">
+      <div class="modal-dialog" style="max-width:340px">
         <div class="modal-content" style="background:#12122a;border:1px solid #2a2a4a;color:#e0e0e0">
           <div class="modal-header" style="border-color:#2a2a4a">
             <h5 class="modal-title">Tune Frequency</h5>
             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body">
-            <label class="form-label small text-muted mb-1">Frequency (MHz)</label>
-            <input type="text" id="tune-modal-input" class="form-control" placeholder="14.0740" />
+            <div id="tune-modal-bands" style="display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-bottom:12px">
+              ${_HF_BANDS.map(b => `<button class="btn btn-sm btn-outline-secondary" data-band="${b}" style="font-size:0.75rem;padding:3px 0">${b}</button>`).join('')}
+            </div>
+            <label class="form-label small text-muted mb-1">or enter frequency (MHz)</label>
+            <input type="text" id="tune-modal-input" class="form-control" placeholder="14.174000" />
           </div>
           <div class="modal-footer" style="border-color:#2a2a4a">
             <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -542,12 +552,14 @@ export async function renderDashboard(container) {
   function openTuneModal(currentFreq) {
     const input = document.getElementById('tune-modal-input');
     if (input) input.value = currentFreq;
+    const currentBand = amateurBand(parseFloat(currentFreq).toFixed(3));
+    document.querySelectorAll('#tune-modal-bands [data-band]').forEach(btn => {
+      const active = btn.dataset.band === currentBand;
+      btn.className = `btn btn-sm ${active ? 'btn-success' : 'btn-outline-secondary'}`;
+    });
     const modalEl = document.getElementById('tune-modal');
-    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
-    modal.show();
-    modalEl.addEventListener('shown.bs.modal', () => {
-      input?.select();
-    }, { once: true });
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    modalEl.addEventListener('shown.bs.modal', () => { input?.select(); }, { once: true });
   }
 
   document.getElementById('btn-tune-modal-submit')?.addEventListener('click', async () => {
@@ -570,6 +582,22 @@ export async function renderDashboard(container) {
 
   document.getElementById('tune-modal-input')?.addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('btn-tune-modal-submit')?.click();
+  });
+
+  document.getElementById('tune-modal-bands')?.addEventListener('click', async e => {
+    const bandBtn = e.target.closest('[data-band]');
+    if (!bandBtn) return;
+    const band = bandBtn.dataset.band;
+    const freq = _bandFreqMemory[band] ?? _BAND_DEFAULTS[band];
+    bandBtn.disabled = true;
+    try {
+      await apiPost('/flexradio/tune', { freq_mhz: freq });
+      bootstrap.Modal.getInstance(document.getElementById('tune-modal'))?.hide();
+    } catch (err) {
+      alert(`Tune failed: ${err.message}`);
+    } finally {
+      bandBtn.disabled = false;
+    }
   });
 
   const MODES = ['AM', 'CW', 'DIGL', 'DIGU', 'LSB', 'RTTY', 'USB'];
@@ -928,6 +956,7 @@ async function loadFlexRadioStatus() {
       ? `<span class="badge ms-1" style="background:${isTx ? '#dc3545' : '#198754'};color:#fff">${isTx ? 'TX' : 'RX'}</span>`
       : '';
     const band = amateurBand(mhz);
+    if (band && _HF_BANDS.includes(band)) _bandFreqMemory[band] = serverFreq;
     const btnStyle = 'background:#1a1f2e;color:#00e676;border:1px solid #00e676;padding:1px 5px;font-size:0.7rem;line-height:1.4;border-radius:3px;cursor:pointer';
     const freqStepBtns = `<button class="freq-step-btn ms-1" data-step="-large" style="${btnStyle}" title="Decrease ${flexFreqSteps.large} kHz">&lt;&lt;</button><button class="freq-step-btn ms-1" data-step="-small" style="${btnStyle}" title="Decrease ${flexFreqSteps.small} kHz">&lt;</button>`;
     const freqBadge = `<span id="flex-freq-badge" class="badge ms-1" style="background:#00e676;color:#000;cursor:pointer" data-freq="${displayFreq.toFixed(6)}">${escHtml(freqDisplay)} MHz${band ? ' · ' + band : ''}</span>`;
