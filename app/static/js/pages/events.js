@@ -15,6 +15,7 @@ export async function renderEvents(container) {
             <option>wind_alert</option>
             <option>lightning_alert</option>
             <option>weather_alert</option>
+            <option>weather_data</option>
             <option>email_sent</option>
             <option>kasa_action</option>
             <option>monitoring_armed</option>
@@ -28,6 +29,7 @@ export async function renderEvents(container) {
             <option>warning</option>
             <option>critical</option>
           </select>
+          <button id="btn-refresh-events" class="btn btn-sm btn-outline-secondary" title="Refresh"><i class="bi bi-arrow-clockwise"></i></button>
         </div>
       </div>
       <div class="card-body p-0">
@@ -43,6 +45,7 @@ export async function renderEvents(container) {
 
   document.getElementById('filter-type').addEventListener('change', () => loadEvents(1));
   document.getElementById('filter-severity').addEventListener('change', () => loadEvents(1));
+  document.getElementById('btn-refresh-events').addEventListener('click', () => loadEvents(currentPage));
 }
 
 async function loadEvents(page) {

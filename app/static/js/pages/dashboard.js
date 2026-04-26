@@ -45,6 +45,7 @@ let _cwCharsPerLine = 0;  // measured on first use
 let flexFreqSteps = { small: 50.0, large: 100.0 };
 let _txButtonLabel = 'MOX';
 let _optimisticFreqMhz = null;
+let _currentRfpower = null;  // latest rfpower from WS broadcast; bypasses stale server-fetch
 const _bandFreqMemory = {};
 const _HF_BANDS = ['160m','80m','60m','40m','30m','20m','17m','15m','12m','10m'];
 const _BAND_DEFAULTS = {
@@ -73,6 +74,9 @@ export async function renderDashboard(container) {
               <button id="btn-system-toggle" class="btn btn-sm btn-secondary" disabled>...</button>
               <button id="btn-reset-layout" class="btn btn-sm btn-outline-secondary" title="Reset tile layout to default">
                 <i class="bi bi-layout-three-columns"></i>
+              </button>
+              <button id="btn-events-log" class="btn btn-sm btn-outline-light" title="Event Log">
+                <i class="bi bi-clock-history"></i>
               </button>
               <button id="btn-refresh" class="btn btn-sm btn-outline-light">
                 <i class="bi bi-arrow-clockwise"></i> Refresh
@@ -183,7 +187,7 @@ export async function renderDashboard(container) {
               <button id="btn-radar-next" class="btn btn-sm btn-outline-light" title="Next frame">&#8250;</button>
             </div>
           </div>
-          <div id="radar-map" style="aspect-ratio:1/1;width:100%;max-height:600px;background:#1a1a2e"></div>
+          <div id="radar-map" style="aspect-ratio:1/1;width:67%;max-height:600px;background:#1a1a2e;margin:0 auto"></div>
         </div>
       </div>
 
@@ -330,21 +334,6 @@ export async function renderDashboard(container) {
         </div>
       </div>
 
-      <!-- Recent Events — independent draggable -->
-      <div class="db-section db-draggable" data-section="events">
-        <div class="drag-handle"><i class="bi bi-grip-horizontal"></i></div>
-        <div class="card">
-          <div class="card-header d-flex justify-content-between">
-            <span><i class="bi bi-clock-history me-2"></i>Recent Events</span>
-            <button class="btn btn-sm btn-outline-light" id="btn-view-all-events">View All</button>
-          </div>
-          <div class="card-body p-0">
-            <div id="recent-events-table">
-              <div class="text-center text-muted p-3">Loading...</div>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
 
     <!-- Tune Frequency Modal -->
@@ -443,6 +432,7 @@ export async function renderDashboard(container) {
                 <option>wind_alert</option>
                 <option>lightning_alert</option>
                 <option>weather_alert</option>
+                <option>weather_data</option>
                 <option>email_sent</option>
                 <option>kasa_action</option>
                 <option>monitoring_armed</option>
@@ -457,6 +447,7 @@ export async function renderDashboard(container) {
                 <option>warning</option>
                 <option>critical</option>
               </select>
+              <button id="btn-em-refresh" class="btn btn-sm btn-outline-secondary" title="Refresh"><i class="bi bi-arrow-clockwise"></i></button>
             </div>
             <button type="button" class="btn-close btn-close-white ms-auto" data-bs-dismiss="modal"></button>
           </div>
@@ -698,6 +689,7 @@ export async function renderDashboard(container) {
     btn.textContent = '…';
     const badge = document.getElementById('flex-power-badge');
     const prevPower = badge ? parseInt(badge.dataset.power, 10) : null;
+    _currentRfpower = rf_power;
     if (badge) { badge.textContent = `${rf_power}W`; badge.dataset.power = rf_power; }
     try {
       await apiPost('/flexradio/power', { rf_power });
@@ -808,18 +800,19 @@ export async function renderDashboard(container) {
     }
   }
 
-  document.getElementById('btn-view-all-events')?.addEventListener('click', () => {
+  document.getElementById('btn-events-log')?.addEventListener('click', () => {
     bootstrap.Modal.getOrCreateInstance(document.getElementById('events-modal')).show();
     loadEventsModal(1);
   });
   document.getElementById('em-filter-type')?.addEventListener('change', () => loadEventsModal(1));
   document.getElementById('em-filter-severity')?.addEventListener('change', () => loadEventsModal(1));
+  document.getElementById('btn-em-refresh')?.addEventListener('click', () => loadEventsModal(emPage));
 
   return cleanup;
 }
 
 const DEFAULT_TILE_ORDER = [
-  'monitoring', 'cw', 'weather', 'forecast', 'radar', 'solar', 'alerts', 'psk', 'events',
+  'monitoring', 'cw', 'weather', 'forecast', 'radar', 'solar', 'alerts', 'psk',
 ];
 
 async function restoreTileOrder() {
@@ -924,7 +917,7 @@ async function loadSystemState() {
 
 async function loadAll() {
   await loadFlexSettings();
-  await Promise.all([loadMonitoringStatus(), loadFlexRadioStatus(), loadWeather(), loadRecentEvents(), loadRadar(), loadPins(), loadSolarData(), loadSystemState(), loadDxCluster(), initPskTile()]);
+  await Promise.all([loadMonitoringStatus(), loadFlexRadioStatus(), loadWeather(), loadRadar(), loadPins(), loadSolarData(), loadSystemState(), loadDxCluster(), initPskTile()]);
   if (flexRadioRefreshTimer) clearInterval(flexRadioRefreshTimer);
   flexRadioRefreshTimer = setInterval(() => { if (!destroyed) loadFlexRadioStatus(); }, 5000);
   if (solarRefreshTimer) clearInterval(solarRefreshTimer);
@@ -1063,7 +1056,8 @@ async function loadFlexRadioStatus() {
     const mhz = displayFreq.toFixed(3); // kept for band lookup
     const freqDisplay = formatFlexFreq(displayFreq);
     const mode = s.mode ? `<span id="flex-mode-badge" class="badge ms-2" style="background:#00e676;color:#000;cursor:pointer" data-mode="${escHtml(s.mode)}">${escHtml(s.mode)}</span>` : '';
-    const power = s.rf_power != null ? `<span id="flex-power-badge" class="badge ms-1" style="background:#00e676;color:#000;cursor:pointer" data-power="${s.rf_power}">${s.rf_power}W</span>` : '';
+    const rfPower = _currentRfpower != null ? _currentRfpower : s.rf_power;
+    const power = rfPower != null ? `<span id="flex-power-badge" class="badge ms-1" style="background:#00e676;color:#000;cursor:pointer" data-power="${rfPower}">${rfPower}W</span>` : '';
     const isTx = s.tx_state === 'TRANSMITTING' || s.tx_state === 'PTT_REQUESTED';
     const rxtx = s.tx_state != null
       ? `<span class="badge ms-1" style="background:${isTx ? '#dc3545' : '#198754'};color:#fff">${isTx ? 'TX' : 'RX'}</span>`
@@ -1329,7 +1323,7 @@ function renderForecast(fList, metric) {
   const tempUnit = metric ? '°C' : '°F';
   const windUnit = metric ? 'km/h' : 'mph';
 
-  const makeRow = (entry, indent) => {
+  const makeRow = (entry) => {
     const dt = new Date(entry.dt * 1000);
     const timeLabel = dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
     const temp = entry.main?.temp != null ? Math.round(entry.main.temp) : '--';
@@ -1340,23 +1334,22 @@ function renderForecast(fList, metric) {
     const icon = owmIcon(entry.weather);
     const iconColor = owmIconColor(entry.weather);
     const popColor = pop >= 60 ? '#60a5fa' : pop >= 30 ? '#93c5fd' : '#64748b';
-    const leftPad = indent ? 'padding-left:10px;' : '';
     return `
-      <div class="d-flex align-items-center gap-2 py-1" style="${leftPad}border-bottom:1px solid #1e2a3a;font-size:1rem" title="${desc}">
+      <div class="d-flex align-items-center gap-2 py-1" style="border-bottom:1px solid #1e2a3a;font-size:1rem" title="${desc}">
         <span style="width:70px;flex-shrink:0;white-space:nowrap;color:#94a3b8">${timeLabel}</span>
         <i class="bi ${icon}" style="font-size:1.1rem;color:${iconColor};flex-shrink:0"></i>
         <span style="font-weight:600;color:#f1f5f9;width:52px;flex-shrink:0;white-space:nowrap">${temp}${tempUnit}</span>
-        <span style="color:#64748b;flex-shrink:0;white-space:nowrap">${windSpeed != null ? windSpeed + ' ' + windUnit : ''}</span>
-        <span style="color:${popColor};flex-shrink:0;margin-left:auto;white-space:nowrap">${pop > 0 ? '💧' + pop + '%' : ''}</span>
+        <span style="color:#64748b;flex-shrink:0;white-space:nowrap;width:52px">${windSpeed != null ? windSpeed + ' ' + windUnit : ''}</span>
+        <span style="color:${popColor};flex-shrink:0;white-space:nowrap;width:44px">💧${pop}%</span>
       </div>`;
   };
 
-  const leftRows  = fList.slice(0, 4).map(e => makeRow(e, false));
-  const rightRows = fList.slice(4, 8).map(e => makeRow(e, true));
+  const leftRows  = fList.slice(0, 4).map(e => makeRow(e));
+  const rightRows = fList.slice(4, 8).map(e => makeRow(e));
   el.innerHTML = `<div class="d-flex forecast-cols">\
-<div style="flex:1;min-width:0">${leftRows.join('')}</div>\
+<div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center">${leftRows.join('')}</div>\
 <div class="forecast-divider" style="width:1px;background:#2e3f52;flex-shrink:0;margin:0 4px"></div>\
-<div style="flex:1;min-width:0">${rightRows.join('')}</div>\
+<div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center">${rightRows.join('')}</div>\
 </div>`;
 }
 
@@ -2058,35 +2051,6 @@ function stopRadarAnim() {
   if (btn) btn.innerHTML = '&#9654;';
 }
 
-async function loadRecentEvents() {
-  try {
-    const result = await apiGet('/events?page=1&page_size=25');
-    const container = document.getElementById('recent-events-table');
-    if (!container) return;
-    const items = (result.items ?? []).filter(ev => ev.severity !== 'info');
-    if (!items.length) {
-      container.innerHTML = '<div class="text-center text-muted p-3">No events yet</div>';
-      return;
-    }
-    container.innerHTML = `
-      <table class="table table-dark table-sm table-hover mb-0">
-        <thead><tr><th>Time</th><th>Type</th><th>Severity</th><th>Message</th></tr></thead>
-        <tbody>
-          ${items.slice(0, 10).map(ev => `
-            <tr>
-              <td><small>${new Date(ev.created_at.slice(0, 19) + 'Z').toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}</small></td>
-              <td><small>${ev.event_type}</small></td>
-              <td><span class="badge badge-${ev.severity}">${ev.severity}</span></td>
-              <td><small>${ev.message}</small></td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    `;
-  } catch (e) {
-    console.error('Events load failed:', e);
-  }
-}
 
 async function loadPins() {
   try {
@@ -2236,6 +2200,16 @@ async function loadSolarData() {
   }
 }
 
+function solarUpdatedToLocal(utcStr) {
+  if (!utcStr || utcStr === '--') return utcStr;
+  // HamQSL format: " 26 Apr 2026 2209 GMT" (leading space, GMT suffix)
+  const m = utcStr.trim().match(/^(\d{1,2})\s+(\w{3})\s+(\d{4})\s+(\d{2})(\d{2})\s+(?:UTC|GMT)$/);
+  if (!m) return utcStr;
+  const d = new Date(`${m[2]} ${m[1]}, ${m[3]} ${m[4]}:${m[5]}:00 UTC`);
+  if (isNaN(d.getTime())) return utcStr;
+  return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
 function solarKColor(k) {
   const n = parseInt(k);
   if (isNaN(n)) return '#94a3b8';
@@ -2287,7 +2261,7 @@ function renderSolarData({ sfi, sunspots, kIndex, aIndex, xray, geoField, solarW
   if (!card) return;
 
   const updEl = document.getElementById('solar-updated');
-  if (updEl && updated !== '--') updEl.textContent = `Updated: ${updated}`;
+  if (updEl && updated !== '--') updEl.textContent = `Updated: ${solarUpdatedToLocal(updated)}`;
 
   const mufLabel = muf !== null ? `${muf} MHz` : '--';
   const indices = [
@@ -2464,9 +2438,20 @@ async function connectWS() {
       const msg = JSON.parse(evt.data);
       if (msg.type === 'weather_update') loadWeather();
       if (msg.type === 'monitoring_status') loadMonitoringStatus();
-      if (msg.type === 'flexradio_update') loadFlexRadioStatus();
+      if (msg.type === 'flexradio_update') {
+        if (msg.rfpower != null) {
+          _currentRfpower = parseInt(msg.rfpower, 10);
+          const badge = document.getElementById('flex-power-badge');
+          if (badge) { badge.textContent = `${_currentRfpower}W`; badge.dataset.power = _currentRfpower; }
+        }
+        // Full re-render only when fields other than rfpower changed
+        if (msg.freq || msg.mode || msg.tune_active != null ||
+            msg.interlock_state || msg.atu_enabled != null || msg.swr != null ||
+            msg.rfpower == null) {
+          loadFlexRadioStatus();
+        }
+      }
       if (msg.type === 'cw_decode') updateCwTile(msg);
-      if (msg.type === 'new_event') loadRecentEvents();
       if (msg.type === 'workflow_complete') {
         if (!msg.success && msg.error) alert(`Workflow failed: ${msg.error}`);
         loadSystemState();
@@ -2478,7 +2463,6 @@ async function connectWS() {
           alertDiv.innerHTML = `<div class="alert alert-danger mb-0"><strong>SHUTDOWN TRIGGERED:</strong> ${msg.reason}</div>`;
         }
         if (alertSection) alertSection.style.display = '';
-        loadRecentEvents();
       }
     } catch {}
   };

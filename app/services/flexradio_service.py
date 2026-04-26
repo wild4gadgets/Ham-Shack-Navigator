@@ -25,6 +25,7 @@ import json
 import logging
 import re
 import struct
+import time
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -52,6 +53,12 @@ _flex_state: dict = {
     "dax_stream_id": None,
     "updated_at": None,
 }
+
+# rfpower grace period: after we command a power change, ignore subscription pushes
+# of the OLD value for up to 2 s (the radio fires a pre-change state dump before
+# applying the command, which would otherwise immediately overwrite our optimistic state).
+_rfpower_set_at: float = 0.0
+_rfpower_set_to: str | None = None
 
 # Tune-carrier state: tracks whether we started a manual tune sequence
 _tune_active: bool = False
@@ -211,10 +218,20 @@ async def send_command(cmd: str) -> bool:
     if _writer is None or _writer.is_closing():
         return False
     _seq += 1
-    logger.debug("FlexRadio TX C%d|%s", _seq, cmd)
+    logger.info("FlexRadio TX C%d|%s", _seq, cmd)
     _writer.write(f"C{_seq}|{cmd}\n".encode())
     await _writer.drain()
     return True
+
+
+async def update_transmit_power(rf_power: int) -> None:
+    """Update local rfpower state and broadcast after a successful rfpower command."""
+    global _rfpower_set_at, _rfpower_set_to
+    _flex_state["transmit"]["rfpower"] = str(rf_power)
+    _flex_state["updated_at"] = datetime.now(timezone.utc).isoformat()
+    _rfpower_set_at = time.monotonic()
+    _rfpower_set_to = str(rf_power)
+    await manager.broadcast({"type": "flexradio_update", "rfpower": str(rf_power)})
 
 
 async def start_tune() -> bool:
@@ -236,14 +253,20 @@ async def start_tune() -> bool:
     _pre_tune_mode = current_mode if current_mode.upper() != "AM" else None
     _pre_tune_rfpower = int(rfpower_raw) if rfpower_raw is not None else None
     tunepower = int(tunepower_raw) if tunepower_raw is not None else 10
+    logger.info(
+        "start_tune: slice=%s saved_mode=%r saved_rfpower=%s tunepower=%s",
+        slice_idx, _pre_tune_mode, _pre_tune_rfpower, tunepower,
+    )
     # AM transmits a carrier without audio or key input; CW break-in blocks MOX-only TX
     if _pre_tune_mode is not None:
         await send_command(f"slice set {slice_idx} mode=AM")
     await send_command(f"transmit set rfpower={tunepower}")
+    # Update local state immediately so status poll reflects the new power
+    _flex_state["transmit"]["rfpower"] = str(tunepower)
     ok = await send_command("xmit 1")
     if ok:
         _tune_active = True
-        await manager.broadcast({"type": "flexradio_update", "tune_active": True})
+        await manager.broadcast({"type": "flexradio_update", "tune_active": True, "rfpower": str(tunepower)})
     return ok
 
 
@@ -258,12 +281,24 @@ async def stop_tune() -> bool:
     _tune_active = False
     _pre_tune_rfpower = None
     _pre_tune_mode = None
+    logger.info(
+        "stop_tune: restoring slice=%s mode=%r rfpower=%s",
+        slice_to_restore, mode_to_restore, rfpower_to_restore,
+    )
     ok = await send_command("xmit 0")
-    if rfpower_to_restore is not None:
-        await send_command(f"transmit set rfpower={rfpower_to_restore}")
+    # Restore mode first — radio may apply per-mode stored power on mode switch.
+    # Restore power last so our explicit command always wins.
     if mode_to_restore is not None:
         await send_command(f"slice set {slice_to_restore} mode={mode_to_restore}")
-    await manager.broadcast({"type": "flexradio_update", "tune_active": False})
+    if rfpower_to_restore is not None:
+        await send_command(f"transmit set rfpower={rfpower_to_restore}")
+        # Update local state immediately so status poll reflects the restored power
+        _flex_state["transmit"]["rfpower"] = str(rfpower_to_restore)
+    await manager.broadcast({
+        "type": "flexradio_update",
+        "tune_active": False,
+        "rfpower": str(rfpower_to_restore) if rfpower_to_restore is not None else None,
+    })
     return ok
 
 
@@ -324,6 +359,7 @@ async def _flex_listener():
         dax_create_seq: int | None = None
         dax_stream_created = False
         connect_time: float | None = None
+        last_resub_time: float = 0.0
 
         try:
             reader, writer = await asyncio.wait_for(
@@ -385,7 +421,6 @@ async def _flex_listener():
                                 dax_channel, target_slice, dax_create_seq,
                             )
                     else:
-                        # Keepalive ping
                         writer.write(f"C{_seq}|ping\n".encode())
                         _seq += 1
                         await writer.drain()
@@ -399,9 +434,19 @@ async def _flex_listener():
                 if not text:
                     continue
 
+                # Periodic re-subscription to pick up SmartSDR-initiated rfpower changes.
+                # The readline timeout never fires because meter M-lines arrive constantly,
+                # so we track elapsed time here instead.
+                if dax_stream_created and (time.monotonic() - last_resub_time) >= 10.0:
+                    last_resub_time = time.monotonic()
+                    writer.write(f"C{_seq}|sub tx all\n".encode())
+                    _seq += 1
+                    await writer.drain()
+
                 # Status message format: S<handle>|<type> key=value ...
                 if text.startswith("S"):
                     _, _, body = text.partition("|")
+                    logger.debug("FlexRadio S: %s", body[:300])
 
                     # Slice status
                     m = re.match(r"slice\s+(\d+)\s+(.*)", body)
@@ -436,15 +481,27 @@ async def _flex_listener():
                     m = re.match(r"transmit\s+(.*)", body)
                     if m:
                         kv = _parse_kv(m.group(1))
-                        if "rfpower" in kv:
-                            old_power = _flex_state["transmit"].get("rfpower")
-                            _flex_state["transmit"].update(kv)
-                            _flex_state["updated_at"] = datetime.now(timezone.utc).isoformat()
-                            if kv["rfpower"] != old_power:
-                                await manager.broadcast({
-                                    "type": "flexradio_update",
-                                    "rfpower": kv["rfpower"],
-                                })
+                        logger.info("FlexRadio transmit push: %s", kv)
+                        # Grace period: the radio sends the pre-change state dump
+                        # immediately after receiving a transmit set command, before
+                        # applying the change.  Discard rfpower from that dump so it
+                        # cannot overwrite the value we just commanded.
+                        if "rfpower" in kv and _rfpower_set_to is not None:
+                            age = time.monotonic() - _rfpower_set_at
+                            if age < 2.0 and kv["rfpower"] != _rfpower_set_to:
+                                logger.info(
+                                    "FlexRadio rfpower push %s dropped (grace %0.2fs, expecting %s)",
+                                    kv["rfpower"], age, _rfpower_set_to,
+                                )
+                                kv = {k: v for k, v in kv.items() if k != "rfpower"}
+                        old_power = _flex_state["transmit"].get("rfpower")
+                        _flex_state["transmit"].update(kv)
+                        _flex_state["updated_at"] = datetime.now(timezone.utc).isoformat()
+                        if "rfpower" in kv and kv["rfpower"] != old_power:
+                            await manager.broadcast({
+                                "type": "flexradio_update",
+                                "rfpower": kv["rfpower"],
+                            })
 
                     # Interlock status (PTT / TX state)
                     m = re.match(r"interlock\s+(.*)", body)

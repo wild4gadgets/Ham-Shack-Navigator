@@ -32,6 +32,15 @@ export async function renderThresholdsTab(container) {
               <div class="form-text">Wait this long before allowing another shutdown.</div>
             </div>
           </div>
+          <div class="row mb-3">
+            <div class="col-12">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="log-weather-data" ${data.log_weather_data ? 'checked' : ''}>
+                <label class="form-check-label" for="log-weather-data" style="color:#fff">Log all external API calls to event log</label>
+              </div>
+              <div class="form-text">Records wind, temperature, and lightning readings in the dashboard event log on every poll cycle.</div>
+            </div>
+          </div>
           <button type="submit" class="btn btn-primary">Save</button>
         </form>
       </div>
@@ -47,6 +56,7 @@ export async function renderThresholdsTab(container) {
         lightning_miles: parseFloat(document.getElementById('lightning-miles').value),
         poll_interval_sec: parseInt(document.getElementById('poll-interval').value),
         cooldown_min: parseInt(document.getElementById('cooldown-min').value),
+        log_weather_data: document.getElementById('log-weather-data').checked,
       });
       msg.className = 'alert alert-success';
       msg.textContent = 'Thresholds saved. Poll interval updated.';

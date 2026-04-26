@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 from dependencies import get_current_user
 from models import User
-from services.flexradio_service import get_state, send_command, start_tune, stop_tune
+from services.flexradio_service import get_state, send_command, start_tune, stop_tune, update_transmit_power
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +50,7 @@ async def set_rf_power(body: PowerRequest, _: User = Depends(get_current_user)):
     ok = await send_command(f"transmit set rfpower={body.rf_power}")
     if not ok:
         raise HTTPException(status_code=503, detail="Radio not connected")
+    await update_transmit_power(body.rf_power)
     return {"ok": True}
 
 

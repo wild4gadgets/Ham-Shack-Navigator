@@ -1,9 +1,16 @@
+import json
+import logging
+
 from fastapi import APIRouter, Depends
+
+logger = logging.getLogger(__name__)
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dependencies import get_db, get_current_user
-from models import User
+from models import Setting, User
 from services.weather_service import fetch_all, get_cached
+from services.monitoring_service import log_weather_fetch_results
 from ws_manager import manager
 
 router = APIRouter(prefix="/weather", tags=["weather"])
@@ -29,7 +36,7 @@ async def get_realtime(db: AsyncSession = Depends(get_db), _: User = Depends(get
 @router.get("/lightning")
 async def get_lightning(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     """
-    Aggregate lightning distance from all available sources (Tomorrow.io, Blitzortung,
+    Aggregate lightning distance from all available sources (Tomorrow.io, NWS, Blitzortung,
     RainViewer) and return the nearest detection.
     """
     candidates = []
@@ -67,6 +74,18 @@ async def get_lightning(db: AsyncSession = Depends(get_db), _: User = Depends(ge
                 "distance_miles": round(km * _MILES_PER_KM, 1),
             })
 
+    btz_cache = await get_cached(db, "blitzortung_lightning")
+    if btz_cache:
+        btz = btz_cache.get("data", {})
+        km = btz.get("lightningDistance")
+        if km is not None:
+            candidates.append({
+                "source": "Blitzortung",
+                "distance_km": km,
+                "distance_miles": round(km * _MILES_PER_KM, 1),
+                "strike_count": btz.get("strike_count"),
+            })
+
     if not candidates:
         return {"lightningDistance": None, "lightningMiles": None, "source": None, "sources": []}
 
@@ -94,4 +113,11 @@ async def get_alerts(db: AsyncSession = Depends(get_db), _: User = Depends(get_c
 async def refresh_weather(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     results = await fetch_all(db)
     await manager.broadcast({"type": "weather_update", "source": "manual_refresh"})
+    try:
+        thr_row = (await db.execute(select(Setting).where(Setting.key == "thresholds"))).scalar_one_or_none()
+        thr = json.loads(thr_row.value) if thr_row else {}
+        if thr.get("log_weather_data"):
+            await log_weather_fetch_results(db, results)
+    except Exception as e:
+        logger.error("Weather data logging failed: %s", e)
     return {"detail": "Weather data refreshed", "sources_fetched": [k for k, v in results.items() if v]}

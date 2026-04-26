@@ -123,6 +123,83 @@ async def check_conditions(db: AsyncSession) -> tuple[bool, str, dict]:
     return False, "", {}
 
 
+async def log_weather_fetch_results(db: AsyncSession, results: dict):
+    """Log each weather API result as a separate event. Called when log_weather_data is enabled."""
+    current = results.get("current")
+    realtime = results.get("realtime")
+    nws = results.get("nws_alerts")
+
+    forecast = results.get("forecast")
+    if forecast:
+        points = forecast.get("list", [])
+        if points:
+            temps = [p.get("main", {}).get("temp") for p in points if p.get("main", {}).get("temp") is not None]
+            lo = round(min(temps), 1) if temps else None
+            hi = round(max(temps), 1) if temps else None
+            meta = {"points": len(points)}
+            parts = [f"{len(points)} periods"]
+            if lo is not None and hi is not None:
+                parts.append(f"Temp range: {lo}°–{hi}°")
+                meta["temp_lo"] = lo
+                meta["temp_hi"] = hi
+            await log_event(db, "weather_data", "info", "OWM Forecast: " + " | ".join(parts), meta)
+
+    if current:
+        wind = current.get("wind", {})
+        speed = wind.get("speed")
+        gust = wind.get("gust")
+        temp = current.get("main", {}).get("temp")
+        conditions = (current.get("weather") or [{}])[0].get("description", "")
+        parts, meta = [], {}
+        if temp is not None:
+            parts.append(f"Temp: {temp:.1f}°")
+            meta["temp"] = round(temp, 1)
+        if speed is not None:
+            w = f"Wind: {speed:.1f}"
+            if gust is not None:
+                w += f" (gust {gust:.1f})"
+            parts.append(w)
+            meta["wind"] = round(speed, 1)
+            if gust is not None:
+                meta["gust"] = round(gust, 1)
+        if conditions:
+            parts.append(conditions)
+        await log_event(db, "weather_data", "info",
+                        "OWM: " + (" | ".join(parts) if parts else "no data"), meta)
+
+    if realtime:
+        vals = realtime.get("data", {}).get("values", {})
+        lightning_km = vals.get("lightningDistance")
+        temp = vals.get("temperature")
+        wind = vals.get("windSpeed")
+        parts, meta = [], {}
+        if temp is not None:
+            parts.append(f"Temp: {temp:.1f}°")
+            meta["temp"] = round(temp, 1)
+        if wind is not None:
+            parts.append(f"Wind: {wind:.1f}")
+            meta["wind"] = round(wind, 1)
+        if lightning_km is not None:
+            miles = round(lightning_km * MILES_PER_KM, 1)
+            parts.append(f"Lightning: {miles} mi")
+            meta["lightning_mi"] = miles
+        else:
+            parts.append("Lightning: none")
+        await log_event(db, "weather_data", "info",
+                        "Tomorrow.io: " + (" | ".join(parts) if parts else "no data"), meta)
+
+    if nws and nws.get("note") != "outside_nws_coverage":
+        warnings = nws.get("active_warnings", [])
+        alerts = nws.get("alerts", [])
+        if warnings:
+            await log_event(db, "weather_data", "warning",
+                            f"NWS: Active warnings: {', '.join(warnings)}",
+                            {"warnings": warnings})
+        else:
+            msg = f"NWS: {len(alerts)} active alert(s)" if alerts else "NWS: Clear"
+            await log_event(db, "weather_data", "info", msg, {"alert_count": len(alerts)})
+
+
 async def is_in_cooldown(db: AsyncSession) -> bool:
     """Check if we're within the cooldown period after last shutdown."""
     monitoring = await _get_setting(db, "monitoring")

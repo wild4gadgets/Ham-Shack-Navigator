@@ -145,6 +145,7 @@ class ThresholdSettings(BaseModel):
     lightning_miles: float = 10.0
     poll_interval_sec: int = 300
     cooldown_min: int = 30
+    log_weather_data: bool = False
 
 
 class SmtpSettings(BaseModel):

@@ -287,8 +287,8 @@ async def put_api_keys(body: ApiKeySettings, db: AsyncSession = Depends(get_db),
 # --- Thresholds ---
 @router.get("/thresholds")
 async def get_thresholds(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    data = await _get_setting(db, "thresholds")
-    return data or {"wind_mph": 35.0, "lightning_miles": 10.0, "poll_interval_sec": 300, "cooldown_min": 30}
+    data = await _get_setting(db, "thresholds") or {}
+    return ThresholdSettings.model_validate(data).model_dump()
 
 
 @router.put("/thresholds")

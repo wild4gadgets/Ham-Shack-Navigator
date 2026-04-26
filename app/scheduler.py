@@ -24,7 +24,7 @@ from models import Setting, Workflow, ScheduledWorkflow
 from services.weather_service import fetch_all, get_location
 from services.monitoring_service import (
     check_conditions, is_in_cooldown, set_last_shutdown, log_event,
-    is_notification_in_cooldown, set_last_notification,
+    is_notification_in_cooldown, set_last_notification, log_weather_fetch_results,
 )
 from services.shutdown_service import execute_shutdown
 from services.email_service import send_shutdown_notification, send_digest
@@ -196,11 +196,22 @@ async def _monitoring_poll():
             pass
 
         # Fetch fresh weather data
+        fetch_results = {}
         try:
-            await fetch_all(db)
+            fetch_results = await fetch_all(db)
         except Exception as e:
             logger.error("Weather fetch failed: %s", e)
             await log_event(db, "error", "warning", f"Weather fetch failed: {e}")
+
+        # Log weather API results if enabled in thresholds settings
+        try:
+            thr_result = await db.execute(select(Setting).where(Setting.key == "thresholds"))
+            thr_row = thr_result.scalar_one_or_none()
+            thr = json.loads(thr_row.value) if thr_row else {}
+            if thr.get("log_weather_data"):
+                await log_weather_fetch_results(db, fetch_results)
+        except Exception as e:
+            logger.error("Weather data logging failed: %s", e)
 
         # Broadcast weather update immediately after fetch so dashboard refreshes
         # regardless of cooldown state or threshold outcome
