@@ -55,7 +55,9 @@ _flex_state: dict = {
 
 # Tune-carrier state: tracks whether we started a manual tune sequence
 _tune_active: bool = False
-_pre_tune_rfpower: int | None = None  # rfpower before tune started, so we can restore it
+_pre_tune_rfpower: int | None = None   # rfpower before tune started, so we can restore it
+_pre_tune_mode: str | None = None      # mode before tune started, so we can restore it
+_pre_tune_slice: int = 0               # slice index used for mode switch
 
 # Audio queue consumed by cw_decoder_service (and any future decoder).
 # Each item is a bytes object containing raw PCM from one VITA-49 packet.
@@ -216,10 +218,21 @@ async def send_command(cmd: str) -> bool:
 
 
 async def start_tune() -> bool:
-    """Lower power to tunepower, key the transmitter, mark tune active."""
-    global _tune_active, _pre_tune_rfpower
+    """Switch to CW, lower power to tunepower, key the transmitter, mark tune active."""
+    global _tune_active, _pre_tune_rfpower, _pre_tune_mode, _pre_tune_slice
     if not _flex_state["connected"]:
         return False
+    # Find active slice and save its current mode
+    slice_idx = 0
+    for idx, sdata in _flex_state["slices"].items():
+        if sdata.get("in_use") == "1":
+            slice_idx = idx
+            break
+    current_mode = _flex_state["slices"].get(slice_idx, {}).get("mode", "")
+    _pre_tune_slice = slice_idx
+    _pre_tune_mode = current_mode if current_mode.upper() != "CW" else None
+    if _pre_tune_mode is not None:
+        await send_command(f"slice set {slice_idx} mode=CW")
     rfpower_raw = _flex_state["transmit"].get("rfpower")
     tunepower_raw = _flex_state["transmit"].get("tunepower")
     _pre_tune_rfpower = int(rfpower_raw) if rfpower_raw is not None else None
@@ -233,13 +246,16 @@ async def start_tune() -> bool:
 
 
 async def stop_tune() -> bool:
-    """Un-key the transmitter and restore pre-tune power."""
-    global _tune_active, _pre_tune_rfpower
+    """Un-key the transmitter, restore pre-tune mode and power."""
+    global _tune_active, _pre_tune_rfpower, _pre_tune_mode, _pre_tune_slice
     ok = await send_command("xmit 0")
     if _pre_tune_rfpower is not None:
         await send_command(f"transmit set rfpower={_pre_tune_rfpower}")
+    if _pre_tune_mode is not None:
+        await send_command(f"slice set {_pre_tune_slice} mode={_pre_tune_mode}")
     _tune_active = False
     _pre_tune_rfpower = None
+    _pre_tune_mode = None
     await manager.broadcast({"type": "flexradio_update", "tune_active": False})
     return ok
 
@@ -296,7 +312,7 @@ async def _flex_listener():
         dax_enabled = settings.get("dax_enabled", True)
         dax_channel = int(settings.get("dax_channel", 1))
 
-        global _writer, _seq, _tune_active, _pre_tune_rfpower
+        global _writer, _seq, _tune_active, _pre_tune_rfpower, _pre_tune_mode, _pre_tune_slice
         _seq = 1
         dax_create_seq: int | None = None
         dax_stream_created = False
@@ -440,6 +456,7 @@ async def _flex_listener():
                             if kv["state"] == "READY" and _tune_active:
                                 _tune_active = False
                                 _pre_tune_rfpower = None
+                                _pre_tune_mode = None
                                 await manager.broadcast({"type": "flexradio_update", "tune_active": False})
 
                     # ATU status
@@ -526,6 +543,7 @@ async def _flex_listener():
             if _tune_active:
                 _tune_active = False
                 _pre_tune_rfpower = None
+                _pre_tune_mode = None
 
         delay = min(10 * (3 ** max(0, fail_count - 1)), 300)
         await asyncio.sleep(delay)
