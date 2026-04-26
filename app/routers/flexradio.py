@@ -27,6 +27,10 @@ class PowerRequest(BaseModel):
     rf_power: int  # 1–100
 
 
+class MoxRequest(BaseModel):
+    mox: bool
+
+
 @router.post("/power")
 async def set_rf_power(body: PowerRequest, _: User = Depends(get_current_user)):
     """Set the transmitter RF power level (1–100)."""
@@ -36,6 +40,18 @@ async def set_rf_power(body: PowerRequest, _: User = Depends(get_current_user)):
     if not state.get("connected"):
         raise HTTPException(status_code=503, detail="Radio not connected")
     ok = await send_command(f"transmit set rfpower={body.rf_power}")
+    if not ok:
+        raise HTTPException(status_code=503, detail="Radio not connected")
+    return {"ok": True}
+
+
+@router.post("/mox")
+async def set_mox(body: MoxRequest, _: User = Depends(get_current_user)):
+    """Toggle MOX (software PTT). mox=true → transmit on, false → transmit off."""
+    state = get_state()
+    if not state.get("connected"):
+        raise HTTPException(status_code=503, detail="Radio not connected")
+    ok = await send_command(f"xmit {1 if body.mox else 0}")
     if not ok:
         raise HTTPException(status_code=503, detail="Radio not connected")
     return {"ok": True}

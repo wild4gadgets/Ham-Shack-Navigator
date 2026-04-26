@@ -42,6 +42,7 @@ let cwLine1 = '';
 let cwLine2 = '';
 let _cwCharsPerLine = 0;  // measured on first use
 let flexFreqSteps = { small: 50.0, large: 100.0 };
+let _txButtonLabel = 'MOX';
 let _optimisticFreqMhz = null;
 const _bandFreqMemory = {};
 const _HF_BANDS = ['160m','80m','60m','40m','30m','20m','17m','15m','12m','10m'];
@@ -574,7 +575,9 @@ export async function renderDashboard(container) {
     const modeBadge = e.target.closest('#flex-mode-badge');
     if (modeBadge) { openModeModal(modeBadge.dataset.mode); return; }
     const powerBadge = e.target.closest('#flex-power-badge');
-    if (powerBadge) openPowerModal(parseInt(powerBadge.dataset.power, 10));
+    if (powerBadge) { openPowerModal(parseInt(powerBadge.dataset.power, 10)); return; }
+    const moxBtn = e.target.closest('#flex-mox-btn');
+    if (moxBtn) toggleMox(moxBtn);
   });
 
   function openTuneModal(currentFreq) {
@@ -700,6 +703,19 @@ export async function renderDashboard(container) {
       btn.textContent = 'Set';
     }
   });
+
+  async function toggleMox(btn) {
+    const isTx = btn.dataset.isTx === '1';
+    const newMox = !isTx;
+    btn.disabled = true;
+    try {
+      await apiPost('/flexradio/mox', { mox: newMox });
+    } catch (e) {
+      alert(`MOX failed: ${e.message}`);
+    } finally {
+      btn.disabled = false;
+    }
+  }
 
   document.getElementById('btn-refresh').addEventListener('click', async () => {
     const btn = document.getElementById('btn-refresh');
@@ -965,6 +981,7 @@ async function loadFlexSettings() {
     const s = await apiGet('/settings/flexradio');
     flexFreqSteps.small = s.freq_step_small_khz ?? 50.0;
     flexFreqSteps.large = s.freq_step_large_khz ?? 100.0;
+    _txButtonLabel = s.tx_button_label ?? 'MOX';
   } catch { /* keep defaults */ }
 }
 
@@ -1036,9 +1053,15 @@ async function loadFlexRadioStatus() {
     const freqBadge = `<span id="flex-freq-badge" class="badge ms-1" style="background:#00e676;color:#000;cursor:pointer" data-freq="${displayFreq.toFixed(6)}">${escHtml(freqDisplay)} MHz${band ? ' · ' + band : ''}</span>`;
     const freqStepBtnsR = `<button class="freq-step-btn ms-1" data-step="+small" style="${btnStyle}" title="Increase ${flexFreqSteps.small} kHz">&gt;</button><button class="freq-step-btn ms-1" data-step="+large" style="${btnStyle}" title="Increase ${flexFreqSteps.large} kHz">&gt;&gt;</button>`;
     const freq = freqStepBtns + freqBadge + freqStepBtnsR;
+    const moxStyle = isTx
+      ? 'background:#dc3545;color:#fff;border:1px solid #dc3545;'
+      : 'background:#1a1f2e;color:#dc3545;border:1px solid #dc3545;';
+    const moxBtn = s.tx_state != null
+      ? `<button id="flex-mox-btn" class="ms-1" data-is-tx="${isTx ? '1' : '0'}" style="${moxStyle}padding:1px 7px;font-size:0.7rem;line-height:1.4;border-radius:3px;cursor:pointer;font-weight:700">${escHtml(_txButtonLabel)}</button>`
+      : '';
     const swrColor = s.swr == null ? '' : s.swr <= 2.0 ? '#198754' : s.swr <= 3.0 ? '#fd7e14' : '#dc3545';
     const swr = s.swr != null ? `<span class="badge ms-1" style="background:${swrColor};color:#fff">SWR ${s.swr}:1</span>` : '';
-    el.innerHTML = `<span class="freq-retro me-1">FlexRadio Status</span>${freq}${mode}${power}${rxtx}${swr}`;
+    el.innerHTML = `<span class="freq-retro me-1">FlexRadio Status</span>${freq}${mode}${power}${rxtx}${moxBtn}${swr}`;
   } catch {
     pskRadioOffline = false;
     el.innerHTML = '';

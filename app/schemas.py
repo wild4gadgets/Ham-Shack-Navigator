@@ -220,6 +220,15 @@ class FlexRadioSettings(BaseModel):
     cw_threshold: float = 0.15
     freq_step_small_khz: float = 50.0
     freq_step_large_khz: float = 100.0
+    tx_button_label: str = "MOX"
+
+    @field_validator("tx_button_label")
+    @classmethod
+    def label_uppercase_max4(cls, v):
+        v = v.strip().upper()
+        if not v:
+            return "MOX"
+        return v[:4]
 
 
 # --- Kasa ---

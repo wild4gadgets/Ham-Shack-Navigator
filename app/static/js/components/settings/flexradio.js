@@ -12,6 +12,7 @@ export async function renderFlexRadioTab(container) {
   const cwThreshold     = data.cw_threshold       ?? 0.15;
   const stepSmallKhz    = data.freq_step_small_khz ?? 50.0;
   const stepLargeKhz    = data.freq_step_large_khz ?? 100.0;
+  const txBtnLabel      = data.tx_button_label ?? 'MOX';
 
   container.innerHTML = `
     <div class="card">
@@ -73,6 +74,16 @@ export async function renderFlexRadioTab(container) {
           </div>
 
           <hr style="border-color:#2a2a4a">
+          <h6 class="text-white-50 mb-3">Transmit Button</h6>
+
+          <div class="mb-4">
+            <label class="form-label">Transmit Button Name</label>
+            <input type="text" class="form-control" id="flex-tx-btn-label"
+              maxlength="4" placeholder="MOX" value="${txBtnLabel}" style="${INP};width:6rem;text-transform:uppercase">
+            <div class="form-text">Label shown on the TX toggle button in the status bar (up to 4 characters). Common choices: MOX, PTT, TX.</div>
+          </div>
+
+          <hr style="border-color:#2a2a4a">
           <h6 class="text-white-50 mb-3">Frequency Step Sizes</h6>
 
           <div class="row mb-3">
@@ -124,6 +135,7 @@ export async function renderFlexRadioTab(container) {
         cw_threshold:         parseFloat(document.getElementById('flex-cw-threshold').value),
         freq_step_small_khz:  parseFloat(document.getElementById('flex-step-small').value),
         freq_step_large_khz:  parseFloat(document.getElementById('flex-step-large').value),
+        tx_button_label:      (document.getElementById('flex-tx-btn-label').value.trim().toUpperCase() || 'MOX').slice(0, 4),
       });
       msg.className = 'alert alert-success';
       msg.textContent = 'FlexRadio settings saved.';
