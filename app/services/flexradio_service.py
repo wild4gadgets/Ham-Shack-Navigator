@@ -218,25 +218,27 @@ async def send_command(cmd: str) -> bool:
 
 
 async def start_tune() -> bool:
-    """Switch to CW, lower power to tunepower, key the transmitter, mark tune active."""
+    """Switch to AM (guaranteed unmodulated carrier), lower power to tunepower, key TX."""
     global _tune_active, _pre_tune_rfpower, _pre_tune_mode, _pre_tune_slice
     if not _flex_state["connected"]:
         return False
-    # Find active slice and save its current mode
+    # Find active slice
     slice_idx = 0
     for idx, sdata in _flex_state["slices"].items():
         if sdata.get("in_use") == "1":
             slice_idx = idx
             break
+    # Capture state before any awaits so mode-switch side-effects don't corrupt it
     current_mode = _flex_state["slices"].get(slice_idx, {}).get("mode", "")
-    _pre_tune_slice = slice_idx
-    _pre_tune_mode = current_mode if current_mode.upper() != "CW" else None
-    if _pre_tune_mode is not None:
-        await send_command(f"slice set {slice_idx} mode=CW")
     rfpower_raw = _flex_state["transmit"].get("rfpower")
     tunepower_raw = _flex_state["transmit"].get("tunepower")
+    _pre_tune_slice = slice_idx
+    _pre_tune_mode = current_mode if current_mode.upper() != "AM" else None
     _pre_tune_rfpower = int(rfpower_raw) if rfpower_raw is not None else None
     tunepower = int(tunepower_raw) if tunepower_raw is not None else 10
+    # AM transmits a carrier without audio or key input; CW break-in blocks MOX-only TX
+    if _pre_tune_mode is not None:
+        await send_command(f"slice set {slice_idx} mode=AM")
     await send_command(f"transmit set rfpower={tunepower}")
     ok = await send_command("xmit 1")
     if ok:
@@ -248,14 +250,19 @@ async def start_tune() -> bool:
 async def stop_tune() -> bool:
     """Un-key the transmitter, restore pre-tune mode and power."""
     global _tune_active, _pre_tune_rfpower, _pre_tune_mode, _pre_tune_slice
-    ok = await send_command("xmit 0")
-    if _pre_tune_rfpower is not None:
-        await send_command(f"transmit set rfpower={_pre_tune_rfpower}")
-    if _pre_tune_mode is not None:
-        await send_command(f"slice set {_pre_tune_slice} mode={_pre_tune_mode}")
+    # Copy to locals before any awaits — the interlock READY handler fires during
+    # the first await and clears the globals, so we'd lose the restore values.
+    rfpower_to_restore = _pre_tune_rfpower
+    mode_to_restore = _pre_tune_mode
+    slice_to_restore = _pre_tune_slice
     _tune_active = False
     _pre_tune_rfpower = None
     _pre_tune_mode = None
+    ok = await send_command("xmit 0")
+    if rfpower_to_restore is not None:
+        await send_command(f"transmit set rfpower={rfpower_to_restore}")
+    if mode_to_restore is not None:
+        await send_command(f"slice set {slice_to_restore} mode={mode_to_restore}")
     await manager.broadcast({"type": "flexradio_update", "tune_active": False})
     return ok
 
