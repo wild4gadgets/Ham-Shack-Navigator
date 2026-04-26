@@ -604,7 +604,9 @@ export async function renderDashboard(container) {
     btn.textContent = '…';
     try {
       await apiPost('/flexradio/tune', { freq_mhz: freq });
+      _optimisticFreqMhz = freq;
       bootstrap.Modal.getInstance(document.getElementById('tune-modal'))?.hide();
+      loadFlexRadioStatus();
     } catch (e) {
       alert(`Tune failed: ${e.message}`);
     } finally {
@@ -625,7 +627,9 @@ export async function renderDashboard(container) {
     bandBtn.disabled = true;
     try {
       await apiPost('/flexradio/tune', { freq_mhz: freq });
+      _optimisticFreqMhz = freq;
       bootstrap.Modal.getInstance(document.getElementById('tune-modal'))?.hide();
+      loadFlexRadioStatus();
     } catch (err) {
       alert(`Tune failed: ${err.message}`);
     } finally {
