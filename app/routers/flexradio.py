@@ -35,7 +35,7 @@ async def set_rf_power(body: PowerRequest, _: User = Depends(get_current_user)):
     state = get_state()
     if not state.get("connected"):
         raise HTTPException(status_code=503, detail="Radio not connected")
-    ok = await send_command(f"transmit set rfPower={body.rf_power}")
+    ok = await send_command(f"transmit set rfpower={body.rf_power}")
     if not ok:
         raise HTTPException(status_code=503, detail="Radio not connected")
     return {"ok": True}
