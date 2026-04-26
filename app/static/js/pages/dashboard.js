@@ -579,7 +579,7 @@ export async function renderDashboard(container) {
     const moxBtn = e.target.closest('#flex-mox-btn');
     if (moxBtn) { toggleMox(moxBtn); return; }
     const tuneBtn = e.target.closest('#flex-tune-btn');
-    if (tuneBtn) toggleAtu(tuneBtn);
+    if (tuneBtn) toggleTuneCarrier(tuneBtn);
   });
 
   function openTuneModal(currentFreq) {
@@ -706,13 +706,13 @@ export async function renderDashboard(container) {
     }
   });
 
-  async function toggleAtu(btn) {
-    const enabled = btn.dataset.atuEnabled === '1';
+  async function toggleTuneCarrier(btn) {
+    const active = btn.dataset.tuneActive === '1';
     btn.disabled = true;
     try {
-      await apiPost('/flexradio/atu', { enabled: !enabled });
+      await apiPost('/flexradio/tune-carrier', { active: !active });
     } catch (e) {
-      alert(`ATU toggle failed: ${e.message}`);
+      alert(`Tune carrier failed: ${e.message}`);
     } finally {
       btn.disabled = false;
     }
@@ -1073,11 +1073,13 @@ async function loadFlexRadioStatus() {
     const moxBtn = s.tx_state != null
       ? `<button id="flex-mox-btn" class="ms-1" data-is-tx="${isTx ? '1' : '0'}" style="${moxStyle}padding:1px 7px;font-size:0.7rem;line-height:1.4;border-radius:3px;cursor:pointer;font-weight:700">${escHtml(_txButtonLabel)}</button>`
       : '';
-    const tuneStyle = s.atu_enabled
-      ? 'background:#00e676;color:#000;border:1px solid #00e676;'
-      : 'background:#1a1f2e;color:#00e676;border:1px solid #00e676;';
-    const tuneBtn = s.atu_enabled != null
-      ? `<button id="flex-tune-btn" class="ms-1" data-atu-enabled="${s.atu_enabled ? '1' : '0'}" style="${tuneStyle}padding:1px 7px;font-size:0.7rem;line-height:1.4;border-radius:3px;cursor:pointer;font-weight:700">TUNE</button>`
+    const tuneActive = !!s.tune_active;
+    const tuneStyle = tuneActive
+      ? 'background:#fd7e14;color:#000;border:1px solid #fd7e14;'
+      : 'background:#1a1f2e;color:#fd7e14;border:1px solid #fd7e14;';
+    const tunePowerLabel = s.tune_power != null ? ` ${s.tune_power}W` : '';
+    const tuneBtn = s.connected
+      ? `<button id="flex-tune-btn" class="ms-1" data-tune-active="${tuneActive ? '1' : '0'}" style="${tuneStyle}padding:1px 7px;font-size:0.7rem;line-height:1.4;border-radius:3px;cursor:pointer;font-weight:700" title="Tune carrier${tunePowerLabel}">TUNE</button>`
       : '';
     const swrColor = s.swr == null ? '' : s.swr <= 2.0 ? '#198754' : s.swr <= 3.0 ? '#fd7e14' : '#dc3545';
     const swr = s.swr != null ? `<span class="badge ms-1" style="background:${swrColor};color:#fff">SWR ${s.swr}:1</span>` : '';

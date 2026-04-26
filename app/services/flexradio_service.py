@@ -44,7 +44,7 @@ _seq: int = 0
 _flex_state: dict = {
     "connected": False,
     "slices": {},        # {slice_index: {"RF_frequency": str, "mode": str, "in_use": str}}
-    "transmit": {},      # {"rfpower": str, ...}
+    "transmit": {},      # {"rfpower": str, "tunepower": str, ...}
     "interlock": {},     # {"state": "READY" | "TRANSMITTING" | ...}
     "atu": {},           # {"atu_enabled": str, "status": str}
     "meters": {},        # {meter_id: float}
@@ -52,6 +52,10 @@ _flex_state: dict = {
     "dax_stream_id": None,
     "updated_at": None,
 }
+
+# Tune-carrier state: tracks whether we started a manual tune sequence
+_tune_active: bool = False
+_pre_tune_rfpower: int | None = None  # rfpower before tune started, so we can restore it
 
 # Audio queue consumed by cw_decoder_service (and any future decoder).
 # Each item is a bytes object containing raw PCM from one VITA-49 packet.
@@ -211,6 +215,35 @@ async def send_command(cmd: str) -> bool:
     return True
 
 
+async def start_tune() -> bool:
+    """Lower power to tunepower, key the transmitter, mark tune active."""
+    global _tune_active, _pre_tune_rfpower
+    if not _flex_state["connected"]:
+        return False
+    rfpower_raw = _flex_state["transmit"].get("rfpower")
+    tunepower_raw = _flex_state["transmit"].get("tunepower")
+    _pre_tune_rfpower = int(rfpower_raw) if rfpower_raw is not None else None
+    tunepower = int(tunepower_raw) if tunepower_raw is not None else 10
+    await send_command(f"transmit set rfpower={tunepower}")
+    ok = await send_command("xmit 1")
+    if ok:
+        _tune_active = True
+        await manager.broadcast({"type": "flexradio_update", "tune_active": True})
+    return ok
+
+
+async def stop_tune() -> bool:
+    """Un-key the transmitter and restore pre-tune power."""
+    global _tune_active, _pre_tune_rfpower
+    ok = await send_command("xmit 0")
+    if _pre_tune_rfpower is not None:
+        await send_command(f"transmit set rfpower={_pre_tune_rfpower}")
+    _tune_active = False
+    _pre_tune_rfpower = None
+    await manager.broadcast({"type": "flexradio_update", "tune_active": False})
+    return ok
+
+
 def get_state() -> dict:
     """Return a shallow copy of the current radio state."""
     return {
@@ -219,6 +252,7 @@ def get_state() -> dict:
         "transmit": dict(_flex_state["transmit"]),
         "interlock": dict(_flex_state["interlock"]),
         "atu": dict(_flex_state["atu"]),
+        "tune_active": _tune_active,
         "swr": _get_swr(),
         "dax_stream_id": _flex_state.get("dax_stream_id"),
         "updated_at": _flex_state["updated_at"],
@@ -262,7 +296,7 @@ async def _flex_listener():
         dax_enabled = settings.get("dax_enabled", True)
         dax_channel = int(settings.get("dax_channel", 1))
 
-        global _writer, _seq
+        global _writer, _seq, _tune_active, _pre_tune_rfpower
         _seq = 1
         dax_create_seq: int | None = None
         dax_stream_created = False
@@ -402,6 +436,11 @@ async def _flex_listener():
                                     "type": "flexradio_update",
                                     "interlock_state": kv["state"],
                                 })
+                            # If radio dropped to READY while we had tune active, clear it
+                            if kv["state"] == "READY" and _tune_active:
+                                _tune_active = False
+                                _pre_tune_rfpower = None
+                                await manager.broadcast({"type": "flexradio_update", "tune_active": False})
 
                     # ATU status
                     m = re.match(r"atu\s+(.*)", body)
@@ -484,6 +523,9 @@ async def _flex_listener():
             _writer = None
             _flex_state["connected"] = False
             _stop_dax_udp()
+            if _tune_active:
+                _tune_active = False
+                _pre_tune_rfpower = None
 
         delay = min(10 * (3 ** max(0, fail_count - 1)), 300)
         await asyncio.sleep(delay)

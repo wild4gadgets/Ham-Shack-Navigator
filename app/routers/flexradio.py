@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 from dependencies import get_current_user
 from models import User
-from services.flexradio_service import get_state, send_command
+from services.flexradio_service import get_state, send_command, start_tune, stop_tune
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,10 @@ class AtuRequest(BaseModel):
     enabled: bool
 
 
+class TuneCarrierRequest(BaseModel):
+    active: bool
+
+
 @router.post("/power")
 async def set_rf_power(body: PowerRequest, _: User = Depends(get_current_user)):
     """Set the transmitter RF power level (1–100)."""
@@ -44,6 +48,17 @@ async def set_rf_power(body: PowerRequest, _: User = Depends(get_current_user)):
     if not state.get("connected"):
         raise HTTPException(status_code=503, detail="Radio not connected")
     ok = await send_command(f"transmit set rfpower={body.rf_power}")
+    if not ok:
+        raise HTTPException(status_code=503, detail="Radio not connected")
+    return {"ok": True}
+
+
+@router.post("/tune-carrier")
+async def set_tune_carrier(body: TuneCarrierRequest, _: User = Depends(get_current_user)):
+    """Start or stop a tune carrier (low-power TX for external ATU tuning)."""
+    if not get_state().get("connected"):
+        raise HTTPException(status_code=503, detail="Radio not connected")
+    ok = await (start_tune() if body.active else stop_tune())
     if not ok:
         raise HTTPException(status_code=503, detail="Radio not connected")
     return {"ok": True}
@@ -79,6 +94,7 @@ async def get_flexradio_status(_: User = Depends(get_current_user)):
     state = get_state()
     connected = state.get("connected", False)
     rf_power_raw = state.get("transmit", {}).get("rfpower") if connected else None
+    tune_power_raw = state.get("transmit", {}).get("tunepower") if connected else None
     interlock_state = state.get("interlock", {}).get("state") if connected else None
     atu_enabled_raw = state.get("atu", {}).get("atu_enabled") if connected else None
 
@@ -100,6 +116,8 @@ async def get_flexradio_status(_: User = Depends(get_current_user)):
         "rf_power": int(rf_power_raw) if rf_power_raw is not None else None,
         "tx_state": interlock_state,
         "atu_enabled": (atu_enabled_raw == "1") if atu_enabled_raw is not None else None,
+        "tune_active": state.get("tune_active", False),
+        "tune_power": int(tune_power_raw) if tune_power_raw is not None else None,
         "swr": state.get("swr") if connected else None,
         "updated_at": state.get("updated_at"),
     }
