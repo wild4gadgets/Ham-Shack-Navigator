@@ -31,6 +31,10 @@ class MoxRequest(BaseModel):
     mox: bool
 
 
+class AtuRequest(BaseModel):
+    enabled: bool
+
+
 @router.post("/power")
 async def set_rf_power(body: PowerRequest, _: User = Depends(get_current_user)):
     """Set the transmitter RF power level (1–100)."""
@@ -40,6 +44,18 @@ async def set_rf_power(body: PowerRequest, _: User = Depends(get_current_user)):
     if not state.get("connected"):
         raise HTTPException(status_code=503, detail="Radio not connected")
     ok = await send_command(f"transmit set rfpower={body.rf_power}")
+    if not ok:
+        raise HTTPException(status_code=503, detail="Radio not connected")
+    return {"ok": True}
+
+
+@router.post("/atu")
+async def set_atu(body: AtuRequest, _: User = Depends(get_current_user)):
+    """Enable or bypass the ATU (antenna tuner)."""
+    state = get_state()
+    if not state.get("connected"):
+        raise HTTPException(status_code=503, detail="Radio not connected")
+    ok = await send_command(f"atu set atu_enabled={1 if body.enabled else 0}")
     if not ok:
         raise HTTPException(status_code=503, detail="Radio not connected")
     return {"ok": True}
@@ -64,6 +80,7 @@ async def get_flexradio_status(_: User = Depends(get_current_user)):
     connected = state.get("connected", False)
     rf_power_raw = state.get("transmit", {}).get("rfpower") if connected else None
     interlock_state = state.get("interlock", {}).get("state") if connected else None
+    atu_enabled_raw = state.get("atu", {}).get("atu_enabled") if connected else None
 
     # Find the primary slice: prefer in_use=1, fall back to first available
     slices = state.get("slices", {})
@@ -82,6 +99,7 @@ async def get_flexradio_status(_: User = Depends(get_current_user)):
         "in_use": primary.get("in_use") if connected else None,
         "rf_power": int(rf_power_raw) if rf_power_raw is not None else None,
         "tx_state": interlock_state,
+        "atu_enabled": (atu_enabled_raw == "1") if atu_enabled_raw is not None else None,
         "swr": state.get("swr") if connected else None,
         "updated_at": state.get("updated_at"),
     }

@@ -46,6 +46,7 @@ _flex_state: dict = {
     "slices": {},        # {slice_index: {"RF_frequency": str, "mode": str, "in_use": str}}
     "transmit": {},      # {"rfpower": str, ...}
     "interlock": {},     # {"state": "READY" | "TRANSMITTING" | ...}
+    "atu": {},           # {"atu_enabled": str, "status": str}
     "meters": {},        # {meter_id: float}
     "meter_names": {},   # {meter_id: str}
     "dax_stream_id": None,
@@ -217,6 +218,7 @@ def get_state() -> dict:
         "slices": {k: dict(v) for k, v in _flex_state["slices"].items()},
         "transmit": dict(_flex_state["transmit"]),
         "interlock": dict(_flex_state["interlock"]),
+        "atu": dict(_flex_state["atu"]),
         "swr": _get_swr(),
         "dax_stream_id": _flex_state.get("dax_stream_id"),
         "updated_at": _flex_state["updated_at"],
@@ -294,6 +296,8 @@ async def _flex_listener():
             writer.write(f"C{_seq}|sub interlock all\n".encode())
             _seq += 1
             writer.write(f"C{_seq}|sub meter all\n".encode())
+            _seq += 1
+            writer.write(f"C{_seq}|sub atu all\n".encode())
             _seq += 1
             writer.write(f"C{_seq}|meter list\n".encode())
             _seq += 1
@@ -397,6 +401,20 @@ async def _flex_listener():
                                 await manager.broadcast({
                                     "type": "flexradio_update",
                                     "interlock_state": kv["state"],
+                                })
+
+                    # ATU status
+                    m = re.match(r"atu\s+(.*)", body)
+                    if m:
+                        kv = _parse_kv(m.group(1))
+                        if "atu_enabled" in kv:
+                            old_atu = _flex_state["atu"].get("atu_enabled")
+                            _flex_state["atu"].update(kv)
+                            _flex_state["updated_at"] = datetime.now(timezone.utc).isoformat()
+                            if kv["atu_enabled"] != old_atu:
+                                await manager.broadcast({
+                                    "type": "flexradio_update",
+                                    "atu_enabled": kv["atu_enabled"],
                                 })
 
                     # Meter definition: S<h>|meter <id>.<key>=<val>#...

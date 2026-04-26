@@ -577,7 +577,9 @@ export async function renderDashboard(container) {
     const powerBadge = e.target.closest('#flex-power-badge');
     if (powerBadge) { openPowerModal(parseInt(powerBadge.dataset.power, 10)); return; }
     const moxBtn = e.target.closest('#flex-mox-btn');
-    if (moxBtn) toggleMox(moxBtn);
+    if (moxBtn) { toggleMox(moxBtn); return; }
+    const tuneBtn = e.target.closest('#flex-tune-btn');
+    if (tuneBtn) toggleAtu(tuneBtn);
   });
 
   function openTuneModal(currentFreq) {
@@ -703,6 +705,18 @@ export async function renderDashboard(container) {
       btn.textContent = 'Set';
     }
   });
+
+  async function toggleAtu(btn) {
+    const enabled = btn.dataset.atuEnabled === '1';
+    btn.disabled = true;
+    try {
+      await apiPost('/flexradio/atu', { enabled: !enabled });
+    } catch (e) {
+      alert(`ATU toggle failed: ${e.message}`);
+    } finally {
+      btn.disabled = false;
+    }
+  }
 
   async function toggleMox(btn) {
     const isTx = btn.dataset.isTx === '1';
@@ -1059,9 +1073,15 @@ async function loadFlexRadioStatus() {
     const moxBtn = s.tx_state != null
       ? `<button id="flex-mox-btn" class="ms-1" data-is-tx="${isTx ? '1' : '0'}" style="${moxStyle}padding:1px 7px;font-size:0.7rem;line-height:1.4;border-radius:3px;cursor:pointer;font-weight:700">${escHtml(_txButtonLabel)}</button>`
       : '';
+    const tuneStyle = s.atu_enabled
+      ? 'background:#00e676;color:#000;border:1px solid #00e676;'
+      : 'background:#1a1f2e;color:#00e676;border:1px solid #00e676;';
+    const tuneBtn = s.atu_enabled != null
+      ? `<button id="flex-tune-btn" class="ms-1" data-atu-enabled="${s.atu_enabled ? '1' : '0'}" style="${tuneStyle}padding:1px 7px;font-size:0.7rem;line-height:1.4;border-radius:3px;cursor:pointer;font-weight:700">TUNE</button>`
+      : '';
     const swrColor = s.swr == null ? '' : s.swr <= 2.0 ? '#198754' : s.swr <= 3.0 ? '#fd7e14' : '#dc3545';
     const swr = s.swr != null ? `<span class="badge ms-1" style="background:${swrColor};color:#fff">SWR ${s.swr}:1</span>` : '';
-    el.innerHTML = `<span class="freq-retro me-1">FlexRadio Status</span>${freq}${mode}${power}${rxtx}${moxBtn}${swr}`;
+    el.innerHTML = `<span class="freq-retro me-1">FlexRadio Status</span>${freq}${mode}${power}${rxtx}${tuneBtn}${moxBtn}${swr}`;
   } catch {
     pskRadioOffline = false;
     el.innerHTML = '';
