@@ -23,6 +23,24 @@ class ModeRequest(BaseModel):
     mode: str
 
 
+class PowerRequest(BaseModel):
+    rf_power: int  # 1–100
+
+
+@router.post("/power")
+async def set_rf_power(body: PowerRequest, _: User = Depends(get_current_user)):
+    """Set the transmitter RF power level (1–100)."""
+    if not 1 <= body.rf_power <= 100:
+        raise HTTPException(status_code=400, detail="rf_power must be 1–100")
+    state = get_state()
+    if not state.get("connected"):
+        raise HTTPException(status_code=503, detail="Radio not connected")
+    ok = await send_command(f"transmit set rfPower={body.rf_power}")
+    if not ok:
+        raise HTTPException(status_code=503, detail="Radio not connected")
+    return {"ok": True}
+
+
 @router.get("/status")
 async def get_flexradio_status(_: User = Depends(get_current_user)):
     """Return current FlexRadio primary slice status (frequency, mode, connection state)."""

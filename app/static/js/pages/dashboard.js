@@ -381,6 +381,32 @@ export async function renderDashboard(container) {
       </div>
     </div>
 
+    <!-- Power Control Modal -->
+    <div class="modal fade" id="power-modal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog" style="max-width:320px">
+        <div class="modal-content" style="background:#12122a;border:1px solid #2a2a4a;color:#e0e0e0">
+          <div class="modal-header" style="border-color:#2a2a4a">
+            <h5 class="modal-title">TX Power</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div class="text-center mb-2">
+              <span id="power-modal-val" style="font-size:2rem;font-weight:700;color:#00e676">100</span>
+              <span style="font-size:1.1rem;color:#aaa">W</span>
+            </div>
+            <input type="range" id="power-modal-slider" class="form-range" min="1" max="100" step="1" value="100" />
+            <div class="d-flex justify-content-between mt-3" style="gap:4px;flex-wrap:wrap">
+              ${[10,25,50,75,100].map(p => `<button class="btn btn-sm btn-outline-secondary power-preset" data-watts="${p}" style="flex:1;min-width:0">${p}W</button>`).join('')}
+            </div>
+          </div>
+          <div class="modal-footer" style="border-color:#2a2a4a">
+            <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" id="btn-power-modal-submit" class="btn btn-sm btn-success">Set</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- QRZ Lookup Modal -->
     <div class="modal fade" id="qrz-modal" tabindex="-1" aria-hidden="true">
       <div class="modal-dialog modal-lg">
@@ -546,7 +572,9 @@ export async function renderDashboard(container) {
     const freqBadge = e.target.closest('#flex-freq-badge');
     if (freqBadge) { openTuneModal(freqBadge.dataset.freq); return; }
     const modeBadge = e.target.closest('#flex-mode-badge');
-    if (modeBadge) openModeModal(modeBadge.dataset.mode);
+    if (modeBadge) { openModeModal(modeBadge.dataset.mode); return; }
+    const powerBadge = e.target.closest('#flex-power-badge');
+    if (powerBadge) openPowerModal(parseInt(powerBadge.dataset.power, 10));
   });
 
   function openTuneModal(currentFreq) {
@@ -624,6 +652,52 @@ export async function renderDashboard(container) {
     } catch (err) {
       alert(`Mode change failed: ${err.message}`);
       btn.disabled = false;
+    }
+  });
+
+  function openPowerModal(currentPower) {
+    const slider = document.getElementById('power-modal-slider');
+    const val = document.getElementById('power-modal-val');
+    const pwr = isNaN(currentPower) ? 100 : Math.max(1, Math.min(100, currentPower));
+    if (slider) slider.value = pwr;
+    if (val) val.textContent = pwr;
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('power-modal')).show();
+  }
+
+  document.getElementById('power-modal-slider')?.addEventListener('input', e => {
+    const val = document.getElementById('power-modal-val');
+    if (val) val.textContent = e.target.value;
+  });
+
+  document.getElementById('power-modal')?.addEventListener('click', e => {
+    const preset = e.target.closest('.power-preset');
+    if (!preset) return;
+    const w = parseInt(preset.dataset.watts, 10);
+    const slider = document.getElementById('power-modal-slider');
+    const val = document.getElementById('power-modal-val');
+    if (slider) slider.value = w;
+    if (val) val.textContent = w;
+  });
+
+  document.getElementById('btn-power-modal-submit')?.addEventListener('click', async () => {
+    const slider = document.getElementById('power-modal-slider');
+    const btn = document.getElementById('btn-power-modal-submit');
+    const rf_power = parseInt(slider?.value, 10);
+    if (!rf_power || isNaN(rf_power)) return;
+    btn.disabled = true;
+    btn.textContent = '…';
+    const badge = document.getElementById('flex-power-badge');
+    const prevPower = badge ? parseInt(badge.dataset.power, 10) : null;
+    if (badge) { badge.textContent = `${rf_power}W`; badge.dataset.power = rf_power; }
+    try {
+      await apiPost('/flexradio/power', { rf_power });
+      bootstrap.Modal.getInstance(document.getElementById('power-modal'))?.hide();
+    } catch (e) {
+      if (badge && prevPower !== null) { badge.textContent = `${prevPower}W`; badge.dataset.power = prevPower; }
+      alert(`Power change failed: ${e.message}`);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Set';
     }
   });
 
@@ -950,7 +1024,7 @@ async function loadFlexRadioStatus() {
     const mhz = displayFreq.toFixed(3); // kept for band lookup
     const freqDisplay = formatFlexFreq(displayFreq);
     const mode = s.mode ? `<span id="flex-mode-badge" class="badge ms-2" style="background:#00e676;color:#000;cursor:pointer" data-mode="${escHtml(s.mode)}">${escHtml(s.mode)}</span>` : '';
-    const power = s.rf_power != null ? `<span class="badge ms-1" style="background:#00e676;color:#000">${s.rf_power}W</span>` : '';
+    const power = s.rf_power != null ? `<span id="flex-power-badge" class="badge ms-1" style="background:#00e676;color:#000;cursor:pointer" data-power="${s.rf_power}">${s.rf_power}W</span>` : '';
     const isTx = s.tx_state === 'TRANSMITTING' || s.tx_state === 'PTT_REQUESTED';
     const rxtx = s.tx_state != null
       ? `<span class="badge ms-1" style="background:${isTx ? '#dc3545' : '#198754'};color:#fff">${isTx ? 'TX' : 'RX'}</span>`
