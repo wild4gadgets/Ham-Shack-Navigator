@@ -26,6 +26,7 @@ let radarHomeZoom = 7;
 let pinData = { kasa: [], shelly: [] };
 let pinStates = {};
 let pinPollTimer = null;
+let flexRadioRefreshTimer = null;
 let solarRefreshTimer = null;
 let dxcRefreshTimer = null;
 let pskRefreshTimer = null;
@@ -869,6 +870,7 @@ function cleanup() {
   if (pskZoomHandler) { document.removeEventListener('keydown', pskZoomHandler); pskZoomHandler = null; }
   if (pinPollTimer) { clearInterval(pinPollTimer); pinPollTimer = null; }
   if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
+  if (flexRadioRefreshTimer) { clearInterval(flexRadioRefreshTimer); flexRadioRefreshTimer = null; }
   if (solarRefreshTimer) { clearInterval(solarRefreshTimer); solarRefreshTimer = null; }
   if (dxcRefreshTimer) { clearInterval(dxcRefreshTimer); dxcRefreshTimer = null; }
   if (pskRefreshTimer) { clearInterval(pskRefreshTimer); pskRefreshTimer = null; }
@@ -923,6 +925,8 @@ async function loadSystemState() {
 async function loadAll() {
   await loadFlexSettings();
   await Promise.all([loadMonitoringStatus(), loadFlexRadioStatus(), loadWeather(), loadRecentEvents(), loadRadar(), loadPins(), loadSolarData(), loadSystemState(), loadDxCluster(), initPskTile()]);
+  if (flexRadioRefreshTimer) clearInterval(flexRadioRefreshTimer);
+  flexRadioRefreshTimer = setInterval(() => { if (!destroyed) loadFlexRadioStatus(); }, 5000);
   if (solarRefreshTimer) clearInterval(solarRefreshTimer);
   solarRefreshTimer = setInterval(() => { if (!destroyed) loadSolarData(); }, 30 * 60 * 1000);
   if (dxcRefreshTimer) clearInterval(dxcRefreshTimer);
