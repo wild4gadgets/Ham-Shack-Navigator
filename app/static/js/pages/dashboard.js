@@ -1333,7 +1333,7 @@ function renderForecast(fList, metric) {
     const desc = entry.weather?.[0]?.description ?? '';
     const icon = owmIcon(entry.weather);
     const iconColor = owmIconColor(entry.weather);
-    const popColor = pop >= 60 ? '#60a5fa' : pop >= 30 ? '#93c5fd' : '#64748b';
+    const popColor = pop >= 60 ? '#60a5fa' : pop >= 30 ? '#93c5fd' : '#bfdbfe';
     return `
       <div class="d-flex align-items-center gap-2 py-1" style="border-bottom:1px solid #1e2a3a;font-size:1rem" title="${desc}">
         <span style="width:70px;flex-shrink:0;white-space:nowrap;color:#94a3b8">${timeLabel}</span>
