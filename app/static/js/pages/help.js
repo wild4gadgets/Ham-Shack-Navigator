@@ -42,9 +42,12 @@ export function renderHelp(container) {
     <li><strong>Weather monitoring</strong> with automatic station shutdown when thresholds are exceeded (wind, lightning)</li>
     <li><strong>Station equipment control</strong> via TP-Link Kasa smart plugs, Shelly relays, and Home Assistant</li>
     <li><strong>Workflow automation</strong> — build step-by-step power sequences, schedule them, or trigger remotely</li>
-    <li><strong>Solar &amp; propagation data</strong> — SFI, A-index, K-index, sunspot count</li>
+    <li><strong>Solar &amp; propagation data</strong> — SFI, A-index, K-index, sunspot count, MUF</li>
     <li><strong>DX Cluster band activity</strong> heatmap by region</li>
     <li><strong>PSK Reporter spot map</strong> with greyline overlay and band-colored markers</li>
+    <li><strong>FlexRadio 6400 integration</strong> — real-time frequency, mode, power, and SWR display with click-to-tune and click-to-change-mode controls, frequency step buttons, and keyboard shortcuts</li>
+    <li><strong>CW decoder</strong> — live Morse decoding from the FlexRadio DAX audio stream, with WPM and SNR display</li>
+    <li><strong>Draggable dashboard tiles</strong> — rearrange the layout to suit your workflow</li>
     <li><strong>Notifications</strong> via email, Telegram, and IFTTT</li>
     <li><strong>Multi-user</strong> with Admin and Read-Only roles</li>
     <li><strong>Remote webhook API</strong> for Stream Deck and mobile app integration</li>
@@ -69,13 +72,13 @@ export function renderHelp(container) {
   </ul>
   <h4 style="color:#7eb8f7">Optional</h4>
   <ul>
-    <li>QRZ.com XML subscription (for callsign lookups)</li>
+    <li>QRZ.com XML subscription (for callsign lookups from the PSK Reporter map)</li>
     <li>Telegram Bot token (for mobile notifications)</li>
     <li>SMTP server access (for email notifications)</li>
     <li>IFTTT account (for webhook integrations)</li>
     <li>TP-Link Kasa smart plugs/strips on your local network</li>
     <li>Shelly smart relays (Gen 1 or Gen 2) on your local network</li>
-    <li>FlexRadio 6400 on your local network</li>
+    <li>FlexRadio 6000/6400 series on your local network (SmartSDR required for DAX audio)</li>
     <li>Home Assistant instance</li>
   </ul>
 
@@ -178,7 +181,7 @@ docker compose logs app -f</pre>
   <h4 style="color:#7eb8f7;margin-top:1.5rem">Minimum Required Configuration</h4>
   <p>After logging in, go to <strong>Settings</strong> and configure at minimum:</p>
   <ol>
-    <li><strong>Station Info</strong> — Enter your callsign, city, latitude/longitude, and unit preference (imperial/metric). You can type a city name or GPS coordinates and the system will look up the location automatically. A Maidenhead grid square is computed automatically.</li>
+    <li><strong>Station Info</strong> — Enter your callsign, city, latitude/longitude, and unit preference (imperial/metric). You can type a city name, GPS coordinates, or a Maidenhead grid square and the system will look up the location automatically. The grid square is also computed automatically from your coordinates.</li>
     <li><strong>API Keys</strong> — Paste your OpenWeatherMap and Tomorrow.io API keys. Weather data will not load until both are entered.</li>
   </ol>
   <p>All other settings (equipment, notifications, integrations) are optional and can be added later.</p>
@@ -192,26 +195,79 @@ docker compose logs app -f</pre>
   <ul>
     <li>Your <strong>callsign</strong> and "Ham Shack Cockpit" brand (click to return to dashboard)</li>
     <li><strong>Local</strong> and <strong>UTC clocks</strong> in 7-segment LED style, updating every second</li>
-    <li>Navigation links: <strong>Dashboard</strong>, <strong>Workflows</strong> (admin), <strong>Settings</strong>, <strong>Events</strong>, <strong>Users</strong> (admin)</li>
-    <li><strong>Help</strong> button (this page)</li>
-    <li><strong>Logout</strong> button</li>
-    <li>Role indicator badge (Admin or Read Only)</li>
+    <li>Navigation links: <strong>Dashboard</strong>, <strong>Workflows</strong> (admin), <strong>Settings</strong>, <strong>Events</strong>, <strong>Users</strong> (admin), <strong>Help</strong></li>
+    <li><strong>Logout</strong> button and role indicator badge (Admin or Read Only)</li>
   </ul>
+
+  <h4 style="color:#7eb8f7;margin-top:1.5rem">Dashboard Tile Layout</h4>
+  <p>Each section of the dashboard is a draggable tile. Grab the <strong>grip handle</strong> (<i class="bi bi-grip-horizontal"></i>) at the top-left of any tile and drag it to a new position. Your layout is saved automatically and restored on your next visit. To return to the default order, click the <strong>Reset Layout</strong> button (<i class="bi bi-layout-three-columns"></i>) in the monitoring bar header.</p>
 
   <h4 style="color:#7eb8f7;margin-top:1.5rem">Dashboard Pins (Quick Controls)</h4>
   <p>At the top of the dashboard, any Kasa port or Shelly channel that has "Show on Dashboard" enabled appears as a quick-control button. Click once to toggle on/off. The button color reflects the current state (green = on, gray = off). State is polled every 30 seconds.</p>
 
-  <h4 style="color:#7eb8f7;margin-top:1.5rem">Monitoring Control Bar</h4>
-  <p>Below the dashboard pins is the monitoring status bar showing:</p>
+  <h4 style="color:#7eb8f7;margin-top:1.5rem">Monitoring &amp; Status Bar</h4>
+  <p>The card below the pins contains the FlexRadio status and monitoring controls:</p>
   <ul>
-    <li><strong>Monitoring status</strong> — Armed (active, will auto-shutdown on threshold breach) or Disarmed</li>
-    <li><strong>Arm / Disarm</strong> button — toggles automated weather protection</li>
-    <li><strong>Run Startup / Run Shutdown</strong> buttons — manually trigger your station startup or shutdown workflow</li>
-    <li><strong>Cooldown timer</strong> — shows remaining cooldown time after a shutdown (prevents re-triggering)</li>
+    <li><strong>FlexRadio status</strong> — frequency (with step buttons), mode, power, TX/RX state, and SWR. See the <a href="#h-flexradio-status" class="help-toc-link" style="display:inline">FlexRadio Status</a> section below for full details.</li>
+    <li><strong>Monitoring badge</strong> — Armed (green) or Disarmed. Click to arm or disarm automated weather protection.</li>
+    <li><strong>Cooldown timer</strong> — shown after an automatic shutdown; counts down before auto-shutdown can trigger again.</li>
+    <li><strong>Run Startup / Run Shutdown</strong> button — click to manually trigger your station's system workflow.</li>
+    <li><strong>Reset Layout</strong> button — restores the default tile order.</li>
+    <li><strong>Refresh</strong> button — forces an immediate weather data refresh.</li>
   </ul>
 
+  <h4 style="color:#7eb8f7;margin-top:1.5rem" id="h-flexradio-status">FlexRadio Status Bar</h4>
+  <p>When a FlexRadio 6000/6400 series radio is connected, its status appears in the bottom of the monitoring bar with full real-time controls:</p>
+  <ul>
+    <li><strong>Frequency badge</strong> (green) — shows current VFO frequency in MHz and the amateur band (e.g., "14.074 MHz · 20m"). Click the badge to open the <strong>Tune dialog</strong> — type any frequency in MHz and press Enter or click Tune to QSY directly.</li>
+    <li><strong>Step buttons</strong> — four buttons surround the frequency badge:
+      <table class="table table-sm mt-2 mb-2" style="color:#e0e0e0;font-size:0.85rem;border-color:#2a2a4a;width:auto">
+        <thead style="background:#1a1a3e;color:#7eb8f7"><tr><th>Button</th><th>Action</th><th>Keyboard shortcut</th></tr></thead>
+        <tbody style="background:#12122a">
+          <tr><td><strong>&lt;&lt;</strong></td><td>Decrease by large step</td><td><code>&lt;</code> (Shift+,)</td></tr>
+          <tr><td><strong>&lt;</strong></td><td>Decrease by small step</td><td><code>,</code></td></tr>
+          <tr><td><strong>&gt;</strong></td><td>Increase by small step</td><td><code>.</code></td></tr>
+          <tr><td><strong>&gt;&gt;</strong></td><td>Increase by large step</td><td><code>&gt;</code> (Shift+.)</td></tr>
+        </tbody>
+      </table>
+      Default step sizes: <strong>50 kHz</strong> (small) and <strong>100 kHz</strong> (large). Configure in Settings → FlexRadio → Frequency Step Sizes.
+    </li>
+    <li><strong>Mode badge</strong> (green) — shows current mode (USB, LSB, CW, AM, etc.). Click to open the <strong>Mode dialog</strong> and select a new mode (AM, CW, DIGL, DIGU, LSB, RTTY, USB).</li>
+    <li><strong>Power badge</strong> — forward power in watts.</li>
+    <li><strong>TX / RX badge</strong> — red TX when transmitting, green RX when receiving.</li>
+    <li><strong>SWR badge</strong> — color-coded: green ≤2:1, orange ≤3:1, red &gt;3:1.</li>
+  </ul>
+
+  <h4 style="color:#7eb8f7;margin-top:1.5rem">Keyboard Shortcuts</h4>
+  <p>These shortcuts are active on the dashboard when the cursor is not in a text input:</p>
+  <table class="table table-sm" style="color:#e0e0e0;font-size:0.875rem;border-color:#2a2a4a">
+    <thead style="background:#1a1a3e;color:#7eb8f7">
+      <tr><th>Key</th><th>Action</th></tr>
+    </thead>
+    <tbody style="background:#12122a">
+      <tr><td><code>,</code></td><td>Step frequency down by small step</td></tr>
+      <tr><td><code>.</code></td><td>Step frequency up by small step</td></tr>
+      <tr><td><code>&lt;</code> (Shift+,)</td><td>Step frequency down by large step</td></tr>
+      <tr><td><code>&gt;</code> (Shift+.)</td><td>Step frequency up by large step</td></tr>
+      <tr><td><code>+</code> / <code>=</code></td><td>Zoom in on radar and PSK Reporter maps</td></tr>
+      <tr><td><code>-</code></td><td>Zoom out on radar and PSK Reporter maps</td></tr>
+    </tbody>
+  </table>
+  <p>Frequency step shortcuts require a FlexRadio to be connected. Step sizes are configurable in Settings → FlexRadio.</p>
+
+  <h4 style="color:#7eb8f7;margin-top:1.5rem">CW Decoder Tile</h4>
+  <p>The CW Decoder tile appears automatically when the FlexRadio is in CW, CWL, or CWU mode. It decodes Morse code in real time from the DAX audio stream. The tile shows:</p>
+  <ul>
+    <li><strong>Decoded text</strong> — two scrolling lines of monospace green text. When a line fills, content scrolls up. Click <strong>Clear</strong> (<i class="bi bi-trash"></i>) to reset.</li>
+    <li><strong>WPM</strong> — estimated code speed in words per minute.</li>
+    <li><strong>SNR</strong> — signal-to-noise ratio in dB, color-coded: green ≥10 dB, yellow ≥3 dB, red &lt;3 dB.</li>
+    <li><strong>Tone (Hz)</strong> — the CW sidetone frequency to listen for. Adjust if your sidetone doesn't match.</li>
+    <li><strong>Threshold slider</strong> — detection sensitivity (0.01–0.50). Lower = more sensitive; higher = fewer false triggers. Changes take effect immediately.</li>
+  </ul>
+  <p>DAX audio must be enabled in Settings → FlexRadio and the correct DAX channel must match the channel assigned in SmartSDR. The CW decoder only runs when DAX is enabled.</p>
+
   <h4 style="color:#7eb8f7;margin-top:1.5rem">Weather Cards</h4>
-  <p>Three weather cards display current conditions:</p>
+  <p>Three analog-gauge weather cards display current conditions:</p>
   <ul>
     <li><strong>Wind</strong> — current gust speed with forecast min/max. Color shifts toward red as it approaches your threshold.</li>
     <li><strong>Temperature</strong> — current temperature with forecast high/low.</li>
@@ -228,7 +284,7 @@ docker compose logs app -f</pre>
   </ul>
 
   <h4 style="color:#7eb8f7;margin-top:1.5rem">Local Radar Map</h4>
-  <p>An animated precipitation radar map centered on your station location. Use the playback controls (Previous, Play/Pause, Next) to step through frames. The timestamp of the currently displayed frame is shown. The map auto-centers on your configured location.</p>
+  <p>An animated precipitation radar map centered on your station location. Use the playback controls (Previous, Play/Pause, Next) to step through frames. The timestamp of the currently displayed frame is shown. Use <code>+</code>/<code>-</code> keyboard shortcuts to zoom. The map auto-centers on your configured location.</p>
 
   <h4 style="color:#7eb8f7;margin-top:1.5rem">Solar / Propagation Card</h4>
   <p>Displays current space weather data from HamQSL:</p>
@@ -251,14 +307,14 @@ docker compose logs app -f</pre>
     <li><strong>Direction</strong> — "Heard by others" (your signal received) or "You heard" (stations you received)</li>
     <li><strong>Bands / Modes</strong> — filter spots by band and mode (leave blank for all)</li>
     <li><strong>Timespan</strong> — 15 minutes to 6 hours of spot history</li>
-    <li><strong>QRZ Lookup</strong> — enter a callsign to see station details in a popup</li>
+    <li><strong>QRZ Lookup</strong> — enter a callsign to see station details in a popup (requires QRZ XML subscription)</li>
     <li><strong>Center Map</strong> — re-centers the map on your station location</li>
     <li><strong>Pause / Resume</strong> — stop or resume the 5-minute auto-refresh</li>
   </ul>
   <p>Each spot marker is colored by band (20m = green, 40m = yellow, 10m = red, etc.) and shows the SNR value. A greyline terminator overlay shows the day/night boundary in real time. All settings persist between sessions.</p>
 
-  <h4 style="color:#7eb8f7;margin-top:1.5rem">FlexRadio Status</h4>
-  <p>If a FlexRadio 6400 is configured and reachable, a status card shows the current frequency, mode (USB, CW, etc.), forward power, and SWR. The card updates in real time via UDP.</p>
+  <h4 style="color:#7eb8f7;margin-top:1.5rem">Recent Events</h4>
+  <p>A live feed of the most recent shack activity events — workflow runs, device actions, monitoring state changes. Click <strong>View All</strong> to open the full paginated Events log.</p>
 
   <!-- 6. Equipment Control -->
   <h2 id="h-equipment" class="help-section-title">6. Equipment Control</h2>
@@ -295,7 +351,7 @@ docker compose logs app -f</pre>
   <h4 style="color:#7eb8f7;margin-top:1.5rem">System Workflows: Startup and Shutdown</h4>
   <p>Two special workflows named exactly <strong>Startup</strong> and <strong>Shutdown</strong> are treated as system workflows. They can be:</p>
   <ul>
-    <li>Triggered manually from the dashboard (Run Startup / Run Shutdown buttons)</li>
+    <li>Triggered manually from the dashboard (Run Startup / Run Shutdown button)</li>
     <li>Triggered automatically when weather thresholds are breached (Shutdown only)</li>
     <li>Triggered remotely via the webhook API</li>
   </ul>
@@ -327,7 +383,7 @@ docker compose logs app -f</pre>
   </ol>
 
   <h4 style="color:#7eb8f7;margin-top:1.5rem">Arming and Disarming</h4>
-  <p>Use the <strong>Arm / Disarm</strong> button on the dashboard to control whether automatic shutdown is active. You might disarm monitoring when you are actively at the station and want to stay on the air despite marginal conditions, then re-arm when you leave.</p>
+  <p>Click the <strong>Monitoring</strong> badge on the dashboard to toggle between Armed and Disarmed. You might disarm when you are actively at the station and want to stay on the air despite marginal conditions, then re-arm when you leave.</p>
 
   <h4 style="color:#7eb8f7;margin-top:1.5rem">Configuring Thresholds</h4>
   <p>Go to <strong>Settings → Thresholds</strong>:</p>
@@ -337,9 +393,6 @@ docker compose logs app -f</pre>
     <li><strong>Poll interval</strong> — seconds between weather checks. Minimum 60 seconds. Default: 300 seconds.</li>
     <li><strong>Shutdown cooldown</strong> — minutes to wait after a shutdown before auto-shutdown can trigger again. Default: 30 minutes.</li>
   </ul>
-
-  <h4 style="color:#7eb8f7;margin-top:1.5rem">Manual Shutdown</h4>
-  <p>Click <strong>Run Shutdown</strong> on the dashboard to trigger the Shutdown workflow immediately, regardless of weather conditions or monitoring state.</p>
 
   <!-- 9. Notifications -->
   <h2 id="h-notifications" class="help-section-title">9. Notifications</h2>
@@ -374,18 +427,35 @@ docker compose logs app -f</pre>
   <h4 style="color:#7eb8f7;margin-top:1.5rem">Notification Toggles</h4>
   <p>Go to <strong>Settings → Notification Toggles</strong> to independently enable/disable:</p>
   <ul>
-    <li>Shutdown email</li>
-    <li>Daily digest email</li>
-    <li>Shutdown Telegram message</li>
-    <li>Threshold alert Telegram message</li>
-    <li>Shutdown IFTTT event</li>
-    <li>Threshold alert IFTTT event</li>
+    <li>Shutdown email / Daily digest email</li>
+    <li>Shutdown Telegram message / Threshold alert Telegram message</li>
+    <li>Shutdown IFTTT event / Threshold alert IFTTT event</li>
   </ul>
 
   <!-- 10. Integrations -->
   <h2 id="h-integrations" class="help-section-title">10. Integrations</h2>
 
-  <h4 style="color:#7eb8f7">Home Assistant</h4>
+  <h4 style="color:#7eb8f7">FlexRadio 6000/6400 Series</h4>
+  <p>Configure in <strong>Settings → FlexRadio</strong>. Enter the local IP address of your FlexRadio and enable the connection. Once connected, the status bar shows real-time frequency, mode, power, SWR, and TX/RX state with full interactive controls (see Section 5).</p>
+
+  <p><strong>DAX Audio &amp; CW Decoder</strong></p>
+  <p>Ham Shack Cockpit can receive the FlexRadio DAX (Digital Audio eXchange) RX audio stream over UDP and use it to decode CW (Morse code) in real time.</p>
+  <ul>
+    <li>Enable <strong>DAX RX audio stream</strong> in Settings → FlexRadio and set the <strong>DAX Channel</strong> to match the channel assigned to your primary slice in SmartSDR.</li>
+    <li>The CW decoder uses a Goertzel filter tuned to the configured tone frequency. Set the <strong>CW Tone Frequency</strong> (Hz) to match your radio's CW sidetone pitch (typical: 600–800 Hz).</li>
+    <li>The <strong>CW Detection Threshold</strong> (0.05–0.60) controls sensitivity — lower values detect weaker signals but may false-trigger on noise; higher values are more selective.</li>
+    <li>The CW Decoder tile on the dashboard is only shown when the radio is in CW, CWL, or CWU mode. Tone and threshold can also be adjusted live from the tile itself without going to settings.</li>
+  </ul>
+
+  <p><strong>Frequency Step Sizes</strong></p>
+  <p>The step sizes used by the &lt;&lt;/&lt;/&gt;/&gt;&gt; buttons and keyboard shortcuts are configurable in Settings → FlexRadio → Frequency Step Sizes. Defaults are 50 kHz (small) and 100 kHz (large). Sizes are stored in kHz and can be set to any value (e.g., 1 kHz, 5 kHz, 500 kHz).</p>
+
+  <div class="alert alert-warning mt-2 mb-3" style="background:#2a2000;border-color:#6a5000;color:#d4a800;font-size:0.9rem">
+    <i class="bi bi-exclamation-triangle me-2"></i>
+    <strong>After changing Python-side settings (IP address, DAX settings, step sizes):</strong> Settings are saved immediately when you click Save. However, if you update and rebuild the application from a new release, you must run <code>docker compose up --build -d</code> to pick up backend changes. The radio connection restarts automatically when FlexRadio settings are saved.
+  </div>
+
+  <h4 style="color:#7eb8f7;margin-top:1.5rem">Home Assistant</h4>
   <p>Configure in <strong>Settings → Home Assistant</strong>. Two modes are available:</p>
   <p><strong>Pull mode</strong> — Home Assistant polls Ham Shack Cockpit for sensor data using a static bearer token. In HA's <code>configuration.yaml</code>, add REST sensors pointing to:</p>
   <ul>
@@ -398,9 +468,6 @@ docker compose logs app -f</pre>
   <p>The settings page provides a complete YAML example that you can copy directly into your HA configuration. Generate the poll token in settings and include it as <code>Authorization: Bearer &lt;token&gt;</code> in the HA REST sensor headers.</p>
   <p><strong>Push mode</strong> — Ham Shack Cockpit pushes state updates to your HA instance after each monitoring poll and on shutdown events. Requires a Home Assistant long-lived access token and your HA URL.</p>
 
-  <h4 style="color:#7eb8f7;margin-top:1.5rem">FlexRadio 6400</h4>
-  <p>Configure in <strong>Settings → FlexRadio</strong>. Enter the local IP address of your FlexRadio 6400 and enable the integration. The system connects via UDP and displays real-time frequency, mode, power output, and SWR on the dashboard. The listener reconnects automatically if the radio is power-cycled or becomes unreachable.</p>
-
   <h4 style="color:#7eb8f7;margin-top:1.5rem">QRZ Lookup</h4>
   <p>Configure in <strong>Settings → API Keys</strong>. Enter your QRZ.com username and password (an XML Data subscription is required). Once configured, the PSK Reporter map provides a QRZ lookup button that shows station details (name, location, QTH, grid square) for any callsign.</p>
 
@@ -412,25 +479,27 @@ docker compose logs app -f</pre>
       <tr><th>Tab</th><th>Key Settings</th><th>Notes</th></tr>
     </thead>
     <tbody style="background:#12122a">
-      <tr><td><strong>Station Info</strong></td><td>Callsign, lat/lon, city, units, Maidenhead grid</td><td>Supports multi-location profiles</td></tr>
-      <tr><td><strong>API Keys</strong></td><td>OpenWeatherMap key, Tomorrow.io key, QRZ credentials</td><td>Required for weather data</td></tr>
-      <tr><td><strong>Thresholds</strong></td><td>Wind mph, lightning miles, poll interval, cooldown</td><td>Drives automatic shutdown logic</td></tr>
-      <tr><td><strong>DX Cluster</strong></td><td>Region (NA/EU/AS/AF/SA/OC), refresh interval</td><td>Affects band activity heatmap</td></tr>
-      <tr><td><strong>PSK Reporter</strong></td><td>Default callsign, direction, bands, modes, timespan</td><td>Persisted dashboard defaults</td></tr>
-      <tr><td><strong>FlexRadio</strong></td><td>Radio IP address, enable toggle</td><td>FlexRadio 6400 only</td></tr>
-      <tr><td><strong>Kasa Devices</strong></td><td>Device IP, name, type, port labels, dashboard pins</td><td>Multiple devices supported</td></tr>
-      <tr><td><strong>Shelly Devices</strong></td><td>Device IP, name, channels, generation, labels, pins</td><td>Gen 1 and Gen 2 supported</td></tr>
-      <tr><td><strong>Workflows</strong></td><td>Create/edit workflows and scheduled runs</td><td>Also accessible from Workflows nav link</td></tr>
-      <tr><td><strong>Remote Webhook</strong></td><td>Generate API key for external workflow invocation</td><td>Used by Stream Deck, mobile apps</td></tr>
-      <tr><td><strong>Home Assistant</strong></td><td>Poll token, HA URL, HA access token</td><td>Pull and push modes independent</td></tr>
-      <tr><td><strong>IFTTT</strong></td><td>Webhook key, event names, enable toggle</td><td>Also used in workflow steps</td></tr>
-      <tr><td><strong>SMTP / Email</strong></td><td>Host, port, credentials, from/to, digest time</td><td>Use App Password for Gmail</td></tr>
-      <tr><td><strong>Telegram</strong></td><td>Bot token, chat ID</td><td>Get bot token from @BotFather</td></tr>
-      <tr><td><strong>Notification Toggles</strong></td><td>Per-channel, per-event enable/disable</td><td>Visible to read-only users</td></tr>
-      <tr><td><strong>Account</strong></td><td>Change password, change email (admin)</td><td>Available to all users</td></tr>
+      <tr><td><strong>Station Info</strong></td><td>Callsign, lat/lon, city, units, Maidenhead grid, location profiles</td><td>Type a city, GPS coords, or grid square to auto-look up. Supports named multi-location profiles (e.g., home, portable).</td></tr>
+      <tr><td><strong>API Keys</strong></td><td>OpenWeatherMap key, Tomorrow.io key, QRZ credentials</td><td>OWM and Tomorrow.io are required for weather. QRZ requires an XML Data subscription.</td></tr>
+      <tr><td><strong>Thresholds</strong></td><td>Wind mph, lightning miles, poll interval, cooldown</td><td>Drives automatic shutdown logic.</td></tr>
+      <tr><td><strong>DX Cluster</strong></td><td>Region (NA/EU/AS/AF/SA/OC), refresh interval</td><td>Affects band activity heatmap.</td></tr>
+      <tr><td><strong>PSK Reporter</strong></td><td>Default callsign, direction, bands, modes, timespan</td><td>Persisted dashboard defaults.</td></tr>
+      <tr><td><strong>FlexRadio</strong></td><td>Radio IP, enable toggle, DAX RX enable, DAX channel, CW tone freq (Hz), CW threshold, small step (kHz), large step (kHz)</td><td>FlexRadio 6000/6400 series. DAX requires SmartSDR running on the same network. Step sizes control &lt;&lt;/&lt;/&gt;/&gt;&gt; buttons and keyboard shortcuts.</td></tr>
+      <tr><td><strong>Kasa Devices</strong></td><td>Device IP, name, type, port labels, dashboard pins</td><td>Multiple devices supported.</td></tr>
+      <tr><td><strong>Shelly Devices</strong></td><td>Device IP, name, channels, generation, labels, pins</td><td>Gen 1 and Gen 2 supported.</td></tr>
+      <tr><td><strong>Home Assistant</strong></td><td>Poll token, HA URL, HA access token</td><td>Pull and push modes are independent.</td></tr>
+      <tr><td><strong>IFTTT</strong></td><td>Webhook key, event names, enable toggle</td><td>Also used in workflow steps.</td></tr>
+      <tr><td><strong>SMTP / Email</strong></td><td>Host, port, credentials, from/to, digest time</td><td>Use an App Password for Gmail.</td></tr>
+      <tr><td><strong>Telegram</strong></td><td>Bot token, chat ID</td><td>Get bot token from @BotFather.</td></tr>
+      <tr><td><strong>Notification Toggles</strong></td><td>Per-channel, per-event enable/disable</td><td>Visible to read-only users.</td></tr>
+      <tr><td><strong>Remote Webhook</strong></td><td>Generate API key for external workflow invocation</td><td>Used by Stream Deck, mobile apps.</td></tr>
+      <tr><td><strong>Account</strong></td><td>Change password, change email</td><td>Available to all users.</td></tr>
     </tbody>
   </table>
   </div>
+
+  <h4 style="color:#7eb8f7;margin-top:1.5rem">Location Profiles</h4>
+  <p>Settings → Station Info supports multiple named location profiles (e.g., "Home", "Portable", "Contest Site"). Each profile stores a callsign, coordinates, city, units preference, and Maidenhead grid square. Switching profiles immediately updates all weather data and maps to the new location. This is useful for operators who work from multiple locations or who share the dashboard with a club.</p>
 
   <!-- 12. User Management -->
   <h2 id="h-users" class="help-section-title">12. User Management</h2>
@@ -456,6 +525,7 @@ docker compose logs app -f</pre>
     <li><strong>monitoring_armed / monitoring_disarmed</strong> — monitoring state changes</li>
     <li><strong>shutdown_triggered / wind_alert / lightning_alert</strong> — automatic protection events</li>
     <li><strong>email_sent</strong> — email notification delivery</li>
+    <li><strong>login</strong> — user login events</li>
   </ul>
   <h4 style="color:#7eb8f7;margin-top:1.5rem">Severity Levels</h4>
   <ul>
@@ -482,7 +552,7 @@ Authorization: Bearer &lt;your-api-key&gt;
 X-API-Key: &lt;your-api-key&gt;
 
 # Example using curl:
-curl -X POST https://hamshack.k0ehr.tech:5000/api/v1/webhooks/workflows/Startup \\
+curl -X POST https://&lt;your-server&gt;:5000/api/v1/webhooks/workflows/Startup \\
   -H "X-API-Key: &lt;your-api-key&gt;"
 
 # Response (202 Accepted):
@@ -504,12 +574,12 @@ curl -X POST https://hamshack.k0ehr.tech:5000/api/v1/webhooks/workflows/Startup 
   <h4 style="color:#7eb8f7">Updating the Application</h4>
   <pre class="help-code">cd Ham-Shack-Cockpit
 git pull
-docker compose build app
-docker compose up -d</pre>
-  <p>The database is preserved across updates. Always back up <code>./data/shack_weather.db</code> before updating if you have important event history.</p>
+docker compose up --build -d</pre>
+  <p>Always use <code>--build</code> after a <code>git pull</code> — backend Python changes are baked into the Docker image and require a rebuild to take effect. The database and all settings are preserved across rebuilds.</p>
+  <p>Back up <code>./data/shack_weather.db</code> before updating if you have important event history.</p>
 
   <h4 style="color:#7eb8f7;margin-top:1.5rem">Database</h4>
-  <p>All data is stored in <code>./data/shack_weather.db</code> (SQLite). This file is mounted as a Docker volume and persists across container restarts and rebuilds. To back it up, simply copy the file while the app is stopped:</p>
+  <p>All data is stored in <code>./data/shack_weather.db</code> (SQLite). This file is mounted as a Docker volume and persists across container restarts and rebuilds. To back it up:</p>
   <pre class="help-code">docker compose down
 cp data/shack_weather.db data/shack_weather.db.backup
 docker compose up -d</pre>
@@ -560,14 +630,28 @@ docker compose logs app --tail=50</pre>
     <div class="card" style="background:#1a1a2e;border-color:#2a2a4a">
       <div class="card-body">
         <strong style="color:#7eb8f7">Scheduled workflow did not run</strong>
-        <p class="mt-1 mb-0">Schedules use local time. Verify the schedule is enabled and that the time you configured matches your intent. Check the Events log for <code>workflow_started</code> or <code>workflow_failed</code> entries around the scheduled time.</p>
+        <p class="mt-1 mb-0">Schedules use local time based on the server's timezone (set via <code>TZ</code> in your <code>.env</code> file). Verify the schedule is enabled and that the configured time matches your intent. Check the Events log for <code>workflow_started</code> or <code>workflow_failed</code> entries around the scheduled time.</p>
       </div>
     </div>
 
     <div class="card" style="background:#1a1a2e;border-color:#2a2a4a">
       <div class="card-body">
         <strong style="color:#7eb8f7">FlexRadio not showing on dashboard</strong>
-        <p class="mt-1 mb-0">Verify the FlexRadio IP address in Settings → FlexRadio and that the radio is powered on and reachable from the server. The FlexRadio listener uses UDP discovery — both devices must be on the same subnet.</p>
+        <p class="mt-1 mb-0">Verify the FlexRadio IP address in Settings → FlexRadio and that the radio is powered on and reachable from the server. The connection uses TCP port 4992 (SmartSDR API). Both the server and radio must be on the same subnet.</p>
+      </div>
+    </div>
+
+    <div class="card" style="background:#1a1a2e;border-color:#2a2a4a">
+      <div class="card-body">
+        <strong style="color:#7eb8f7">CW decoder tile not appearing</strong>
+        <p class="mt-1 mb-0">The CW tile only appears when the radio is in CW, CWL, or CWU mode. Also verify that DAX RX audio is enabled in Settings → FlexRadio, the correct DAX channel is set, and SmartSDR has DAX running with that channel assigned to your primary slice. The server must be able to receive UDP on port 4991.</p>
+      </div>
+    </div>
+
+    <div class="card" style="background:#1a1a2e;border-color:#2a2a4a">
+      <div class="card-body">
+        <strong style="color:#7eb8f7">FlexRadio settings revert after saving</strong>
+        <p class="mt-1 mb-0">This happens when the Docker image is outdated. After a <code>git pull</code>, always run <code>docker compose up --build -d</code> — not just <code>docker compose up -d</code>. Backend Python code is baked into the image at build time; starting without <code>--build</code> runs the old image.</p>
       </div>
     </div>
 
