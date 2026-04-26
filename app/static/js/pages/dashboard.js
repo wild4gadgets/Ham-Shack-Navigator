@@ -41,7 +41,7 @@ let systemState = { last: null, startup_id: null, shutdown_id: null };
 let cwLine1 = '';
 let cwLine2 = '';
 let _cwCharsPerLine = 0;  // measured on first use
-let flexFreqSteps = { small: 500.0, large: 1000.0 };
+let flexFreqSteps = { small: 50.0, large: 100.0 };
 let _optimisticFreqMhz = null;
 
 function escHtml(s) {
@@ -855,8 +855,8 @@ function amateurBand(mhz) {
 async function loadFlexSettings() {
   try {
     const s = await apiGet('/settings/flexradio');
-    flexFreqSteps.small = s.freq_step_small_khz ?? 500.0;
-    flexFreqSteps.large = s.freq_step_large_khz ?? 1000.0;
+    flexFreqSteps.small = s.freq_step_small_khz ?? 50.0;
+    flexFreqSteps.large = s.freq_step_large_khz ?? 100.0;
   } catch { /* keep defaults */ }
 }
 

@@ -10,8 +10,8 @@ export async function renderFlexRadioTab(container) {
   const daxChannel      = data.dax_channel        ?? 1;
   const cwToneFreq      = data.cw_tone_freq       ?? 700;
   const cwThreshold     = data.cw_threshold       ?? 0.15;
-  const stepSmallKhz    = data.freq_step_small_khz ?? 500.0;
-  const stepLargeKhz    = data.freq_step_large_khz ?? 1000.0;
+  const stepSmallKhz    = data.freq_step_small_khz ?? 50.0;
+  const stepLargeKhz    = data.freq_step_large_khz ?? 100.0;
 
   container.innerHTML = `
     <div class="card">
