@@ -371,6 +371,7 @@ async def _flex_listener():
             fail_count = 0
             _flex_state["connected"] = True
             connect_time = asyncio.get_event_loop().time()
+            await manager.broadcast({"type": "flexradio_update"})
 
             # Identify as program client only — do NOT send "client gui".
             # "client gui" causes the radio to create a Pi-owned slice which
@@ -602,14 +603,18 @@ async def _flex_listener():
 
         finally:
             _writer = None
-            _flex_state["connected"] = False
+            if _flex_state["connected"]:
+                _flex_state["connected"] = False
+                asyncio.create_task(manager.broadcast({"type": "flexradio_update"}))
+            else:
+                _flex_state["connected"] = False
             _stop_dax_udp()
             if _tune_active:
                 _tune_active = False
                 _pre_tune_rfpower = None
                 _pre_tune_mode = None
 
-        delay = min(10 * (3 ** max(0, fail_count - 1)), 300)
+        delay = min(10 * (3 ** max(0, fail_count - 1)), 30)
         await asyncio.sleep(delay)
 
 
