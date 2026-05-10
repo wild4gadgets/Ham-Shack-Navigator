@@ -4,7 +4,7 @@ export function renderHelp(container) {
 
   <!-- Title -->
   <div class="text-center mb-5 mt-2">
-    <h1 style="color:#7eb8f7;font-size:2rem"><i class="bi bi-broadcast-pin me-2"></i>Ham Shack Cockpit</h1>
+    <h1 style="color:#7eb8f7;font-size:2rem"><i class="bi bi-broadcast-pin me-2"></i>Ham Shack Navigator</h1>
     <div style="color:#94a3b8;font-size:1.05rem">User Manual</div>
     <hr style="border-color:#2a2a4a;margin-top:1.5rem"/>
   </div>
@@ -34,7 +34,7 @@ export function renderHelp(container) {
 
   <!-- 1. Introduction -->
   <h2 id="h-intro" class="help-section-title">1. Introduction</h2>
-  <p>Ham Shack Cockpit is a self-hosted web dashboard for amateur radio operators. It runs on a Raspberry Pi (or any Linux server) and provides a real-time, at-a-glance view of everything happening in and around the shack — weather conditions, propagation data, station equipment, and DX activity — all in one screen.</p>
+  <p>Ham Shack Navigator is a self-hosted web dashboard for amateur radio operators. It runs on a Raspberry Pi (or any Linux server) and provides a real-time, at-a-glance view of everything happening in and around the shack — weather conditions, propagation data, station equipment, and DX activity — all in one screen.</p>
   <p>The backend is a <strong>FastAPI</strong> (Python) application with a SQLite database. The frontend is plain HTML/CSS/JavaScript served over HTTPS. Everything runs in Docker containers, making setup and maintenance straightforward on any platform.</p>
 
   <h4 style="color:#7eb8f7;margin-top:1.5rem">Key Features</h4>
@@ -87,8 +87,8 @@ export function renderHelp(container) {
 
   <h4 style="color:#7eb8f7">Getting the Code</h4>
   <p>If you have collaborator access to the repository:</p>
-  <pre class="help-code">git clone https://github.com/wild4gadgets/Ham-Shack-Cockpit.git
-cd Ham-Shack-Cockpit</pre>
+  <pre class="help-code">git clone https://github.com/wild4gadgets/Ham-Shack-Navigator.git
+cd Ham-Shack-Navigator</pre>
   <p>If you received a ZIP archive, extract it and open a terminal in the extracted folder.</p>
 
   <h4 style="color:#7eb8f7;margin-top:1.5rem">Windows</h4>
@@ -135,8 +135,8 @@ sudo usermod -aG docker $USER
 docker --version</pre>
     </li>
     <li>Clone the repository and enter the folder:
-      <pre class="help-code">git clone https://github.com/wild4gadgets/Ham-Shack-Cockpit.git
-cd Ham-Shack-Cockpit</pre>
+      <pre class="help-code">git clone https://github.com/wild4gadgets/Ham-Shack-Navigator.git
+cd Ham-Shack-Navigator</pre>
     </li>
     <li>Create and populate your <code>.env</code> file:
       <pre class="help-code">cp .env.example .env
@@ -193,7 +193,7 @@ docker compose logs app -f</pre>
   <h4 style="color:#7eb8f7">Navigation Bar</h4>
   <p>The top navigation bar contains:</p>
   <ul>
-    <li>Your <strong>callsign</strong> and "Ham Shack Cockpit" brand (click to return to dashboard)</li>
+    <li>Your <strong>callsign</strong> and "Ham Shack Navigator" brand (click to return to dashboard)</li>
     <li><strong>Local</strong> and <strong>UTC clocks</strong> in 7-segment LED style, updating every second</li>
     <li>Navigation links: <strong>Dashboard</strong>, <strong>Workflows</strong> (admin), <strong>Settings</strong>, <strong>Events</strong>, <strong>Users</strong> (admin), <strong>Help</strong></li>
     <li><strong>Logout</strong> button and role indicator badge (Admin or Read Only)</li>
@@ -319,7 +319,7 @@ docker compose logs app -f</pre>
   <!-- 6. Equipment Control -->
   <h2 id="h-equipment" class="help-section-title">6. Equipment Control</h2>
   <h4 style="color:#7eb8f7">TP-Link Kasa Devices</h4>
-  <p>Ham Shack Cockpit supports TP-Link Kasa smart plugs and power strips. Devices are controlled over your local network by IP address — no cloud account required.</p>
+  <p>Ham Shack Navigator supports TP-Link Kasa smart plugs and power strips. Devices are controlled over your local network by IP address — no cloud account required.</p>
   <p>To add a Kasa device: go to <strong>Settings → Kasa Devices</strong>, enter the device's local IP address, give it a name, select the device type (plug or strip), and save. The system discovers the number of ports automatically. You can then label each port (e.g., "Amplifier", "Radio") and choose which ports appear as Quick Controls on the dashboard.</p>
 
   <h4 style="color:#7eb8f7;margin-top:1.5rem">Shelly Devices</h4>
@@ -330,7 +330,7 @@ docker compose logs app -f</pre>
 
   <!-- 7. Workflows -->
   <h2 id="h-workflows" class="help-section-title">7. Workflows &amp; Automation</h2>
-  <p>Workflows are ordered sequences of actions — turning devices on or off, pausing, or firing IFTTT events. They are the primary automation mechanism in Ham Shack Cockpit.</p>
+  <p>Workflows are ordered sequences of actions — turning devices on or off, pausing, or firing IFTTT events. They are the primary automation mechanism in Ham Shack Navigator.</p>
 
   <h4 style="color:#7eb8f7">Creating a Workflow</h4>
   <ol>
@@ -365,7 +365,7 @@ docker compose logs app -f</pre>
 
   <!-- 8. Monitoring -->
   <h2 id="h-monitoring" class="help-section-title">8. Weather Monitoring &amp; Automated Protection</h2>
-  <p>Ham Shack Cockpit continuously polls weather data when monitoring is <strong>Armed</strong>. If conditions exceed your configured thresholds, the system automatically triggers the Shutdown workflow to protect your station equipment.</p>
+  <p>Ham Shack Navigator continuously polls weather data when monitoring is <strong>Armed</strong>. If conditions exceed your configured thresholds, the system automatically triggers the Shutdown workflow to protect your station equipment.</p>
 
   <h4 style="color:#7eb8f7">How It Works</h4>
   <ol>
@@ -396,7 +396,7 @@ docker compose logs app -f</pre>
 
   <!-- 9. Notifications -->
   <h2 id="h-notifications" class="help-section-title">9. Notifications</h2>
-  <p>Ham Shack Cockpit can notify you through three channels. Each can be independently enabled or disabled via <strong>Settings → Notification Toggles</strong>.</p>
+  <p>Ham Shack Navigator can notify you through three channels. Each can be independently enabled or disabled via <strong>Settings → Notification Toggles</strong>.</p>
 
   <h4 style="color:#7eb8f7">Email (SMTP)</h4>
   <p>Configure in <strong>Settings → SMTP / Email</strong>:</p>
@@ -439,7 +439,7 @@ docker compose logs app -f</pre>
   <p>Configure in <strong>Settings → FlexRadio</strong>. Enter the local IP address of your FlexRadio and enable the connection. Once connected, the status bar shows real-time frequency, mode, power, SWR, and TX/RX state with full interactive controls (see Section 5).</p>
 
   <p><strong>DAX Audio &amp; CW Decoder</strong></p>
-  <p>Ham Shack Cockpit can receive the FlexRadio DAX (Digital Audio eXchange) RX audio stream over UDP and use it to decode CW (Morse code) in real time.</p>
+  <p>Ham Shack Navigator can receive the FlexRadio DAX (Digital Audio eXchange) RX audio stream over UDP and use it to decode CW (Morse code) in real time.</p>
   <ul>
     <li>Enable <strong>DAX RX audio stream</strong> in Settings → FlexRadio and set the <strong>DAX Channel</strong> to match the channel assigned to your primary slice in SmartSDR.</li>
     <li>The CW decoder uses a Goertzel filter tuned to the configured tone frequency. Set the <strong>CW Tone Frequency</strong> (Hz) to match your radio's CW sidetone pitch (typical: 600–800 Hz).</li>
@@ -457,7 +457,7 @@ docker compose logs app -f</pre>
 
   <h4 style="color:#7eb8f7;margin-top:1.5rem">Home Assistant</h4>
   <p>Configure in <strong>Settings → Home Assistant</strong>. Two modes are available:</p>
-  <p><strong>Pull mode</strong> — Home Assistant polls Ham Shack Cockpit for sensor data using a static bearer token. In HA's <code>configuration.yaml</code>, add REST sensors pointing to:</p>
+  <p><strong>Pull mode</strong> — Home Assistant polls Ham Shack Navigator for sensor data using a static bearer token. In HA's <code>configuration.yaml</code>, add REST sensors pointing to:</p>
   <ul>
     <li><code>/api/v1/ha/sensor/wind_mph</code> — current wind speed</li>
     <li><code>/api/v1/ha/sensor/lightning_miles</code> — nearest lightning distance</li>
@@ -466,7 +466,7 @@ docker compose logs app -f</pre>
     <li><code>/api/v1/ha/sensor/last_shutdown</code> — last shutdown timestamp</li>
   </ul>
   <p>The settings page provides a complete YAML example that you can copy directly into your HA configuration. Generate the poll token in settings and include it as <code>Authorization: Bearer &lt;token&gt;</code> in the HA REST sensor headers.</p>
-  <p><strong>Push mode</strong> — Ham Shack Cockpit pushes state updates to your HA instance after each monitoring poll and on shutdown events. Requires a Home Assistant long-lived access token and your HA URL.</p>
+  <p><strong>Push mode</strong> — Ham Shack Navigator pushes state updates to your HA instance after each monitoring poll and on shutdown events. Requires a Home Assistant long-lived access token and your HA URL.</p>
 
   <h4 style="color:#7eb8f7;margin-top:1.5rem">QRZ Lookup</h4>
   <p>Configure in <strong>Settings → API Keys</strong>. Enter your QRZ.com username and password (an XML Data subscription is required). Once configured, the PSK Reporter map provides a QRZ lookup button that shows station details (name, location, QTH, grid square) for any callsign.</p>
@@ -572,7 +572,7 @@ curl -X POST https://&lt;your-server&gt;:5000/api/v1/webhooks/workflows/Startup 
   <!-- 15. Maintenance -->
   <h2 id="h-maintenance" class="help-section-title">15. Maintenance</h2>
   <h4 style="color:#7eb8f7">Updating the Application</h4>
-  <pre class="help-code">cd Ham-Shack-Cockpit
+  <pre class="help-code">cd Ham-Shack-Navigator
 git pull
 docker compose up --build -d</pre>
   <p>Always use <code>--build</code> after a <code>git pull</code> — backend Python changes are baked into the Docker image and require a rebuild to take effect. The database and all settings are preserved across rebuilds.</p>
@@ -666,7 +666,7 @@ docker compose logs app --tail=50</pre>
 
   <hr style="border-color:#2a2a4a;margin-top:3rem"/>
   <div class="text-center" style="color:#64748b;font-size:0.8rem;margin-top:1rem">
-    Ham Shack Cockpit &mdash; User Manual &mdash; K0EHR
+    Ham Shack Navigator &mdash; User Manual &mdash; K0EHR
   </div>
 
 </div>

@@ -18,7 +18,7 @@ export async function renderIftttTab(container) {
       <div class="card-body">
         <div id="ifttt-msg" class="alert" style="display:none"></div>
 
-        <h6 class="mb-3" style="color:#a0a8b8">Outgoing — Ham Shack Cockpit → IFTTT</h6>
+        <h6 class="mb-3" style="color:#a0a8b8">Outgoing — Ham Shack Navigator → IFTTT</h6>
         <form id="ifttt-form">
           <div class="mb-3">
             <label class="form-label">Webhook Key</label>
@@ -43,7 +43,7 @@ export async function renderIftttTab(container) {
           </div>
 
           <hr />
-          <h6 class="mb-3" style="color:#a0a8b8">Incoming — IFTTT → Ham Shack Cockpit</h6>
+          <h6 class="mb-3" style="color:#a0a8b8">Incoming — IFTTT → Ham Shack Navigator</h6>
           <div class="mb-3">
             <label class="form-label">Incoming Webhook Secret</label>
             <input type="password" class="form-control" id="ifttt-secret" value="${data.incoming_secret || ''}" placeholder="Set a strong random secret to enable incoming webhooks" />

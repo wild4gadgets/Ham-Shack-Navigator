@@ -74,20 +74,26 @@ async def get_lightning(db: AsyncSession = Depends(get_db), _: User = Depends(ge
                 "distance_miles": round(km * _MILES_PER_KM, 1),
             })
 
-    btz_cache = await get_cached(db, "blitzortung_lightning")
-    if btz_cache:
-        btz = btz_cache.get("data", {})
-        km = btz.get("lightningDistance")
-        if km is not None:
-            candidates.append({
-                "source": "Blitzortung",
-                "distance_km": km,
-                "distance_miles": round(km * _MILES_PER_KM, 1),
-                "strike_count": btz.get("strike_count"),
-            })
+    aw_cache = await get_cached(db, "accuweather_forecast")
+    aw_thunderstorm = None
+    if aw_cache:
+        aw = aw_cache.get("data", {})
+        aw_thunderstorm = {
+            "thunderstorm_prob_pct": aw.get("ThunderstormProbability"),
+            "precip_prob_pct": aw.get("PrecipitationProbability"),
+            "phrase": aw.get("IconPhrase", ""),
+            "has_precipitation": aw.get("HasPrecipitation"),
+            "precip_type": aw.get("PrecipitationType"),
+        }
 
     if not candidates:
-        return {"lightningDistance": None, "lightningMiles": None, "source": None, "sources": []}
+        return {
+            "lightningDistance": None,
+            "lightningMiles": None,
+            "source": None,
+            "sources": [],
+            "accuweather": aw_thunderstorm,
+        }
 
     nearest = min(candidates, key=lambda c: c["distance_km"])
     return {
@@ -95,6 +101,7 @@ async def get_lightning(db: AsyncSession = Depends(get_db), _: User = Depends(ge
         "lightningMiles": nearest["distance_miles"],
         "source": nearest["source"],
         "sources": candidates,
+        "accuweather": aw_thunderstorm,
     }
 
 

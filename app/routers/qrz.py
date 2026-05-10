@@ -38,7 +38,7 @@ async def _get_setting(db: AsyncSession, key: str) -> dict:
 
 async def _authenticate(username: str, password: str) -> str:
     """Obtain a QRZ session key. Raises HTTPException on failure."""
-    params = {"username": username, "password": password, "agent": "ham-shack-cockpit"}
+    params = {"username": username, "password": password, "agent": "ham-shack-navigator"}
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(

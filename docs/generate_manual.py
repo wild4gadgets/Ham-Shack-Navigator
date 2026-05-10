@@ -1,4 +1,4 @@
-"""Generate Ham Shack Cockpit User Manual as a DOCX file."""
+"""Generate Ham Shack Navigator User Manual as a DOCX file."""
 from docx import Document
 from docx.shared import Pt, RGBColor, Inches, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -120,7 +120,7 @@ def add_table_row(table, cells, header=False):
 # ── Cover Page ────────────────────────────────────────────────────────────────
 title_p = doc.add_paragraph()
 title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-title_run = title_p.add_run('Ham Shack Cockpit')
+title_run = title_p.add_run('Ham Shack Navigator')
 title_run.font.size = Pt(28)
 title_run.font.bold = True
 title_run.font.color.rgb = RGBColor(31, 78, 121)
@@ -165,7 +165,7 @@ doc.add_page_break()
 
 # ── 1. Introduction ───────────────────────────────────────────────────────────
 add_heading('1. Introduction', 1)
-add_para('Ham Shack Cockpit is a self-hosted web dashboard for amateur radio operators. It runs on a Raspberry Pi (or any Linux server) and provides a real-time, at-a-glance view of everything happening in and around the shack — weather conditions, propagation data, station equipment, and DX activity — all in one screen.')
+add_para('Ham Shack Navigator is a self-hosted web dashboard for amateur radio operators. It runs on a Raspberry Pi (or any Linux server) and provides a real-time, at-a-glance view of everything happening in and around the shack — weather conditions, propagation data, station equipment, and DX activity — all in one screen.')
 add_para('The backend is a FastAPI (Python) application with a SQLite database. The frontend is plain HTML/CSS/JavaScript served over HTTPS. Everything runs in Docker containers, making setup and maintenance straightforward on any platform.')
 
 add_heading('Key Features', 2)
@@ -209,7 +209,7 @@ add_heading('3. Installation', 1)
 
 add_heading('Getting the Code', 2)
 add_para('If you have collaborator access to the repository:')
-add_code('git clone https://github.com/wild4gadgets/Ham-Shack-Cockpit.git\ncd Ham-Shack-Cockpit')
+add_code('git clone https://github.com/wild4gadgets/Ham-Shack-Navigator.git\ncd Ham-Shack-Navigator')
 add_para('If you received a ZIP archive, extract it and open a terminal in the extracted folder.')
 
 add_heading('Windows', 2)
@@ -240,7 +240,7 @@ add_heading('Linux / Raspberry Pi', 2)
 add_numbered('Install Docker Engine and Docker Compose:')
 add_code('curl -fsSL https://get.docker.com | sh\nsudo usermod -aG docker $USER\n# Log out and back in, then verify:\ndocker --version')
 add_numbered('Clone the repository:')
-add_code('git clone https://github.com/wild4gadgets/Ham-Shack-Cockpit.git\ncd Ham-Shack-Cockpit')
+add_code('git clone https://github.com/wild4gadgets/Ham-Shack-Navigator.git\ncd Ham-Shack-Navigator')
 add_numbered('Create and populate your .env file:')
 add_code('cp .env.example .env\n# Generate a secret and set it:\necho "JWT_SECRET=$(openssl rand -hex 32)" > .env')
 add_numbered('Start the application:')
@@ -276,7 +276,7 @@ add_heading('5. The Dashboard', 1)
 add_para('The dashboard is the main real-time view. It auto-refreshes via WebSocket — most data updates without a manual page reload.')
 
 add_heading('Navigation Bar', 2)
-add_bullet('Your callsign and "Ham Shack Cockpit" brand (click to return to dashboard)')
+add_bullet('Your callsign and "Ham Shack Navigator" brand (click to return to dashboard)')
 add_bullet('Local and UTC clocks in 7-segment LED style, updating every second')
 add_bullet('Navigation links: Dashboard, Workflows (admin), Settings, Events, Users (admin)')
 add_bullet('Help button (opens this manual)')
@@ -333,7 +333,7 @@ add_para('If a FlexRadio 6400 is configured, shows real-time frequency, mode, fo
 add_heading('6. Equipment Control', 1)
 
 add_heading('TP-Link Kasa Devices', 2)
-add_para('Ham Shack Cockpit supports Kasa smart plugs and power strips via local IP — no cloud account required. Go to Settings → Kasa Devices, enter the device IP, give it a name, select type (plug or strip), and save. The system discovers port count automatically. Label each port (e.g., "Amplifier", "Radio") and enable dashboard visibility as needed.')
+add_para('Ham Shack Navigator supports Kasa smart plugs and power strips via local IP — no cloud account required. Go to Settings → Kasa Devices, enter the device IP, give it a name, select type (plug or strip), and save. The system discovers port count automatically. Label each port (e.g., "Amplifier", "Radio") and enable dashboard visibility as needed.')
 
 add_heading('Shelly Devices', 2)
 add_para('Shelly Gen 1 and Gen 2/Pro relays are supported. Go to Settings → Shelly Devices, enter the IP, name, channel count, and generation. Label each channel and configure dashboard visibility.')
@@ -368,7 +368,7 @@ add_para('From the Workflows page, click Run next to any workflow. A 202 Accepte
 
 # ── 8. Monitoring ─────────────────────────────────────────────────────────────
 add_heading('8. Weather Monitoring & Automated Protection', 1)
-add_para('When monitoring is Armed, Ham Shack Cockpit continuously polls weather data and triggers the Shutdown workflow automatically if conditions become dangerous.')
+add_para('When monitoring is Armed, Ham Shack Navigator continuously polls weather data and triggers the Shutdown workflow automatically if conditions become dangerous.')
 
 add_heading('How It Works', 2)
 add_numbered('The weather poller runs every poll interval seconds (default: 300 / 5 minutes).')
@@ -391,7 +391,7 @@ add_para('Click Run Shutdown on the dashboard to trigger the Shutdown workflow i
 
 # ── 9. Notifications ──────────────────────────────────────────────────────────
 add_heading('9. Notifications', 1)
-add_para('Ham Shack Cockpit can notify you through three channels, each independently enabled/disabled via Settings → Notification Toggles.')
+add_para('Ham Shack Navigator can notify you through three channels, each independently enabled/disabled via Settings → Notification Toggles.')
 
 add_heading('Email (SMTP)', 2)
 add_para('Configure in Settings → SMTP / Email: host, port (default 587), username, password, from/to addresses. Use the Test button to verify. Gmail users: use an App Password and smtp.gmail.com on port 587.')
@@ -414,8 +414,8 @@ add_heading('10. Integrations', 1)
 
 add_heading('Home Assistant', 2)
 add_para('Configure in Settings → Home Assistant. Two modes:')
-add_para('Pull mode — Home Assistant polls Ham Shack Cockpit for sensor data. Add REST sensors in configuration.yaml using the static bearer token shown in the settings page. Available sensor slugs: wind_mph, lightning_miles, monitoring_armed, in_cooldown, last_shutdown. The settings page provides a complete YAML example.')
-add_para('Push mode — Ham Shack Cockpit pushes state to your HA instance after each monitoring poll and on shutdown. Requires a Home Assistant long-lived access token and your HA URL.')
+add_para('Pull mode — Home Assistant polls Ham Shack Navigator for sensor data. Add REST sensors in configuration.yaml using the static bearer token shown in the settings page. Available sensor slugs: wind_mph, lightning_miles, monitoring_armed, in_cooldown, last_shutdown. The settings page provides a complete YAML example.')
+add_para('Push mode — Ham Shack Navigator pushes state to your HA instance after each monitoring poll and on shutdown. Requires a Home Assistant long-lived access token and your HA URL.')
 
 add_heading('FlexRadio 6400', 2)
 add_para('Configure in Settings → FlexRadio. Enter the radio\'s local IP and enable the integration. Displays real-time frequency, mode, power output, and SWR on the dashboard via UDP. Reconnects automatically if the radio is power-cycled.')
@@ -515,7 +515,7 @@ add_para('Rate limit: 30 requests per minute per IP address.')
 add_heading('15. Maintenance', 1)
 
 add_heading('Updating the Application', 2)
-add_code('cd Ham-Shack-Cockpit\ngit pull\ndocker compose build app\ndocker compose up -d')
+add_code('cd Ham-Shack-Navigator\ngit pull\ndocker compose build app\ndocker compose up -d')
 add_para('The database is preserved across updates.')
 
 add_heading('Database Backup', 2)
@@ -560,11 +560,11 @@ for title, body in issues:
 doc.add_page_break()
 footer_p = doc.add_paragraph()
 footer_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-footer_run = footer_p.add_run('Ham Shack Cockpit User Manual — K0EHR')
+footer_run = footer_p.add_run('Ham Shack Navigator User Manual — K0EHR')
 footer_run.font.color.rgb = RGBColor(128, 128, 128)
 footer_run.font.size = Pt(9)
 
 # ── Save ──────────────────────────────────────────────────────────────────────
-output_path = '/home/markehr/projects/Ham-Shack-Cockpit/docs/Ham-Shack-Cockpit-User-Manual.docx'
+output_path = '/home/markehr/projects/Ham-Shack-Navigator/docs/Ham-Shack-Navigator-User-Manual.docx'
 doc.save(output_path)
 print(f'Saved: {output_path}')

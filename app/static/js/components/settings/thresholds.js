@@ -22,6 +22,11 @@ export async function renderThresholdsTab(container) {
               <div class="form-text">Trigger shutdown if lightning closer than this distance.</div>
             </div>
             <div class="col-md-6 mb-3">
+              <label class="form-label">AccuWeather Thunderstorm Probability Threshold (%)</label>
+              <input type="number" step="1" min="1" max="100" class="form-control" id="thunderstorm-prob-pct" value="${data.thunderstorm_prob_pct ?? 70}" />
+              <div class="form-text">Trigger shutdown if AccuWeather next-hour thunderstorm probability reaches this level. Set to 100 to disable.</div>
+            </div>
+            <div class="col-md-6 mb-3">
               <label class="form-label">Poll Interval (seconds)</label>
               <input type="number" step="1" min="60" max="3600" class="form-control" id="poll-interval" value="${data.poll_interval_sec ?? 300}" />
               <div class="form-text">How often to check weather. Min 60s.</div>
@@ -54,6 +59,7 @@ export async function renderThresholdsTab(container) {
       await apiPut('/settings/thresholds', {
         wind_mph: parseFloat(document.getElementById('wind-mph').value),
         lightning_miles: parseFloat(document.getElementById('lightning-miles').value),
+        thunderstorm_prob_pct: parseInt(document.getElementById('thunderstorm-prob-pct').value),
         poll_interval_sec: parseInt(document.getElementById('poll-interval').value),
         cooldown_min: parseInt(document.getElementById('cooldown-min').value),
         log_weather_data: document.getElementById('log-weather-data').checked,

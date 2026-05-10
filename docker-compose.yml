@@ -1,7 +1,7 @@
 services:
   app:
     build: ./app
-    container_name: ham-shack-cockpit-app
+    container_name: ham-shack-navigator-app
     restart: unless-stopped
     environment:
       - JWT_SECRET=${JWT_SECRET}
@@ -19,13 +19,13 @@ services:
 
   nginx:
     build: ./nginx
-    container_name: ham-shack-cockpit-nginx
+    container_name: ham-shack-navigator-nginx
     restart: unless-stopped
     ports:
       - "80:80"
       - "5000:5000"
     volumes:
-      - ./ssl:/etc/ssl/ham-shack-cockpit
+      - ./ssl:/etc/ssl/ham-shack-navigator
     environment:
       - APP_HOST=app
       - APP_PORT=8000

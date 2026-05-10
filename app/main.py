@@ -70,7 +70,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Ham Shack Cockpit",
+    title="Ham Shack Navigator",
     lifespan=lifespan,
     docs_url=None,
     redoc_url=None,

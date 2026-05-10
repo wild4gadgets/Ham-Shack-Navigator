@@ -10,7 +10,7 @@ VITA-49/UDP for downstream processing (e.g. CW decoding).
 
 SmartSDR TCP protocol:
   - Radio sends on connect: V<firmware_version>  then  H<hex_handle>
-  - Client sends:  C1|client program Ham-Shack-Cockpit\n
+  - Client sends:  C1|client program Ham-Shack-Navigator\n
   - Client sends:  C2|sub slice all\n
   - Radio pushes:  S<handle>|slice 0 in_use=1 freq=14.225000 mode=USB ...
 
@@ -377,7 +377,7 @@ async def _flex_listener():
             # "client gui" causes the radio to create a Pi-owned slice which
             # then takes ownership of DAX channel 1, preventing our stream
             # from targeting the operator's CW slice.
-            writer.write(f"C{_seq}|client program Ham-Shack-Cockpit\n".encode())
+            writer.write(f"C{_seq}|client program Ham-Shack-Navigator\n".encode())
             _seq += 1
             # Register the UDP port so the radio knows where to send VITA-49 frames.
             # Without this command the radio sends no directed UDP at all.

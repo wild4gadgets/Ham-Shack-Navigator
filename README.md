@@ -1,8 +1,8 @@
-# Ham Shack Cockpit: A Self-Hosted Dashboard for the Modern Ham Radio Operator
+# Ham Shack Navigator: A Self-Hosted Dashboard for the Modern Ham Radio Operator
 
-If you've ever wished you could monitor weather conditions, track propagation, control your station equipment, and watch DX spots — all from a single screen — Ham Shack Cockpit might be exactly what you've been looking for.
+If you've ever wished you could monitor weather conditions, track propagation, control your station equipment, and watch DX spots — all from a single screen — Ham Shack Navigator might be exactly what you've been looking for.
 
-Ham Shack Cockpit is a self-hosted web application designed to run on a Raspberry Pi (or any Linux server) and give amateur radio operators a real-time, at-a-glance view of everything happening in and around the shack.
+Ham Shack Navigator is a self-hosted web application designed to run on a Raspberry Pi (or any Linux server) and give amateur radio operators a real-time, at-a-glance view of everything happening in and around the shack.
 
 ---
 
@@ -10,7 +10,7 @@ Ham Shack Cockpit is a self-hosted web application designed to run on a Raspberr
 
 ### Weather Monitoring & Automated Protection
 
-At its core, Ham Shack Cockpit is a weather-aware station guardian. It continuously polls weather data and monitors conditions that matter to operators: wind speed, temperature, and lightning activity. When conditions exceed user-defined thresholds — say, winds over 35 mph or lightning within 10 miles — the system automatically triggers a station shutdown sequence to protect your equipment.
+At its core, Ham Shack Navigator is a weather-aware station guardian. It continuously polls weather data and monitors conditions that matter to operators: wind speed, temperature, and lightning activity. When conditions exceed user-defined thresholds — say, winds over 35 mph or lightning within 10 miles — the system automatically triggers a station shutdown sequence to protect your equipment.
 
 The dashboard displays:
 - **Wind** and **Temperature** gauges with forecast min/max markers
@@ -21,7 +21,7 @@ The dashboard displays:
 
 ### FlexRadio Integration
 
-Ham Shack Cockpit connects directly to a FlexRadio 6000/6400 series radio over TCP and provides a full control panel in the dashboard status bar:
+Ham Shack Navigator connects directly to a FlexRadio 6000/6400 series radio over TCP and provides a full control panel in the dashboard status bar:
 
 - **Real-time display** of frequency, mode, forward power, SWR, and TX/RX state — all updating live
 - **Click the frequency** to open a tune dialog — type any frequency in MHz and press Enter to QSY
@@ -32,7 +32,7 @@ Ham Shack Cockpit connects directly to a FlexRadio 6000/6400 series radio over T
 
 ### CW Decoder
 
-When the FlexRadio is in CW mode, Ham Shack Cockpit can decode Morse code in real time from the DAX audio stream:
+When the FlexRadio is in CW mode, Ham Shack Navigator can decode Morse code in real time from the DAX audio stream:
 
 - **Two-line scrolling display** of decoded text in green monospace
 - **WPM** (words per minute) and **SNR** (signal-to-noise ratio in dB) shown live
@@ -42,7 +42,7 @@ When the FlexRadio is in CW mode, Ham Shack Cockpit can decode Morse code in rea
 
 ### Station Equipment Control
 
-Ham Shack Cockpit integrates directly with popular smart plug platforms:
+Ham Shack Navigator integrates directly with popular smart plug platforms:
 
 - **TP-Link Kasa** smart strips and plugs — individually labeled and controllable from the dashboard
 - **Shelly** smart relays (Gen 1 and Gen 2)
@@ -70,7 +70,7 @@ A live band activity heatmap pulls data from a DX cluster and shows spot counts 
 
 ### PSK Reporter Spot Map
 
-One of the more visual features is the PSK Reporter integration. Enter your callsign, choose a direction (signals you've been heard by, or signals you've heard), select modes and bands, and Ham Shack Cockpit fetches spots from PSKReporter.info and plots them on an interactive world map.
+One of the more visual features is the PSK Reporter integration. Enter your callsign, choose a direction (signals you've been heard by, or signals you've heard), select modes and bands, and Ham Shack Navigator fetches spots from PSKReporter.info and plots them on an interactive world map.
 
 - Each spot is a **band-colored circle marker** (20m is green, 40m is yellow, 10m is red, and so on)
 - **SNR values** float next to each callsign label
@@ -80,7 +80,7 @@ One of the more visual features is the PSK Reporter integration. Enter your call
 
 ### Notifications
 
-When something important happens — a threshold breach, a shutdown event, or a daily status summary — Ham Shack Cockpit can reach you through:
+When something important happens — a threshold breach, a shutdown event, or a daily status summary — Ham Shack Navigator can reach you through:
 
 - **Email** (SMTP/Gmail)
 - **Telegram** bot messages
@@ -98,7 +98,7 @@ Settings → Station Info supports multiple named location profiles (e.g., Home,
 
 ## How It's Built
 
-Ham Shack Cockpit runs as a Docker container on a Raspberry Pi. The backend is a **FastAPI** (Python) application with a SQLite database. The frontend is plain HTML/CSS/JavaScript with no framework — just Bootstrap 5, Leaflet.js for maps, and vanilla ES modules. The whole thing is served over HTTPS via an nginx reverse proxy.
+Ham Shack Navigator runs as a Docker container on a Raspberry Pi. The backend is a **FastAPI** (Python) application with a SQLite database. The frontend is plain HTML/CSS/JavaScript with no framework — just Bootstrap 5, Leaflet.js for maps, and vanilla ES modules. The whole thing is served over HTTPS via an nginx reverse proxy.
 
 ---
 
@@ -125,8 +125,8 @@ This is a private repository. You need to be invited as a collaborator, or recei
 
 **If you have collaborator access:**
 ```bash
-git clone https://github.com/wild4gadgets/Ham-Shack-Cockpit.git
-cd Ham-Shack-Cockpit
+git clone https://github.com/wild4gadgets/Ham-Shack-Navigator.git
+cd Ham-Shack-Navigator
 ```
 
 **If you received a zip:**

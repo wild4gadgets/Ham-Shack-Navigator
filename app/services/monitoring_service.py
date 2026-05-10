@@ -110,6 +110,25 @@ async def check_conditions(db: AsyncSession) -> tuple[bool, str, dict]:
             )
             return True, f"Lightning at {nearest_miles:.1f} miles ({nearest_source})", meta
 
+    # Check AccuWeather thunderstorm probability
+    thunderstorm_threshold = thresholds.get("thunderstorm_prob_pct", 70)
+    aw = await _get_cache(db, "accuweather_forecast")
+    if aw:
+        prob = aw.get("ThunderstormProbability")
+        if prob is not None and prob >= thunderstorm_threshold:
+            meta = {
+                "thunderstorm_prob_pct": prob,
+                "threshold_pct": thunderstorm_threshold,
+                "phrase": aw.get("IconPhrase", ""),
+            }
+            await log_event(
+                db, "lightning_alert", "critical",
+                f"AccuWeather thunderstorm probability {prob}% "
+                f"(threshold: {thunderstorm_threshold}%)",
+                meta,
+            )
+            return True, f"Thunderstorm {prob}% likely (AccuWeather)", meta
+
     # Check OWM weather alerts
     if current:
         alerts = current.get("alerts", [])
@@ -128,6 +147,7 @@ async def log_weather_fetch_results(db: AsyncSession, results: dict):
     current = results.get("current")
     realtime = results.get("realtime")
     nws = results.get("nws_alerts")
+    accuweather = results.get("accuweather")
 
     forecast = results.get("forecast")
     if forecast:
@@ -198,6 +218,23 @@ async def log_weather_fetch_results(db: AsyncSession, results: dict):
         else:
             msg = f"NWS: {len(alerts)} active alert(s)" if alerts else "NWS: Clear"
             await log_event(db, "weather_data", "info", msg, {"alert_count": len(alerts)})
+
+    if accuweather:
+        prob = accuweather.get("ThunderstormProbability")
+        precip_prob = accuweather.get("PrecipitationProbability")
+        phrase = accuweather.get("IconPhrase", "")
+        parts, meta = [], {}
+        if prob is not None:
+            parts.append(f"Thunderstorm: {prob}%")
+            meta["thunderstorm_prob_pct"] = prob
+        if precip_prob is not None:
+            parts.append(f"Precip: {precip_prob}%")
+            meta["precip_prob_pct"] = precip_prob
+        if phrase:
+            parts.append(phrase)
+        await log_event(db, "weather_data", "info",
+                        "AccuWeather: " + (" | ".join(parts) if parts else "no data"), meta)
+
 
 
 async def is_in_cooldown(db: AsyncSession) -> bool:

@@ -62,7 +62,7 @@ binary_sensor:
         <!-- Pull tab -->
         <div id="ha-tab-pull">
           <p style="font-size:0.875rem;color:#a0a8b8">
-            Home Assistant polls Ham Shack Cockpit's read-only state endpoints using a static bearer token.
+            Home Assistant polls Ham Shack Navigator's read-only state endpoints using a static bearer token.
             No HA credentials needed here — just configure HA REST sensors with the token below.
           </p>
           <div class="mb-3">
@@ -94,7 +94,7 @@ binary_sensor:
         <!-- Push tab -->
         <div id="ha-tab-push" style="display:none">
           <p style="font-size:0.875rem;color:#a0a8b8">
-            Ham Shack Cockpit pushes sensor states to your HA instance after every monitoring poll and on shutdown.
+            Ham Shack Navigator pushes sensor states to your HA instance after every monitoring poll and on shutdown.
             Requires a Home Assistant long-lived access token.
           </p>
           <div class="mb-3">

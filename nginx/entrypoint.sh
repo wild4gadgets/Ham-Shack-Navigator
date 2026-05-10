@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-SSL_DIR="/etc/ssl/ham-shack-cockpit"
+SSL_DIR="/etc/ssl/ham-shack-navigator"
 CERT="$SSL_DIR/cert.pem"
 KEY="$SSL_DIR/key.pem"
 
@@ -12,7 +12,7 @@ if [ ! -f "$CERT" ] || [ ! -f "$KEY" ]; then
         -keyout "$KEY" \
         -out "$CERT" \
         -subj "/C=US/ST=State/L=City/O=ShackWeather/CN=localhost" \
-        -addext "subjectAltName=DNS:localhost,DNS:ham-shack-cockpit"
+        -addext "subjectAltName=DNS:localhost,DNS:ham-shack-navigator"
     echo "SSL certificate generated."
 else
     echo "SSL certificate already exists, skipping generation."

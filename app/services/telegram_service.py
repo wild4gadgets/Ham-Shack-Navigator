@@ -67,7 +67,7 @@ async def send_telegram_shutdown(
     steps_lines = "\n".join(f"  {i+1}. {s}" for i, s in enumerate(steps_executed)) or "  (none)"
     alert_line = _build_alert_line(meta)
     text = (
-        f"<b>Ham Shack Cockpit — Shutdown Triggered</b>\n"
+        f"<b>Ham Shack Navigator — Shutdown Triggered</b>\n"
         f"{alert_line}"
         f"Reason: {reason}\n"
         f"Time: {timestamp}\n\n"
@@ -92,7 +92,7 @@ async def send_telegram_threshold_alert(db: AsyncSession, reason: str, meta: dic
 
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     text = (
-        f"<b>Ham Shack Cockpit - Threshold Alert</b>\n"
+        f"<b>Ham Shack Navigator - Threshold Alert</b>\n"
         f"Alert: {reason}\n"
         f"Time: {timestamp}"
     )
@@ -108,5 +108,5 @@ async def send_telegram_test(db: AsyncSession):
     if not cfg or not cfg.get("bot_token") or not cfg.get("chat_id"):
         raise ValueError("Telegram not configured")
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    text = f"<b>Ham Shack Cockpit</b>\nTest message sent at {timestamp}"
+    text = f"<b>Ham Shack Navigator</b>\nTest message sent at {timestamp}"
     await _send_message(cfg["bot_token"], cfg["chat_id"], text)

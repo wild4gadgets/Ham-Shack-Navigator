@@ -87,15 +87,15 @@ async def send_shutdown_notification(
     alert_section = _build_alert_section(meta)
     alert_block = f"\n{alert_section}\n" if alert_section else "\n"
 
-    subject = f"[Ham Shack Cockpit] Shutdown triggered - {reason}"
+    subject = f"[Ham Shack Navigator] Shutdown triggered - {reason}"
     steps_text = "\n".join(f"  {i+1}. {s}" for i, s in enumerate(steps_executed))
     body = (
-        f"Ham Shack Cockpit Monitor has triggered an automatic shutdown.\n"
+        f"Ham Shack Navigator Monitor has triggered an automatic shutdown.\n"
         f"{alert_block}"
         f"Reason: {reason}\n"
         f"Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
         f"\nSteps Executed:\n{steps_text}\n"
-        f"\nThis is an automated notification from your Ham Shack Cockpit Monitor.\n"
+        f"\nThis is an automated notification from your Ham Shack Navigator Monitor.\n"
     )
     try:
         await _send_email(smtp, subject, body)
@@ -109,14 +109,14 @@ async def send_digest(db: AsyncSession, forecast_summary: str, solar_summary: st
     if not smtp or not smtp.get("host"):
         return
 
-    subject = f"[Ham Shack Cockpit] Daily Forecast Digest - {datetime.utcnow().strftime('%Y-%m-%d')}"
+    subject = f"[Ham Shack Navigator] Daily Forecast Digest - {datetime.utcnow().strftime('%Y-%m-%d')}"
     solar_section = f"\n{solar_summary}" if solar_summary else ""
     body = f"""Good morning! Here is your daily weather digest for your ham radio station.
 
 {forecast_summary}{solar_section}
 
 Stay safe and 73!
-- Ham Shack Cockpit Monitor
+- Ham Shack Navigator Monitor
 """
     try:
         await _send_email(smtp, subject, body)
@@ -130,8 +130,8 @@ async def send_test_email(db: AsyncSession) -> bool:
     if not smtp or not smtp.get("host"):
         raise ValueError("SMTP not configured")
 
-    subject = "[Ham Shack Cockpit] Test Email"
-    body = f"This is a test email from Ham Shack Cockpit Monitor.\n\nSent at: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+    subject = "[Ham Shack Navigator] Test Email"
+    body = f"This is a test email from Ham Shack Navigator Monitor.\n\nSent at: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"
     try:
         await _send_email(smtp, subject, body)
         return True

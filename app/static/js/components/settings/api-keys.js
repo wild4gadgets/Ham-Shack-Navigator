@@ -24,6 +24,11 @@ export async function renderApiKeysTab(container) {
             <input type="text" class="form-control font-monospace" id="tomorrow-key" value="${data.tomorrow_key || ''}" placeholder="Enter new key or leave masked" />
             <div class="form-text">Get free key at <a href="https://tomorrow.io" target="_blank" class="text-info">tomorrow.io</a>. Free tier: 500 req/day.</div>
           </div>
+          <div class="mb-3">
+            <label class="form-label">AccuWeather API Key</label>
+            <input type="text" class="form-control font-monospace" id="accuweather-key" value="${data.accuweather_key || ''}" placeholder="Enter new key or leave masked" />
+            <div class="form-text">Get key at <a href="https://developer.accuweather.com" target="_blank" class="text-info">developer.accuweather.com</a>. Provides thunderstorm probability via hourly forecast. Location key lookup uses 1 additional call on first run or location change.</div>
+          </div>
 
           <hr style="border-color:#2a2a4a" />
           <h6 class="mb-3" style="color:#94a3b8"><i class="bi bi-person-badge me-2"></i>QRZ.com (XML Data subscription required)</h6>
@@ -60,6 +65,7 @@ export async function renderApiKeysTab(container) {
         apiPut('/settings/api-keys', {
           owm_key: document.getElementById('owm-key').value,
           tomorrow_key: document.getElementById('tomorrow-key').value,
+          accuweather_key: document.getElementById('accuweather-key').value,
         }),
         apiPut('/qrz/settings', {
           username: document.getElementById('qrz-username').value,

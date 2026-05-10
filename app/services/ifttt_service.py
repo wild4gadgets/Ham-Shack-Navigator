@@ -86,4 +86,4 @@ async def send_ifttt_test(db: AsyncSession):
         raise ValueError("IFTTT not configured")
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     await _post_event(cfg["webhook_key"], cfg.get("event_name_shutdown", "ham_shack_shutdown"),
-                      "Test event", timestamp, "Ham Shack Cockpit test")
+                      "Test event", timestamp, "Ham Shack Navigator test")

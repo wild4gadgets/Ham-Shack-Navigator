@@ -130,7 +130,7 @@ async def lookup_location(
     lon: float | None = None
     city_display = ""
 
-    headers = {"User-Agent": "HamShackCockpit/1.0"}
+    headers = {"User-Agent": "HamShackNavigator/1.0"}
 
     async with _aiohttp.ClientSession(headers=headers) as session:
 
@@ -269,6 +269,7 @@ async def get_api_keys(db: AsyncSession = Depends(get_db), _: User = Depends(get
     return {
         "owm_key": _mask_key(data.get("owm_key")),
         "tomorrow_key": _mask_key(data.get("tomorrow_key")),
+        "accuweather_key": _mask_key(data.get("accuweather_key")),
     }
 
 
@@ -280,6 +281,8 @@ async def put_api_keys(body: ApiKeySettings, db: AsyncSession = Depends(get_db),
         existing["owm_key"] = body.owm_key
     if body.tomorrow_key and not body.tomorrow_key.startswith(MASKED):
         existing["tomorrow_key"] = body.tomorrow_key
+    if body.accuweather_key and not body.accuweather_key.startswith(MASKED):
+        existing["accuweather_key"] = body.accuweather_key
     await _save_setting(db, "api_keys", existing)
     return {"detail": "Saved"}
 

@@ -144,7 +144,7 @@ async def push_ha_test(db: AsyncSession):
     headers = {"Authorization": f"Bearer {cfg['ha_token']}", "Content-Type": "application/json"}
     payload = {
         "state": "test",
-        "attributes": {"friendly_name": "Ham Shack Cockpit Test", "last_test": datetime.now(timezone.utc).isoformat()},
+        "attributes": {"friendly_name": "Ham Shack Navigator Test", "last_test": datetime.now(timezone.utc).isoformat()},
     }
     async with aiohttp.ClientSession() as session:
         url = f"{ha_url}/api/states/sensor.hamshack_test"

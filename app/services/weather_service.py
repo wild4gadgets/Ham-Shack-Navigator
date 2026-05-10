@@ -1,5 +1,5 @@
 """
-Weather service: fetches OWM, Tomorrow.io, and NWS alert data, writes to weather_cache.
+Weather service: fetches OWM, Tomorrow.io, NWS, and AccuWeather data, writes to weather_cache.
 """
 import json
 import logging
@@ -17,15 +17,16 @@ logger = logging.getLogger(__name__)
 OWM_BASE = "https://api.openweathermap.org/data/2.5"
 TOMORROW_BASE = "https://api.tomorrow.io/v4"
 NWS_API_BASE = "https://api.weather.gov"
+ACCUWEATHER_BASE = "https://dataservice.accuweather.com"
 
 
-async def _get_api_keys(db: AsyncSession) -> tuple[str | None, str | None]:
+async def _get_api_keys(db: AsyncSession) -> tuple[str | None, str | None, str | None]:
     result = await db.execute(select(Setting).where(Setting.key == "api_keys"))
     row = result.scalar_one_or_none()
     if not row:
-        return None, None
+        return None, None, None
     data = json.loads(row.value)
-    return data.get("owm_key"), data.get("tomorrow_key")
+    return data.get("owm_key"), data.get("tomorrow_key"), data.get("accuweather_key")
 
 
 async def _get_location(db: AsyncSession) -> tuple[float | None, float | None, str]:
@@ -56,7 +57,7 @@ async def _save_cache(db: AsyncSession, source: str, data: dict):
 
 
 async def fetch_owm_current(db: AsyncSession) -> dict | None:
-    owm_key, _ = await _get_api_keys(db)
+    owm_key, _, _ = await _get_api_keys(db)
     lat, lon, units = await _get_location(db)
     if not owm_key or lat is None:
         return None
@@ -78,7 +79,7 @@ async def fetch_owm_current(db: AsyncSession) -> dict | None:
 
 
 async def fetch_owm_forecast(db: AsyncSession) -> dict | None:
-    owm_key, _ = await _get_api_keys(db)
+    owm_key, _, _ = await _get_api_keys(db)
     lat, lon, units = await _get_location(db)
     if not owm_key or lat is None:
         return None
@@ -101,7 +102,7 @@ async def fetch_owm_forecast(db: AsyncSession) -> dict | None:
 
 
 async def fetch_tomorrow_realtime(db: AsyncSession) -> dict | None:
-    _, tomorrow_key = await _get_api_keys(db)
+    _, tomorrow_key, _ = await _get_api_keys(db)
     lat, lon, units = await _get_location(db)
     if not tomorrow_key or lat is None:
         return None
@@ -149,7 +150,7 @@ async def fetch_nws_alerts(db: AsyncSession) -> dict | None:
     url = f"{NWS_API_BASE}/alerts/active?point={lat:.4f},{lon:.4f}"
     try:
         async with aiohttp.ClientSession(
-            headers={"User-Agent": "Ham-Shack-Cockpit (ham shack safety monitor)"}
+            headers={"User-Agent": "Ham-Shack-Navigator (ham shack safety monitor)"}
         ) as session:
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
                 if resp.status == 404:
@@ -207,6 +208,102 @@ async def fetch_rainviewer_lightning(db: AsyncSession) -> dict | None:
     return None
 
 
+async def _fetch_accuweather_location_key(
+    db: AsyncSession, lat: float, lon: float, api_key: str
+) -> str | None:
+    """Resolve lat/lon to an AccuWeather location key, caching the result.
+    Re-fetches only when the stored lat/lon differs from the current location."""
+    result = await db.execute(
+        select(WeatherCache).where(WeatherCache.source == "accuweather_location_key")
+    )
+    cached = result.scalar_one_or_none()
+    if cached:
+        payload = json.loads(cached.data)
+        if payload.get("lat") == lat and payload.get("lon") == lon:
+            return payload.get("location_key")
+
+    url = f"{ACCUWEATHER_BASE}/locations/v1/geoposition/search"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                url,
+                params={"apikey": api_key, "q": f"{lat},{lon}"},
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    # API may return either a single object or a list
+                    if isinstance(data, list):
+                        data = data[0] if data else {}
+                    location_key = data.get("Key")
+                    if location_key:
+                        await _save_cache(db, "accuweather_location_key", {
+                            "location_key": location_key,
+                            "lat": lat,
+                            "lon": lon,
+                            "name": data.get("LocalizedName", ""),
+                        })
+                    return location_key
+                else:
+                    logger.warning("AccuWeather geoposition returned %d", resp.status)
+                    return None
+    except Exception as e:
+        logger.error("AccuWeather geoposition error: %s", e)
+        return None
+
+
+async def fetch_accuweather_forecast(db: AsyncSession) -> dict | None:
+    """Fetch AccuWeather 1-hour hourly forecast. Returns the first hourly period,
+    which contains ThunderstormProbability and current conditions."""
+    _, _, aw_key = await _get_api_keys(db)
+    lat, lon, _ = await _get_location(db)
+    if not aw_key or lat is None:
+        return None
+
+    location_key = await _fetch_accuweather_location_key(db, lat, lon, aw_key)
+    if not location_key:
+        return None
+
+    url = f"{ACCUWEATHER_BASE}/forecasts/v1/hourly/1hour/{location_key}.json"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                url,
+                params={"apikey": aw_key, "details": "true", "metric": "false"},
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                if resp.status == 401:
+                    logger.warning("AccuWeather unauthorized — check API key")
+                    return None
+                if resp.status == 503:
+                    logger.warning("AccuWeather quota exceeded (503)")
+                    return None
+                if resp.status == 200:
+                    data = await resp.json()
+                    # API returns a list; store the first (next-hour) period
+                    period = data[0] if data else {}
+                    payload = {
+                        "location_key": location_key,
+                        "ThunderstormProbability": period.get("ThunderstormProbability"),
+                        "PrecipitationProbability": period.get("PrecipitationProbability"),
+                        "WeatherIcon": period.get("WeatherIcon"),
+                        "IconPhrase": period.get("IconPhrase", ""),
+                        "HasPrecipitation": period.get("HasPrecipitation"),
+                        "PrecipitationType": period.get("PrecipitationType"),
+                        "Temperature": period.get("Temperature", {}).get("Value"),
+                        "Wind": period.get("Wind", {}).get("Speed", {}).get("Value"),
+                        "DateTime": period.get("DateTime", ""),
+                    }
+                    await _save_cache(db, "accuweather_forecast", payload)
+                    return payload
+                else:
+                    logger.warning("AccuWeather forecast returned %d", resp.status)
+                    return None
+    except Exception as e:
+        logger.error("AccuWeather forecast fetch error: %s", e)
+        return None
+
+
 async def fetch_all(db: AsyncSession) -> dict:
     """Fetch all weather sources. Returns dict of results."""
     current = await fetch_owm_current(db)
@@ -214,12 +311,14 @@ async def fetch_all(db: AsyncSession) -> dict:
     realtime = await fetch_tomorrow_realtime(db)
     nws = await fetch_nws_alerts(db)
     rainviewer = await fetch_rainviewer_lightning(db)
+    accuweather = await fetch_accuweather_forecast(db)
     return {
         "current": current,
         "forecast": forecast,
         "realtime": realtime,
         "nws_alerts": nws,
         "rainviewer_lightning": rainviewer,
+        "accuweather": accuweather,
     }
 
 

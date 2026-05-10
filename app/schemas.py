@@ -138,11 +138,13 @@ class LocationProfile(BaseModel):
 class ApiKeySettings(BaseModel):
     owm_key: Optional[str] = None
     tomorrow_key: Optional[str] = None
+    accuweather_key: Optional[str] = None
 
 
 class ThresholdSettings(BaseModel):
     wind_mph: float = 35.0
     lightning_miles: float = 10.0
+    thunderstorm_prob_pct: int = 70
     poll_interval_sec: int = 300
     cooldown_min: int = 30
     log_weather_data: bool = False
