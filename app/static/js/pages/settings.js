@@ -14,11 +14,13 @@ import { renderDxclusterTab } from '../components/settings/dxcluster.js';
 import { renderPskReporterTab } from '../components/settings/pskreporter.js';
 import { renderFlexRadioTab } from '../components/settings/flexradio.js';
 import { renderWebhookTab } from '../components/settings/webhook.js';
+import { renderProfilesTab } from '../components/settings/profiles.js';
 import { isAdmin } from '../state.js';
 
 // Full NAV — admin sees all, readonly sees only notifications + account
 const ADMIN_NAV = [
   { id: 'location',  label: 'Station Info', icon: 'geo-alt' },
+  { id: 'profiles', label: 'Profiles', icon: 'layout-three-columns' },
   { id: 'api-keys',  label: 'API Keys', icon: 'key' },
   { id: 'thresholds', label: 'Thresholds', icon: 'sliders' },
   { id: 'dxcluster',    label: 'DX Cluster',    icon: 'reception-4'   },
@@ -53,6 +55,7 @@ const READONLY_NAV = [
       { id: 'notifications', label: 'Toggles', icon: 'toggles' },
     ],
   },
+  { id: 'profiles', label: 'Profiles', icon: 'layout-three-columns' },
   { id: 'account', label: 'Account', icon: 'person' },
 ];
 
@@ -72,6 +75,7 @@ const RENDERERS = {
   pskreporter:      renderPskReporterTab,
   flexradio:        renderFlexRadioTab,
   webhook:          renderWebhookTab,
+  profiles:         renderProfilesTab,
   account:          renderAccountTab,
 };
 

@@ -56,9 +56,15 @@ Power sequencing matters in a ham shack. The Workflows engine lets you build ste
 
 Workflows can also be scheduled by day of week and local time, so your station can come up every morning and go down every evening automatically.
 
-### Draggable Dashboard
+### Draggable Dashboard & Layout Profiles
 
 Every tile on the dashboard is draggable. Grab the grip handle and rearrange the layout to match your workflow — put the CW decoder next to the FlexRadio status, move the radar below the solar data, whatever works for you. The layout is saved per-user and restored on your next visit. A Reset Layout button returns everything to the default order.
+
+**Dashboard Profiles** let you save multiple named layouts and switch between them instantly. A weather-monitoring layout might keep the radar and lightning tile front and center; an operating layout might lead with the FlexRadio status and CW decoder. Each user can create, rename, and delete their own profiles, and the active profile updates automatically whenever tiles are dragged.
+
+- Create and manage profiles in **Settings → Profiles**
+- Switch the active profile from the **Profile** button in the top nav bar, or directly from the Profiles settings page by clicking a profile name
+- On first use, your existing layout is automatically saved as a **Default** profile
 
 ### Solar & Propagation Data
 

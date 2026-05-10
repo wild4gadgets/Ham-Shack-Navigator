@@ -1,5 +1,73 @@
 import { navigate } from './router.js';
 import { clearToken, getToken, state } from './state.js';
+import { apiGet, apiPost } from './api.js';
+
+// ── Profile Modal ─────────────────────────────────────────────────────────────
+
+const profileModalEl = document.getElementById('profileModal');
+if (profileModalEl) {
+  profileModalEl.addEventListener('show.bs.modal', async () => {
+    const body = document.getElementById('profile-modal-body');
+    body.innerHTML = '<div class="text-muted text-center py-2" style="font-size:0.85rem">Loading…</div>';
+    try {
+      const data = await apiGet('/settings/profiles');
+      _renderProfileModalBody(body, data);
+    } catch (e) {
+      body.innerHTML = `<div class="text-danger p-2" style="font-size:0.82rem">${e.message}</div>`;
+    }
+  });
+}
+
+function _renderProfileModalBody(body, data) {
+  const { active_profile_id, profiles } = data;
+  if (!profiles.length) {
+    body.innerHTML = `
+      <div class="text-muted text-center py-3" style="font-size:0.85rem">No profiles yet.</div>`;
+    return;
+  }
+  body.innerHTML = profiles.map(p => {
+    const isActive = p.id === active_profile_id;
+    return `
+      <button class="btn btn-sm w-100 text-start mb-1 profile-switch-btn
+                     ${isActive ? 'btn-primary' : 'btn-outline-secondary'}"
+              data-id="${p.id}" data-order='${JSON.stringify(p.order)}'
+              style="font-size:0.85rem;${isActive ? 'font-weight:700' : ''}">
+        ${isActive ? '<i class="bi bi-check2 me-1"></i>' : '<i class="bi bi-layout-three-columns me-1"></i>'}
+        ${_escHtml(p.name)}
+      </button>`;
+  }).join('');
+
+  body.querySelectorAll('.profile-switch-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const profileId = btn.dataset.id;
+      const order = JSON.parse(btn.dataset.order);
+      try {
+        await apiPost(`/settings/profiles/${profileId}/activate`, {});
+        bootstrap.Modal.getInstance(profileModalEl)?.hide();
+        _applyTileOrder(order);
+        // Re-highlight active in modal body (modal is closing, but update state)
+      } catch (e) {
+        btn.textContent = 'Error — try again';
+      }
+    });
+  });
+}
+
+function _applyTileOrder(order) {
+  const parent = document.getElementById('dashboard-rows');
+  if (!parent) return;
+  order.forEach(id => {
+    const el = parent.querySelector(`[data-section="${id}"]`);
+    if (el) parent.appendChild(el);
+  });
+  // Monitoring is always first
+  const mon = parent.querySelector('[data-section="monitoring"]');
+  if (mon) parent.insertBefore(mon, parent.firstChild);
+}
+
+function _escHtml(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 
 // Logout
 document.getElementById('logout-btn').addEventListener('click', () => {

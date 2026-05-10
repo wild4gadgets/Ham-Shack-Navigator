@@ -543,8 +543,39 @@ _DEFAULT_TILE_ORDER = [
     "radar", "solar", "alerts", "psk", "events",
 ]
 
+
+async def _get_profiles(db: AsyncSession, user_id: int) -> dict:
+    data = await _get_setting(db, f"dashboard_profiles_{user_id}")
+    return data if data else {"active_profile_id": None, "profiles": []}
+
+
+async def _save_profiles(db: AsyncSession, user_id: int, data: dict):
+    await _save_setting(db, f"dashboard_profiles_{user_id}", data)
+
+
+async def _ensure_profiles(db: AsyncSession, user_id: int) -> dict:
+    """Return profiles, creating a Default profile from the base layout on first use."""
+    data = await _get_profiles(db, user_id)
+    if not data["profiles"]:
+        layout = await _get_setting(db, f"dashboard_layout_{user_id}")
+        order = (layout or {}).get("order", _DEFAULT_TILE_ORDER)
+        default_id = str(_uuid.uuid4())
+        data = {
+            "active_profile_id": None,
+            "profiles": [{"id": default_id, "name": "Default", "order": order}],
+        }
+        await _save_profiles(db, user_id, data)
+    return data
+
+
 @router.get("/dashboard-layout")
 async def get_dashboard_layout(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    profiles_data = await _get_profiles(db, user.id)
+    active_id = profiles_data.get("active_profile_id")
+    if active_id:
+        for p in profiles_data.get("profiles", []):
+            if p["id"] == active_id:
+                return {"order": p["order"]}
     data = await _get_setting(db, f"dashboard_layout_{user.id}")
     return data or {"order": _DEFAULT_TILE_ORDER}
 
@@ -553,4 +584,91 @@ async def get_dashboard_layout(db: AsyncSession = Depends(get_db), user: User = 
 async def put_dashboard_layout(body: dict, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     order = body.get("order", [])
     await _save_setting(db, f"dashboard_layout_{user.id}", {"order": order})
+    profiles_data = await _get_profiles(db, user.id)
+    active_id = profiles_data.get("active_profile_id")
+    if active_id:
+        for p in profiles_data.get("profiles", []):
+            if p["id"] == active_id:
+                p["order"] = order
+                break
+        await _save_profiles(db, user.id, profiles_data)
     return {"detail": "Saved"}
+
+
+# --- Dashboard Profiles ---
+
+@router.get("/profiles")
+async def list_profiles(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    return await _ensure_profiles(db, user.id)
+
+
+@router.post("/profiles")
+async def create_profile(body: dict, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Profile name required")
+    layout = await _get_setting(db, f"dashboard_layout_{user.id}")
+    order = (layout or {}).get("order", _DEFAULT_TILE_ORDER)
+    profiles_data = await _ensure_profiles(db, user.id)
+    new_id = str(_uuid.uuid4())
+    profiles_data["profiles"].append({"id": new_id, "name": name, "order": order})
+    await _save_profiles(db, user.id, profiles_data)
+    return {"id": new_id, "name": name, "order": order}
+
+
+@router.post("/profiles/deactivate")
+async def deactivate_profile(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    profiles_data = await _get_profiles(db, user.id)
+    profiles_data["active_profile_id"] = None
+    await _save_profiles(db, user.id, profiles_data)
+    return {"detail": "Deactivated"}
+
+
+@router.post("/profiles/{profile_id}/activate")
+async def activate_profile(profile_id: str, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    profiles_data = await _get_profiles(db, user.id)
+    for p in profiles_data["profiles"]:
+        if p["id"] == profile_id:
+            profiles_data["active_profile_id"] = profile_id
+            await _save_profiles(db, user.id, profiles_data)
+            await _save_setting(db, f"dashboard_layout_{user.id}", {"order": p["order"]})
+            return {"order": p["order"]}
+    raise HTTPException(status_code=404, detail="Profile not found")
+
+
+@router.patch("/profiles/{profile_id}")
+async def rename_profile(profile_id: str, body: dict, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Profile name required")
+    profiles_data = await _get_profiles(db, user.id)
+    for p in profiles_data["profiles"]:
+        if p["id"] == profile_id:
+            p["name"] = name
+            await _save_profiles(db, user.id, profiles_data)
+            return {"detail": "Renamed"}
+    raise HTTPException(status_code=404, detail="Profile not found")
+
+
+@router.put("/profiles/{profile_id}")
+async def update_profile_layout(profile_id: str, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    """Overwrite a profile's saved order with the user's current dashboard layout."""
+    layout = await _get_setting(db, f"dashboard_layout_{user.id}")
+    order = (layout or {}).get("order", _DEFAULT_TILE_ORDER)
+    profiles_data = await _get_profiles(db, user.id)
+    for p in profiles_data["profiles"]:
+        if p["id"] == profile_id:
+            p["order"] = order
+            await _save_profiles(db, user.id, profiles_data)
+            return {"detail": "Updated"}
+    raise HTTPException(status_code=404, detail="Profile not found")
+
+
+@router.delete("/profiles/{profile_id}")
+async def delete_profile(profile_id: str, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    profiles_data = await _get_profiles(db, user.id)
+    profiles_data["profiles"] = [p for p in profiles_data["profiles"] if p["id"] != profile_id]
+    if profiles_data.get("active_profile_id") == profile_id:
+        profiles_data["active_profile_id"] = None
+    await _save_profiles(db, user.id, profiles_data)
+    return {"detail": "Deleted"}

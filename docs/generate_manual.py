@@ -278,10 +278,20 @@ add_para('The dashboard is the main real-time view. It auto-refreshes via WebSoc
 add_heading('Navigation Bar', 2)
 add_bullet('Your callsign and "Ham Shack Navigator" brand (click to return to dashboard)')
 add_bullet('Local and UTC clocks in 7-segment LED style, updating every second')
+add_bullet('Profile button — switches the active dashboard layout profile (see Dashboard Profiles below)')
 add_bullet('Navigation links: Dashboard, Workflows (admin), Settings, Events, Users (admin)')
 add_bullet('Help button (opens this manual)')
 add_bullet('Logout button')
 add_bullet('Role indicator badge (Admin or Read Only)')
+
+add_heading('Dashboard Profiles', 2)
+add_para('Dashboard Profiles let each user save multiple named tile layouts and switch between them instantly. A weather-monitoring profile might keep the radar and lightning tile front and center; an operating profile might lead with the FlexRadio status and CW decoder.')
+add_bullet('Click the Profile button in the top nav to open the profile switcher — the active profile is highlighted. Click any profile name to switch to it immediately.')
+add_bullet('Manage profiles in Settings → Profiles: add, rename, delete, and update profiles. Clicking a profile name in the settings list also switches to it.')
+add_bullet('When a profile is active, dragging tiles auto-saves the new order to that profile.')
+add_bullet('Use the Update button to overwrite any profile with the current tile layout.')
+add_bullet('On first use, your existing layout is automatically saved as a Default profile.')
+add_note('All users — including Read Only — can create and manage their own profiles.')
 
 add_heading('Dashboard Pins (Quick Controls)', 2)
 add_para('At the top of the dashboard, any Kasa port or Shelly channel with "Show on Dashboard" enabled appears as a quick-control button. Click once to toggle on/off. Green = on, gray = off. State is polled every 30 seconds.')
@@ -436,6 +446,7 @@ for i, text in enumerate(['Tab', 'Key Settings', 'Notes']):
 
 rows_data = [
     ('Station Info', 'Callsign, lat/lon, city, units, Maidenhead grid', 'Supports multi-location profiles'),
+    ('Profiles', 'Create, rename, update, delete dashboard layout profiles', 'Available to all users; switch via nav Profile button'),
     ('API Keys', 'OpenWeatherMap, Tomorrow.io, QRZ credentials', 'Required for weather data'),
     ('Thresholds', 'Wind, lightning distance, poll interval, cooldown', 'Drives automatic shutdown'),
     ('DX Cluster', 'Region, refresh interval', 'Affects band activity heatmap'),
