@@ -17,7 +17,7 @@ from models import User, Setting
 from schemas import (
     LocationSettings, LocationProfile, ApiKeySettings, ThresholdSettings, SmtpSettings,
     NotificationSettings, KasaSettings, IftttSettings, TelegramSettings, HomeAssistantSettings,
-    DxclusterSettings, FlexRadioSettings,
+    DxclusterSettings, FlexRadioSettings, BlitzortungSettings,
 )
 import scheduler as sched
 
@@ -106,6 +106,20 @@ async def _save_setting(db: AsyncSession, key: str, value: dict):
     await db.commit()
 
 
+async def _restart_blitzortung_if_enabled(db: AsyncSession) -> None:
+    from services import blitzortung_service
+    bz_data = await _get_setting(db, "blitzortung")
+    if not bz_data.get("enabled", False):
+        blitzortung_service.stop()
+        return
+    loc = await _get_setting(db, "location") or {}
+    lat, lon = loc.get("lat"), loc.get("lon")
+    if lat is None or lon is None:
+        logger.warning("Blitzortung restart skipped: no location configured")
+        return
+    blitzortung_service.start(float(lat), float(lon), float(bz_data.get("range_km", 40)))
+
+
 # --- Location ---
 @router.get("/location")
 async def get_location(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
@@ -115,6 +129,7 @@ async def get_location(db: AsyncSession = Depends(get_db), _: User = Depends(get
 @router.put("/location")
 async def put_location(body: LocationSettings, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     await _save_setting(db, "location", body.model_dump())
+    await _restart_blitzortung_if_enabled(db)
     return {"detail": "Saved"}
 
 
@@ -258,6 +273,7 @@ async def activate_location_profile(
             location = {k: v for k, v in p.items() if k != "id"}
             location["active_profile_id"] = profile_id
             await _save_setting(db, "location", location)
+            await _restart_blitzortung_if_enabled(db)
             return {"detail": "Activated"}
     raise HTTPException(status_code=404, detail="Profile not found")
 
@@ -672,3 +688,21 @@ async def delete_profile(profile_id: str, db: AsyncSession = Depends(get_db), us
         profiles_data["active_profile_id"] = None
     await _save_profiles(db, user.id, profiles_data)
     return {"detail": "Deleted"}
+
+
+# --- Blitzortung ---
+@router.get("/blitzortung")
+async def get_blitzortung(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    data = await _get_setting(db, "blitzortung")
+    return BlitzortungSettings.model_validate(data).model_dump()
+
+
+@router.put("/blitzortung")
+async def put_blitzortung(
+    body: BlitzortungSettings,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    await _save_setting(db, "blitzortung", body.model_dump())
+    await _restart_blitzortung_if_enabled(db)
+    return {"detail": "Saved"}

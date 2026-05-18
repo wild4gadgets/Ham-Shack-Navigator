@@ -116,6 +116,15 @@ async def get_alerts(db: AsyncSession = Depends(get_db), _: User = Depends(get_c
     return {"alerts": nws.get("alerts", []), "outside_coverage": outside}
 
 
+@router.get("/blitzortung")
+async def get_blitzortung_strikes(_: User = Depends(get_current_user)):
+    from services import blitzortung_service
+    return {
+        "enabled": blitzortung_service.is_running(),
+        "strikes": blitzortung_service.get_recent_strikes(),
+    }
+
+
 @router.post("/refresh")
 async def refresh_weather(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     results = await fetch_all(db)

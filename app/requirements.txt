@@ -13,3 +13,5 @@ python-multipart==0.0.17
 pydantic==2.10.3
 pydantic-settings==2.6.1
 slowapi==0.1.9
+paho-mqtt>=2.1.0
+pygeohash>=1.2.0

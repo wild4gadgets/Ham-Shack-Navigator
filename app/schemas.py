@@ -234,6 +234,20 @@ class FlexRadioSettings(BaseModel):
         return v[:4]
 
 
+
+# --- Blitzortung ---
+class BlitzortungSettings(BaseModel):
+    enabled: bool = False
+    range_km: int = 40
+
+    @field_validator("range_km")
+    @classmethod
+    def range_must_be_positive(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("range_km must be >= 1")
+        return v
+
+
 # --- Kasa ---
 class KasaDeviceCreate(BaseModel):
     name: str

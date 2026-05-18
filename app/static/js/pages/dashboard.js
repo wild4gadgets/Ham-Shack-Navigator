@@ -26,6 +26,7 @@ let radarHomeZoom = 7;
 let pinData = { kasa: [], shelly: [] };
 let pinStates = {};
 let pinPollTimer = null;
+let blitzortungFlashTimer = null;
 let flexRadioRefreshTimer = null;
 let solarRefreshTimer = null;
 let dxcRefreshTimer = null;
@@ -157,6 +158,13 @@ export async function renderDashboard(container) {
                 <div class="weather-value" id="lightning-value">--</div>
                 <div class="weather-unit" id="lightning-unit">miles away</div>
                 <div class="mt-2 text-muted" id="lightning-desc"></div>
+                <div id="blitzortung-badge" style="display:none" class="mt-2">
+                  <span class="badge bg-warning text-dark">
+                    <i class="bi bi-lightning-fill me-1"></i>
+                    <span id="blitzortung-strike-text">Live: -- km</span>
+                  </span>
+                </div>
+                <div id="blitzortung-history" class="mt-1 w-100" style="display:none;font-size:0.72rem;color:#94a3b8;max-height:60px;overflow-y:auto"></div>
               </div>
             </div>
           </div>
@@ -862,6 +870,7 @@ function cleanup() {
   destroyed = true;
   if (pskZoomHandler) { document.removeEventListener('keydown', pskZoomHandler); pskZoomHandler = null; }
   if (pinPollTimer) { clearInterval(pinPollTimer); pinPollTimer = null; }
+  if (blitzortungFlashTimer) { clearTimeout(blitzortungFlashTimer); blitzortungFlashTimer = null; }
   if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
   if (flexRadioRefreshTimer) { clearInterval(flexRadioRefreshTimer); flexRadioRefreshTimer = null; }
   if (solarRefreshTimer) { clearInterval(solarRefreshTimer); solarRefreshTimer = null; }
@@ -1107,6 +1116,42 @@ function _measureCwCharsPerLine() {
   display.removeChild(probe);
   const innerWidth = display.clientWidth - 16;  // 8px padding each side
   return Math.max(20, Math.floor(innerWidth / charWidth));
+}
+
+function _handleBlitzortungStrike(data) {
+  if (!document.getElementById('blitzortung-style')) {
+    const s = document.createElement('style');
+    s.id = 'blitzortung-style';
+    s.textContent = '@keyframes bz-flash{0%,100%{opacity:1}50%{opacity:0.3}}.blitzortung-flash{animation:bz-flash 0.5s ease 2}';
+    document.head.appendChild(s);
+  }
+  const badge = document.getElementById('blitzortung-badge');
+  const text  = document.getElementById('blitzortung-strike-text');
+  const hist  = document.getElementById('blitzortung-history');
+  if (!badge || !text) return;
+
+  const km  = data.distance_km != null ? data.distance_km.toFixed(1) : '?';
+  const brng = data.bearing_deg != null ? ` ${Math.round(data.bearing_deg)}°` : '';
+  const ts  = data.timestamp
+    ? new Date(data.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    : '';
+
+  text.textContent = `Live: ${km} km${brng}  ${ts}`;
+  badge.style.display = '';
+
+  if (hist) {
+    hist.style.display = '';
+    const row = document.createElement('div');
+    row.textContent = `${ts}  ${km} km${brng}`;
+    hist.insertBefore(row, hist.firstChild);
+    while (hist.children.length > 5) hist.removeChild(hist.lastChild);
+  }
+
+  badge.classList.remove('blitzortung-flash');
+  void badge.offsetWidth; // force reflow to restart animation
+  badge.classList.add('blitzortung-flash');
+  clearTimeout(blitzortungFlashTimer);
+  blitzortungFlashTimer = setTimeout(() => badge.classList.remove('blitzortung-flash'), 2000);
 }
 
 function updateCwTile(msg) {
@@ -1817,13 +1862,14 @@ async function loadPskSpots() {
 
 async function loadWeather() {
   try {
-    const [current, forecast, realtime, loc, lightning, alertsData] = await Promise.all([
+    const [current, forecast, realtime, loc, lightning, alertsData, blitzortung] = await Promise.all([
       apiGet('/weather/current'),
       apiGet('/weather/forecast'),
       apiGet('/weather/realtime'),
       apiGet('/settings/location'),
       apiGet('/weather/lightning'),
       apiGet('/weather/alerts').catch(() => ({ alerts: [] })),
+      apiGet('/settings/blitzortung').catch(() => ({})),
     ]);
 
     const metric = (loc.units || 'imperial') === 'metric';
@@ -1915,7 +1961,13 @@ async function loadWeather() {
           if (lightUnit) lightUnit.textContent = metric ? 'km away' : 'miles away';
           if (lightDesc) lightDesc.textContent = lightning.source || '';
         } else {
-          lightEl.textContent = metric ? 'None detected within 400 kilometers' : 'None detected within 250 miles';
+          let noLightningText;
+          if (blitzortung?.enabled && blitzortung?.range_km) {
+            noLightningText = `No lightning detected within ${blitzortung.range_km} km`;
+          } else {
+            noLightningText = metric ? 'None detected within 400 kilometers' : 'None detected within 250 miles';
+          }
+          lightEl.textContent = noLightningText;
           lightEl.style.fontSize = '1.5rem';
           if (lightUnit) lightUnit.textContent = '';
           if (lightDesc) lightDesc.textContent = '';
@@ -2437,6 +2489,7 @@ async function connectWS() {
     try {
       const msg = JSON.parse(evt.data);
       if (msg.type === 'weather_update') loadWeather();
+      if (msg.type === 'lightning_strike') _handleBlitzortungStrike(msg.data);
       if (msg.type === 'monitoring_status') loadMonitoringStatus();
       if (msg.type === 'flexradio_update') {
         if (msg.rfpower != null) {

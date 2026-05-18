@@ -61,11 +61,32 @@ from routers import (
 )
 
 
+async def _start_blitzortung_on_boot():
+    from services import blitzortung_service
+    from database import AsyncSessionLocal
+    from models import Setting
+    from sqlalchemy import select
+    import json as _json
+    async with AsyncSessionLocal() as db:
+        bz_row = (await db.execute(select(Setting).where(Setting.key == "blitzortung"))).scalar_one_or_none()
+        bz = _json.loads(bz_row.value) if bz_row else {}
+        if not bz.get("enabled", False):
+            return
+        loc_row = (await db.execute(select(Setting).where(Setting.key == "location"))).scalar_one_or_none()
+        loc = _json.loads(loc_row.value) if loc_row else {}
+        lat, lon = loc.get("lat"), loc.get("lon")
+        if lat and lon:
+            blitzortung_service.start(float(lat), float(lon), float(bz.get("range_km", 40)))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
     await start_scheduler()
+    await _start_blitzortung_on_boot()
     yield
+    from services import blitzortung_service as _bz
+    _bz.stop()
     await shutdown_scheduler()
 
 
