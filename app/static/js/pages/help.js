@@ -48,7 +48,7 @@ export function renderHelp(container) {
     <li><strong>FlexRadio 6400 integration</strong> — real-time frequency, mode, power, and SWR display with click-to-tune and click-to-change-mode controls, frequency step buttons, and keyboard shortcuts</li>
     <li><strong>CW decoder</strong> — live Morse decoding from the FlexRadio DAX audio stream, with WPM and SNR display</li>
     <li><strong>Draggable dashboard tiles</strong> — rearrange the layout to suit your workflow</li>
-    <li><strong>Notifications</strong> via email, Telegram, and IFTTT</li>
+    <li><strong>Notifications</strong> via email, Telegram, IFTTT, and ntfy push notifications</li>
     <li><strong>Multi-user</strong> with Admin and Read-Only roles</li>
     <li><strong>Remote webhook API</strong> for Stream Deck and mobile app integration</li>
   </ul>
@@ -74,6 +74,7 @@ export function renderHelp(container) {
   <ul>
     <li>QRZ.com XML subscription (for callsign lookups from the PSK Reporter map)</li>
     <li>Telegram Bot token (for mobile notifications)</li>
+    <li>ntfy topic — free push notifications via <a href="https://ntfy.sh" target="_blank" style="color:#7eb8f7">ntfy.sh</a> or a self-hosted server</li>
     <li>SMTP server access (for email notifications)</li>
     <li>IFTTT account (for webhook integrations)</li>
     <li>TP-Link Kasa smart plugs/strips on your local network</li>
@@ -374,7 +375,7 @@ docker compose logs app -f</pre>
     <li>If <strong>either</strong> threshold is exceeded and monitoring is Armed:
       <ul>
         <li>The Shutdown workflow runs immediately</li>
-        <li>All configured notifications are sent (email, Telegram, IFTTT)</li>
+        <li>All configured notifications are sent (email, Telegram, IFTTT, ntfy)</li>
         <li>A cooldown period starts (default: 30 minutes)</li>
         <li>The dashboard shows a shutdown alert via WebSocket</li>
       </ul>
@@ -392,11 +393,12 @@ docker compose logs app -f</pre>
     <li><strong>Lightning distance threshold</strong> — miles (or km). Default: 10 miles.</li>
     <li><strong>Poll interval</strong> — seconds between weather checks. Minimum 60 seconds. Default: 300 seconds.</li>
     <li><strong>Shutdown cooldown</strong> — minutes to wait after a shutdown before auto-shutdown can trigger again. Default: 30 minutes.</li>
+    <li><strong>NWS Severe Weather Alert Notifications</strong> — choose <em>None</em> (off), <em>Watch or Warning</em> (notify for any Watch or Warning issued for your location), or <em>Warning only</em> (only the more urgent Warning level). Notifications fire through all configured channels when the active alert set changes — you won't be re-notified for the same ongoing event on every poll cycle. US locations only.</li>
   </ul>
 
   <!-- 9. Notifications -->
   <h2 id="h-notifications" class="help-section-title">9. Notifications</h2>
-  <p>Ham Shack Navigator can notify you through three channels. Each can be independently enabled or disabled via <strong>Settings → Notification Toggles</strong>.</p>
+  <p>Ham Shack Navigator can notify you through four channels. Each can be independently enabled or disabled via <strong>Settings → Notification Toggles</strong>.</p>
 
   <h4 style="color:#7eb8f7">Email (SMTP)</h4>
   <p>Configure in <strong>Settings → SMTP / Email</strong>:</p>
@@ -424,12 +426,23 @@ docker compose logs app -f</pre>
     <li>Workflows can also include IFTTT steps to fire any custom event with up to 3 value parameters</li>
   </ul>
 
+  <h4 style="color:#7eb8f7;margin-top:1.5rem">ntfy</h4>
+  <p>Configure in <strong>Settings → ntfy</strong>:</p>
+  <ol>
+    <li>Install the free <a href="https://ntfy.sh" target="_blank" style="color:#7eb8f7">ntfy</a> app on your phone (iOS or Android).</li>
+    <li>Choose a unique, hard-to-guess topic name (e.g. <code>my-ham-shack-4729</code>). Anyone who knows the topic can subscribe, so don't use something obvious.</li>
+    <li>Subscribe to your topic in the ntfy app.</li>
+    <li>Enter the topic in Settings → ntfy, enable the integration, and click <strong>Test</strong> to verify.</li>
+  </ol>
+  <p>Leave the Server URL as <code>https://ntfy.sh</code> unless you self-host ntfy. The Token field is only needed for access-controlled topics on a self-hosted server.</p>
+
   <h4 style="color:#7eb8f7;margin-top:1.5rem">Notification Toggles</h4>
   <p>Go to <strong>Settings → Notification Toggles</strong> to independently enable/disable:</p>
   <ul>
     <li>Shutdown email / Daily digest email</li>
     <li>Shutdown Telegram message / Threshold alert Telegram message</li>
     <li>Shutdown IFTTT event / Threshold alert IFTTT event</li>
+    <li>Shutdown ntfy notification / Threshold alert ntfy notification</li>
   </ul>
 
   <!-- 10. Integrations -->
@@ -481,7 +494,7 @@ docker compose logs app -f</pre>
     <tbody style="background:#12122a">
       <tr><td><strong>Station Info</strong></td><td>Callsign, lat/lon, city, units, Maidenhead grid, location profiles</td><td>Type a city, GPS coords, or grid square to auto-look up. Supports named multi-location profiles (e.g., home, portable).</td></tr>
       <tr><td><strong>API Keys</strong></td><td>OpenWeatherMap key, Tomorrow.io key, QRZ credentials</td><td>OWM and Tomorrow.io are required for weather. QRZ requires an XML Data subscription.</td></tr>
-      <tr><td><strong>Thresholds</strong></td><td>Wind mph, lightning miles, poll interval, cooldown</td><td>Drives automatic shutdown logic.</td></tr>
+      <tr><td><strong>Thresholds</strong></td><td>Wind mph, lightning miles, poll interval, cooldown, NWS alert notify level</td><td>Drives automatic shutdown logic. NWS alert notifications fire on new alerts through all configured channels.</td></tr>
       <tr><td><strong>DX Cluster</strong></td><td>Region (NA/EU/AS/AF/SA/OC), refresh interval</td><td>Affects band activity heatmap.</td></tr>
       <tr><td><strong>PSK Reporter</strong></td><td>Default callsign, direction, bands, modes, timespan</td><td>Persisted dashboard defaults.</td></tr>
       <tr><td><strong>FlexRadio</strong></td><td>Radio IP, enable toggle, DAX RX enable, DAX channel, CW tone freq (Hz), CW threshold, small step (kHz), large step (kHz)</td><td>FlexRadio 6000/6400 series. DAX requires SmartSDR running on the same network. Step sizes control &lt;&lt;/&lt;/&gt;/&gt;&gt; buttons and keyboard shortcuts.</td></tr>
@@ -491,7 +504,8 @@ docker compose logs app -f</pre>
       <tr><td><strong>IFTTT</strong></td><td>Webhook key, event names, enable toggle</td><td>Also used in workflow steps.</td></tr>
       <tr><td><strong>SMTP / Email</strong></td><td>Host, port, credentials, from/to, digest time</td><td>Use an App Password for Gmail.</td></tr>
       <tr><td><strong>Telegram</strong></td><td>Bot token, chat ID</td><td>Get bot token from @BotFather.</td></tr>
-      <tr><td><strong>Notification Toggles</strong></td><td>Per-channel, per-event enable/disable</td><td>Visible to read-only users.</td></tr>
+      <tr><td><strong>ntfy</strong></td><td>Server URL, topic, optional token</td><td>Free push notifications; ntfy.sh or self-hosted.</td></tr>
+      <tr><td><strong>Notification Toggles</strong></td><td>Per-channel, per-event enable/disable</td><td>Covers email, Telegram, IFTTT, and ntfy. Visible to read-only users.</td></tr>
       <tr><td><strong>Remote Webhook</strong></td><td>Generate API key for external workflow invocation</td><td>Used by Stream Deck, mobile apps.</td></tr>
       <tr><td><strong>Account</strong></td><td>Change password, change email</td><td>Available to all users.</td></tr>
     </tbody>
