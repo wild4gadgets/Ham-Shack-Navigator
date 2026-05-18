@@ -16,6 +16,7 @@ let pskZoomHandler = null;
 let radarMap = null;
 let radarLayer = null;
 let lightningLayer = null;
+let radarLabelsLayer = null;
 let radarFrames = [];
 let radarFrameIndex = 0;
 let radarAnimInterval = null;
@@ -27,6 +28,9 @@ let pinData = { kasa: [], shelly: [] };
 let pinStates = {};
 let pinPollTimer = null;
 let blitzortungFlashTimer = null;
+let blitzortungMarkers = []; // {marker: L.CircleMarker, time: Date}
+let blitzortungCleanupTimer = null;
+const BLITZ_FADE_MS = 15 * 60 * 1000;
 let flexRadioRefreshTimer = null;
 let solarRefreshTimer = null;
 let dxcRefreshTimer = null;
@@ -871,6 +875,9 @@ function cleanup() {
   if (pskZoomHandler) { document.removeEventListener('keydown', pskZoomHandler); pskZoomHandler = null; }
   if (pinPollTimer) { clearInterval(pinPollTimer); pinPollTimer = null; }
   if (blitzortungFlashTimer) { clearTimeout(blitzortungFlashTimer); blitzortungFlashTimer = null; }
+  if (blitzortungCleanupTimer) { clearInterval(blitzortungCleanupTimer); blitzortungCleanupTimer = null; }
+  blitzortungMarkers.forEach(({ marker }) => marker.remove());
+  blitzortungMarkers = [];
   if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
   if (flexRadioRefreshTimer) { clearInterval(flexRadioRefreshTimer); flexRadioRefreshTimer = null; }
   if (solarRefreshTimer) { clearInterval(solarRefreshTimer); solarRefreshTimer = null; }
@@ -887,6 +894,7 @@ function cleanup() {
   if (radarMap) { radarMap.remove(); radarMap = null; }
   radarLayer = null;
   lightningLayer = null;
+  radarLabelsLayer = null;
   radarFrames = [];
   radarPlaying = false;
 }
@@ -1152,6 +1160,10 @@ function _handleBlitzortungStrike(data) {
   badge.classList.add('blitzortung-flash');
   clearTimeout(blitzortungFlashTimer);
   blitzortungFlashTimer = setTimeout(() => badge.classList.remove('blitzortung-flash'), 2000);
+
+  if (data.lat != null && data.lon != null) {
+    _addBlitzortungMarker(data.lat, data.lon, data.timestamp);
+  }
 }
 
 function updateCwTile(msg) {
@@ -2007,9 +2019,15 @@ async function loadRadar() {
         },
       });
       new HomeControl({ position: 'topleft' }).addTo(radarMap);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>',
+        subdomains: 'abcd',
         maxZoom: 19,
+      }).addTo(radarMap);
+      radarLabelsLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', {
+        subdomains: 'abcd',
+        maxZoom: 19,
+        pane: 'overlayPane',
       }).addTo(radarMap);
     } else {
       radarMap.setView([lat, lon], radarHomeZoom);
@@ -2043,6 +2061,17 @@ async function loadRadar() {
     radarFrameIndex = radarFrames.length - 1;
     showRadarFrame(host, radarFrameIndex);
 
+    // Plot buffered Blitzortung strikes and start the age-fade timer
+    const blitzData = await apiGet('/weather/blitzortung').catch(() => null);
+    if (blitzData?.strikes?.length) {
+      for (const s of blitzData.strikes) {
+        if (s.lat != null && s.lon != null) _addBlitzortungMarker(s.lat, s.lon, s.timestamp);
+      }
+    }
+    if (!blitzortungCleanupTimer) {
+      blitzortungCleanupTimer = setInterval(_tickBlitzortungMarkers, 30_000);
+    }
+
     // Wire up controls
     document.getElementById('btn-radar-prev').onclick = () => {
       stopRadarAnim();
@@ -2071,7 +2100,7 @@ async function loadRadar() {
   }
 }
 
-const RADAR_MAX_NATIVE_ZOOM = 6;
+const RADAR_MAX_NATIVE_ZOOM = 7;
 
 function showRadarFrame(host, index) {
   const frame = radarFrames[index];
@@ -2091,6 +2120,7 @@ function showRadarFrame(host, index) {
   }
 
   if (lightningLayer) lightningLayer.bringToFront();
+  if (radarLabelsLayer) radarLabelsLayer.bringToFront();
 
   const ts = document.getElementById('radar-timestamp');
   if (ts) ts.textContent = new Date(frame.time * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -2101,6 +2131,48 @@ function stopRadarAnim() {
   if (radarAnimInterval) { clearInterval(radarAnimInterval); radarAnimInterval = null; }
   const btn = document.getElementById('btn-radar-play');
   if (btn) btn.innerHTML = '&#9654;';
+}
+
+function _blitzortungMarkerStyle(ageMs) {
+  const ratio = Math.min(ageMs / BLITZ_FADE_MS, 1);
+  if (ratio < 0.2) return { color: '#ffffff', opacity: 1.0 };
+  if (ratio < 0.4) return { color: '#ffee44', opacity: 0.85 };
+  if (ratio < 0.6) return { color: '#ffaa00', opacity: 0.65 };
+  if (ratio < 0.8) return { color: '#ff6600', opacity: 0.45 };
+  return { color: '#ff3300', opacity: 0.25 };
+}
+
+function _addBlitzortungMarker(lat, lon, timestamp) {
+  if (!radarMap) return;
+  const time = timestamp ? new Date(timestamp) : new Date();
+  const ageMs = Date.now() - time.getTime();
+  if (ageMs >= BLITZ_FADE_MS) return;
+  const { color, opacity } = _blitzortungMarkerStyle(ageMs);
+  const marker = L.circleMarker([lat, lon], {
+    radius: 3,
+    color,
+    weight: 1.5,
+    fillColor: color,
+    fillOpacity: opacity * 0.5,
+    opacity,
+    interactive: false,
+  }).addTo(radarMap);
+  if (radarLabelsLayer) radarLabelsLayer.bringToFront();
+  blitzortungMarkers.push({ marker, time });
+}
+
+function _tickBlitzortungMarkers() {
+  const now = Date.now();
+  blitzortungMarkers = blitzortungMarkers.filter(({ marker, time }) => {
+    const ageMs = now - time.getTime();
+    if (ageMs >= BLITZ_FADE_MS) {
+      marker.remove();
+      return false;
+    }
+    const { color, opacity } = _blitzortungMarkerStyle(ageMs);
+    marker.setStyle({ color, fillColor: color, fillOpacity: opacity * 0.5, opacity });
+    return true;
+  });
 }
 
 

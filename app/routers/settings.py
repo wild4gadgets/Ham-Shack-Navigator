@@ -16,8 +16,8 @@ from dependencies import get_db, get_current_user, require_admin
 from models import User, Setting
 from schemas import (
     LocationSettings, LocationProfile, ApiKeySettings, ThresholdSettings, SmtpSettings,
-    NotificationSettings, KasaSettings, IftttSettings, TelegramSettings, HomeAssistantSettings,
-    DxclusterSettings, FlexRadioSettings, BlitzortungSettings,
+    NotificationSettings, KasaSettings, IftttSettings, TelegramSettings, NtfySettings,
+    HomeAssistantSettings, DxclusterSettings, FlexRadioSettings, BlitzortungSettings,
 )
 import scheduler as sched
 
@@ -358,6 +358,7 @@ async def get_notifications(db: AsyncSession = Depends(get_db), _: User = Depend
         "shutdown_email": True, "digest_email": True,
         "shutdown_ifttt": True, "threshold_ifttt": True,
         "shutdown_telegram": True, "threshold_telegram": True,
+        "shutdown_ntfy": True, "threshold_ntfy": True,
     }
 
 
@@ -433,6 +434,38 @@ async def test_telegram(db: AsyncSession = Depends(get_db), _: User = Depends(re
         return {"detail": "Test message sent"}
     except Exception as e:
         logger.error("Telegram test failed: %s", e)
+        raise HTTPException(status_code=500, detail="Test failed — check server logs")
+
+
+# --- ntfy ---
+@router.get("/ntfy")
+async def get_ntfy(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    data = await _get_setting(db, "ntfy")
+    if not data:
+        return {"server_url": "https://ntfy.sh", "topic": None, "token": None, "enabled": False}
+    if data.get("token"):
+        data["token"] = MASKED
+    return data
+
+
+@router.put("/ntfy")
+async def put_ntfy(body: NtfySettings, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
+    existing = await _get_setting(db, "ntfy") or {}
+    update = body.model_dump()
+    if update.get("token") == MASKED:
+        update["token"] = existing.get("token", "")
+    await _save_setting(db, "ntfy", update)
+    return {"detail": "Saved"}
+
+
+@router.post("/ntfy/test")
+async def test_ntfy(db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
+    from services.ntfy_service import send_ntfy_test
+    try:
+        await send_ntfy_test(db)
+        return {"detail": "Test notification sent"}
+    except Exception as e:
+        logger.error("ntfy test failed: %s", e)
         raise HTTPException(status_code=500, detail="Test failed — check server logs")
 
 

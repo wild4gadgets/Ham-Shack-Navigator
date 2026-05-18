@@ -8,6 +8,7 @@ import { renderSmtpTab } from '../components/settings/smtp.js';
 import { renderNotificationsTab } from '../components/settings/notifications.js';
 import { renderIftttTab } from '../components/settings/ifttt.js';
 import { renderTelegramTab } from '../components/settings/telegram.js';
+import { renderNtfyTab } from '../components/settings/ntfy.js';
 import { renderHomeAssistantTab } from '../components/settings/home-assistant.js';
 import { renderAccountTab } from '../components/settings/account.js';
 import { renderDxclusterTab } from '../components/settings/dxcluster.js';
@@ -44,6 +45,7 @@ const ADMIN_NAV = [
     children: [
       { id: 'smtp',          label: 'SMTP / Email', icon: 'envelope' },
       { id: 'telegram',      label: 'Telegram',     icon: 'telegram' },
+      { id: 'ntfy',          label: 'ntfy',         icon: 'bell-fill' },
       { id: 'notifications', label: 'Toggles',      icon: 'toggles' },
     ],
   },
@@ -72,6 +74,7 @@ const RENDERERS = {
   notifications:    renderNotificationsTab,
   ifttt:            renderIftttTab,
   telegram:         renderTelegramTab,
+  ntfy:             renderNtfyTab,
   'home-assistant': renderHomeAssistantTab,
   dxcluster:        renderDxclusterTab,
   pskreporter:      renderPskReporterTab,

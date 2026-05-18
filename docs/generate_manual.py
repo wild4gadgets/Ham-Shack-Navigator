@@ -175,7 +175,7 @@ add_bullet('Workflow automation — build step-by-step power sequences, schedule
 add_bullet('Solar & propagation data — SFI, A-index, K-index, sunspot count, and MUF estimate')
 add_bullet('DX Cluster band activity heatmap by region')
 add_bullet('PSK Reporter spot map with greyline overlay and band-colored markers')
-add_bullet('Notifications via email, Telegram, and IFTTT')
+add_bullet('Notifications via email, Telegram, IFTTT, and ntfy push notifications')
 add_bullet('Multi-user access with Admin and Read-Only roles')
 add_bullet('Remote webhook API for Stream Deck and mobile app integration')
 
@@ -199,6 +199,7 @@ add_bullet('QRZ.com XML subscription (for callsign lookups)')
 add_bullet('Telegram Bot token (for mobile push notifications)')
 add_bullet('SMTP server or Gmail account (for email notifications)')
 add_bullet('IFTTT account with Webhooks service enabled')
+add_bullet('ntfy account or self-hosted ntfy server (free push notifications; iOS/Android app)')
 add_bullet('TP-Link Kasa smart plugs or power strips on your local network')
 add_bullet('Shelly smart relays (Gen 1 or Gen 2) on your local network')
 add_bullet('FlexRadio 6400 transceiver on your local network')
@@ -395,13 +396,15 @@ add_bullet('Wind gust threshold — mph (or km/h in metric mode). Default: 35 mp
 add_bullet('Lightning distance threshold — miles (or km). Default: 10 miles.')
 add_bullet('Poll interval — seconds between weather checks. Minimum 60. Default: 300.')
 add_bullet('Shutdown cooldown — minutes to wait after shutdown before re-triggering. Default: 30.')
+add_bullet('NWS Severe Weather Alert Notifications — choose None (no notifications), Watch or Warning (notify for any Watch or Warning issued for your location), or Warning only (notify only for the more urgent Warning level). Notifications are sent through all configured channels (email, Telegram, IFTTT, ntfy) and only fire when the active alert set changes, preventing repeated notifications during a long-running event.')
+add_note('NWS alerts are only available for US locations. This setting has no effect outside NWS coverage.')
 
 add_heading('Manual Shutdown', 2)
 add_para('Click Run Shutdown on the dashboard to trigger the Shutdown workflow immediately, regardless of weather conditions or monitoring state.')
 
 # ── 9. Notifications ──────────────────────────────────────────────────────────
 add_heading('9. Notifications', 1)
-add_para('Ham Shack Navigator can notify you through three channels, each independently enabled/disabled via Settings → Notification Toggles.')
+add_para('Ham Shack Navigator can notify you through four channels, each independently enabled/disabled via Settings → Notification Toggles.')
 
 add_heading('Email (SMTP)', 2)
 add_para('Configure in Settings → SMTP / Email: host, port (default 587), username, password, from/to addresses. Use the Test button to verify. Gmail users: use an App Password and smtp.gmail.com on port 587.')
@@ -416,8 +419,16 @@ add_numbered('Paste both values in Settings → Telegram and click Test.')
 add_heading('IFTTT', 2)
 add_para('Configure in Settings → IFTTT Automations: enter your Webhooks key and set event names for shutdown (default: ham_shack_shutdown) and threshold alerts (default: ham_shack_alert). Workflows can also include IFTTT steps with up to 3 value parameters.')
 
+add_heading('ntfy', 2)
+add_para('ntfy is a free, open-source push notification service with iOS and Android apps. No account is required for public topics on ntfy.sh.')
+add_numbered('Install the ntfy app from ntfy.sh on your phone.')
+add_numbered('Choose a unique, hard-to-guess topic name (e.g. my-ham-shack-4729). Anyone who knows the topic can subscribe.')
+add_numbered('Subscribe to your topic in the ntfy app.')
+add_numbered('Enter the topic in Settings → ntfy, enable the integration, and click Test.')
+add_para('Leave the Server URL as https://ntfy.sh unless you self-host ntfy. The optional Token field is only needed for access-controlled topics on a self-hosted server.')
+
 add_heading('Notification Toggles', 2)
-add_para('Settings → Notification Toggles allows independent enable/disable for: shutdown email, daily digest email, shutdown Telegram, threshold alert Telegram, shutdown IFTTT, threshold alert IFTTT.')
+add_para('Settings → Notification Toggles allows independent enable/disable for: shutdown email, daily digest email, shutdown Telegram, threshold alert Telegram, shutdown IFTTT, threshold alert IFTTT, shutdown ntfy, threshold alert ntfy.')
 
 # ── 10. Integrations ──────────────────────────────────────────────────────────
 add_heading('10. Integrations', 1)
@@ -448,7 +459,7 @@ rows_data = [
     ('Station Info', 'Callsign, lat/lon, city, units, Maidenhead grid', 'Supports multi-location profiles'),
     ('Profiles', 'Create, rename, update, delete dashboard layout profiles', 'Available to all users; switch via nav Profile button'),
     ('API Keys', 'OpenWeatherMap, Tomorrow.io, QRZ credentials', 'Required for weather data'),
-    ('Thresholds', 'Wind, lightning distance, poll interval, cooldown', 'Drives automatic shutdown'),
+    ('Thresholds', 'Wind, lightning distance, poll interval, cooldown, NWS alert level', 'Drives automatic shutdown; NWS alert notifications sent on new alerts'),
     ('DX Cluster', 'Region, refresh interval', 'Affects band activity heatmap'),
     ('PSK Reporter', 'Callsign, direction, bands, modes, timespan', 'Persisted dashboard defaults'),
     ('FlexRadio', 'Radio IP, enable toggle', 'FlexRadio 6400 only'),
@@ -460,7 +471,8 @@ rows_data = [
     ('IFTTT', 'Webhook key, event names, enable toggle', 'Also used in workflow steps'),
     ('SMTP / Email', 'Host, port, credentials, from/to, digest time', 'App Password for Gmail'),
     ('Telegram', 'Bot token, chat ID', 'Get bot from @BotFather'),
-    ('Notification Toggles', 'Per-channel, per-event enable/disable', 'Visible to read-only users'),
+    ('ntfy', 'Server URL, topic, optional token', 'Free push notifications; ntfy.sh or self-hosted'),
+    ('Notification Toggles', 'Per-channel, per-event enable/disable', 'Visible to read-only users; covers email, Telegram, IFTTT, ntfy'),
     ('Account', 'Change password, change email (admin)', 'Available to all users'),
 ]
 for row_data in rows_data:

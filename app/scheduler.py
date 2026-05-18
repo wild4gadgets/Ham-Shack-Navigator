@@ -28,6 +28,8 @@ from services.shutdown_service import execute_shutdown
 from services.email_service import send_shutdown_notification, send_digest
 from services.ifttt_service import send_ifttt_shutdown
 from services.telegram_service import send_telegram_shutdown
+from services.ntfy_service import send_ntfy_shutdown
+from services.weather_service import get_cached
 from services.ha_service import push_state_to_ha, post_ha_event
 from ws_manager import manager
 
@@ -36,6 +38,103 @@ logger = logging.getLogger(__name__)
 _scheduler: AsyncIOScheduler | None = None
 _poll_job_id = "monitor_poll"
 _digest_job_id = "daily_digest"
+
+
+def _nws_alert_matches_level(event: str, level: str) -> bool:
+    """Return True if the NWS event type meets or exceeds the configured notification level."""
+    event_lower = event.lower()
+    if level == "warning":
+        return event_lower.endswith("warning")
+    if level == "watch":
+        return event_lower.endswith("warning") or event_lower.endswith("watch")
+    return False
+
+
+async def _check_nws_alert_notifications(db, nws_data: dict | None):
+    """Send notifications for new NWS alerts that meet the configured level threshold."""
+    if not nws_data:
+        return
+
+    thr_result = await db.execute(select(Setting).where(Setting.key == "thresholds"))
+    thr_row = thr_result.scalar_one_or_none()
+    thr = json.loads(thr_row.value) if thr_row else {}
+    level = thr.get("nws_alert_notify", "none")
+    if level == "none":
+        return
+
+    all_alerts = nws_data.get("alerts", [])
+    matching = [a for a in all_alerts if _nws_alert_matches_level(a.get("event", ""), level)]
+    if not matching:
+        return
+
+    # Fingerprint = sorted list of (event, effective) so we only notify when the active set changes
+    fingerprint = json.dumps(
+        sorted((a.get("event", ""), a.get("effective", "")) for a in matching)
+    )
+    notif_result = await db.execute(select(Setting).where(Setting.key == "nws_alert_last_notified"))
+    notif_row = notif_result.scalar_one_or_none()
+    last_fp = json.loads(notif_row.value) if notif_row else None
+    if fingerprint == last_fp:
+        return
+
+    # New alert set — save fingerprint first, then send
+    from models import Setting as SettingModel
+    if notif_row:
+        notif_row.value = json.dumps(fingerprint)
+    else:
+        db.add(SettingModel(key="nws_alert_last_notified", value=json.dumps(fingerprint)))
+    await db.commit()
+
+    notif_cfg_result = await db.execute(select(Setting).where(Setting.key == "notifications"))
+    notif_cfg_row = notif_cfg_result.scalar_one_or_none()
+    notifications = json.loads(notif_cfg_row.value) if notif_cfg_row else {}
+
+    event_names = ", ".join(sorted({a["event"] for a in matching}))
+    area = matching[0].get("areaDesc", "") if matching else ""
+    reason = f"NWS {event_names}"
+    body = f"{reason}\n{area}".strip()
+
+    if notifications.get("shutdown_email", True):
+        try:
+            from services.email_service import _get_smtp_config, _send_email
+            smtp = await _get_smtp_config(db)
+            if smtp and smtp.get("host"):
+                subject = f"[Ham Shack Navigator] NWS Alert — {event_names}"
+                await _send_email(smtp, subject, body)
+                logger.info("NWS alert email sent: %s", event_names)
+        except Exception as e:
+            logger.error("NWS alert email failed: %s", e)
+
+    try:
+        from services.telegram_service import _get_telegram_config, _send_message as _tg_send
+        cfg = await _get_telegram_config(db)
+        if cfg and cfg.get("enabled") and cfg.get("bot_token") and cfg.get("chat_id"):
+            ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            text = f"<b>Ham Shack Navigator — NWS Alert</b>\n&#9888; {event_names}\n{area}\n{ts}"
+            await _tg_send(cfg["bot_token"], cfg["chat_id"], text)
+            logger.info("NWS alert Telegram sent: %s", event_names)
+    except Exception as e:
+        logger.error("NWS alert Telegram failed: %s", e)
+
+    try:
+        from services.ifttt_service import _get_ifttt_config, _post_event
+        cfg = await _get_ifttt_config(db)
+        if cfg and cfg.get("enabled") and cfg.get("webhook_key"):
+            event_name = cfg.get("event_name_threshold", "ham_shack_alert")
+            ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            await _post_event(cfg["webhook_key"], event_name, reason, ts, area[:100])
+            logger.info("NWS alert IFTTT sent: %s", event_names)
+    except Exception as e:
+        logger.error("NWS alert IFTTT failed: %s", e)
+
+    try:
+        from services.ntfy_service import _get_ntfy_config, _publish
+        cfg = await _get_ntfy_config(db)
+        if cfg and cfg.get("enabled") and cfg.get("topic"):
+            await _publish(cfg, f"NWS Alert — {event_names}", body, priority="high", tags="warning,radio")
+            logger.info("NWS alert ntfy sent: %s", event_names)
+    except Exception as e:
+        logger.error("NWS alert ntfy failed: %s", e)
 
 
 async def _monitoring_poll():
@@ -71,6 +170,12 @@ async def _monitoring_poll():
         # Broadcast weather update immediately after fetch so dashboard refreshes
         # regardless of cooldown state or threshold outcome
         await manager.broadcast({"type": "weather_update", "source": "poll"})
+
+        # Check for new NWS alerts and send notifications if threshold is met
+        try:
+            await _check_nws_alert_notifications(db, fetch_results.get("nws_alerts"))
+        except Exception as e:
+            logger.error("NWS alert notification check failed: %s", e)
 
         # Check cooldown
         if await is_in_cooldown(db):
@@ -118,6 +223,7 @@ async def _run_shutdown(reason: str, meta: dict | None = None):
                     await log_event(db, "email_sent", "info", "Shutdown notification email sent")
                 await send_ifttt_shutdown(db, reason, steps, meta)
                 await send_telegram_shutdown(db, reason, steps, meta)
+                await send_ntfy_shutdown(db, reason, steps, meta)
                 await set_last_notification(db)
 
             await push_state_to_ha(db)

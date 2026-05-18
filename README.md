@@ -86,11 +86,12 @@ One of the more visual features is the PSK Reporter integration. Enter your call
 
 ### Notifications
 
-When something important happens — a threshold breach, a shutdown event, or a daily status summary — Ham Shack Navigator can reach you through:
+When something important happens — a threshold breach, a shutdown event, an NWS severe weather alert, or a daily status summary — Ham Shack Navigator can reach you through:
 
 - **Email** (SMTP/Gmail)
 - **Telegram** bot messages
 - **IFTTT** webhooks
+- **ntfy** push notifications (free, self-hostable; iOS/Android app)
 
 ### Multi-User Access with Role-Based Control
 
@@ -121,6 +122,7 @@ Ham Shack Navigator runs as a Docker container on a Raspberry Pi. The backend is
 - Home Assistant instance
 - QRZ.com XML Data subscription (for callsign lookups)
 - Telegram bot (for mobile notifications)
+- ntfy topic (for push notifications — free at ntfy.sh or self-hosted)
 - SMTP server (for email notifications)
 
 ---
@@ -198,6 +200,7 @@ Go to **Settings** and fill in:
 - **Shelly** — add your Shelly relay devices by IP address (optional)
 - **SMTP** — email server settings for notifications (optional)
 - **Telegram** — bot token and chat ID for mobile alerts (optional)
+- **ntfy** — topic name for push notifications (optional)
 
 ---
 

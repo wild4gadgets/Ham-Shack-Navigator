@@ -148,6 +148,7 @@ class ThresholdSettings(BaseModel):
     poll_interval_sec: int = 300
     cooldown_min: int = 30
     log_weather_data: bool = False
+    nws_alert_notify: str = "none"  # none | watch | warning
 
 
 class SmtpSettings(BaseModel):
@@ -168,6 +169,8 @@ class NotificationSettings(BaseModel):
     threshold_ifttt: bool = True
     shutdown_telegram: bool = True
     threshold_telegram: bool = True
+    shutdown_ntfy: bool = True
+    threshold_ntfy: bool = True
 
 
 class IftttSettings(BaseModel):
@@ -181,6 +184,13 @@ class IftttSettings(BaseModel):
 class TelegramSettings(BaseModel):
     bot_token: Optional[str] = None
     chat_id: Optional[str] = None
+    enabled: bool = False
+
+
+class NtfySettings(BaseModel):
+    server_url: str = "https://ntfy.sh"
+    topic: Optional[str] = None
+    token: Optional[str] = None
     enabled: bool = False
 
 

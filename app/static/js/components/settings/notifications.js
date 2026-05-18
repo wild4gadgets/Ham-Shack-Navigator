@@ -73,6 +73,27 @@ export async function renderNotificationsTab(container) {
             </div>
           </div>
 
+          <hr />
+          <h6 class="text-muted mb-3">ntfy</h6>
+          <div class="mb-3">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="notif-ntfy-shutdown" ${data.shutdown_ntfy !== false ? 'checked' : ''} />
+              <label class="form-check-label" for="notif-ntfy-shutdown">
+                <strong>Shutdown ntfy Notification</strong><br>
+                <small class="text-muted">Send ntfy push notification when shutdown is triggered.</small>
+              </label>
+            </div>
+          </div>
+          <div class="mb-3">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="notif-ntfy-threshold" ${data.threshold_ntfy !== false ? 'checked' : ''} />
+              <label class="form-check-label" for="notif-ntfy-threshold">
+                <strong>Threshold Alert ntfy Notification</strong><br>
+                <small class="text-muted">Send ntfy push notification on threshold alerts.</small>
+              </label>
+            </div>
+          </div>
+
           <button type="submit" class="btn btn-primary">Save</button>
         </form>
       </div>
@@ -90,6 +111,8 @@ export async function renderNotificationsTab(container) {
         threshold_ifttt: document.getElementById('notif-ifttt-threshold').checked,
         shutdown_telegram: document.getElementById('notif-tg-shutdown').checked,
         threshold_telegram: document.getElementById('notif-tg-threshold').checked,
+        shutdown_ntfy: document.getElementById('notif-ntfy-shutdown').checked,
+        threshold_ntfy: document.getElementById('notif-ntfy-threshold').checked,
       });
       msg.className = 'alert alert-success';
       msg.textContent = 'Notification settings saved.';

@@ -69,6 +69,7 @@ async def _run_shutdown_bg(reason: str):
     from services.email_service import send_shutdown_notification
     from services.ifttt_service import send_ifttt_shutdown
     from services.telegram_service import send_telegram_shutdown
+    from services.ntfy_service import send_ntfy_shutdown
     from services.ha_service import push_state_to_ha, post_ha_event
     import json
     from sqlalchemy import select
@@ -83,5 +84,6 @@ async def _run_shutdown_bg(reason: str):
             await send_shutdown_notification(db, reason, steps)
         await send_ifttt_shutdown(db, reason, steps)
         await send_telegram_shutdown(db, reason, steps)
+        await send_ntfy_shutdown(db, reason, steps)
         await push_state_to_ha(db)
         await post_ha_event(db, "shutdown", reason)

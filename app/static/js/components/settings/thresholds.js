@@ -37,6 +37,15 @@ export async function renderThresholdsTab(container) {
               <div class="form-text">Wait this long before allowing another shutdown.</div>
             </div>
           </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label">NWS Severe Weather Alert Notifications</label>
+            <select class="form-select" id="nws-alert-notify">
+              <option value="none"    ${(data.nws_alert_notify ?? 'none') === 'none'    ? 'selected' : ''}>None — don't send notifications</option>
+              <option value="watch"   ${(data.nws_alert_notify ?? 'none') === 'watch'   ? 'selected' : ''}>Watch or Warning</option>
+              <option value="warning" ${(data.nws_alert_notify ?? 'none') === 'warning' ? 'selected' : ''}>Warning only</option>
+            </select>
+            <div class="form-text">Send a notification when NWS issues a Watch or Warning for your location. Uses all configured notification channels.</div>
+          </div>
           <div class="row mb-3">
             <div class="col-12">
               <div class="form-check form-switch">
@@ -63,6 +72,7 @@ export async function renderThresholdsTab(container) {
         poll_interval_sec: parseInt(document.getElementById('poll-interval').value),
         cooldown_min: parseInt(document.getElementById('cooldown-min').value),
         log_weather_data: document.getElementById('log-weather-data').checked,
+        nws_alert_notify: document.getElementById('nws-alert-notify').value,
       });
       msg.className = 'alert alert-success';
       msg.textContent = 'Thresholds saved. Poll interval updated.';
