@@ -30,6 +30,7 @@ let pinPollTimer = null;
 let blitzortungFlashTimer = null;
 let blitzortungMarkers = []; // {marker: L.CircleMarker, time: Date}
 let blitzortungCleanupTimer = null;
+let useMetric = false;
 const BLITZ_FADE_MS = 15 * 60 * 1000;
 let flexRadioRefreshTimer = null;
 let solarRefreshTimer = null;
@@ -1126,6 +1127,30 @@ function _measureCwCharsPerLine() {
   return Math.max(20, Math.floor(innerWidth / charWidth));
 }
 
+function _resetLightningTile() {
+  // Clear map markers
+  blitzortungMarkers.forEach(({ marker }) => marker.remove());
+  blitzortungMarkers = [];
+
+  // Reset tile text
+  const lightEl   = document.getElementById('lightning-value');
+  const lightUnit = document.getElementById('lightning-unit');
+  const lightDesc = document.getElementById('lightning-desc');
+  if (lightEl) {
+    lightEl.textContent = 'No lightning detected';
+    lightEl.style.fontSize = '1.5rem';
+    lightEl.style.color = '';
+    if (lightUnit) lightUnit.textContent = '';
+    if (lightDesc) lightDesc.textContent = '';
+  }
+
+  // Hide badge and history
+  const badge = document.getElementById('blitzortung-badge');
+  const hist  = document.getElementById('blitzortung-history');
+  if (badge) badge.style.display = 'none';
+  if (hist)  { hist.style.display = 'none'; hist.innerHTML = ''; }
+}
+
 function _handleBlitzortungStrike(data) {
   if (!document.getElementById('blitzortung-style')) {
     const s = document.createElement('style');
@@ -1163,6 +1188,19 @@ function _handleBlitzortungStrike(data) {
 
   if (data.lat != null && data.lon != null) {
     _addBlitzortungMarker(data.lat, data.lon, data.timestamp);
+  }
+
+  if (data.distance_km != null) {
+    const lightEl   = document.getElementById('lightning-value');
+    const lightUnit = document.getElementById('lightning-unit');
+    const lightDesc = document.getElementById('lightning-desc');
+    if (lightEl) {
+      lightEl.textContent = useMetric ? data.distance_km.toFixed(1) : (data.distance_km * 0.621371).toFixed(1);
+      lightEl.style.fontSize = '';
+      lightEl.style.color = '#ef4444';
+      if (lightUnit) lightUnit.textContent = useMetric ? 'km away' : 'miles away';
+      if (lightDesc) lightDesc.textContent = 'Blitzortung';
+    }
   }
 }
 
@@ -1874,7 +1912,7 @@ async function loadPskSpots() {
 
 async function loadWeather() {
   try {
-    const [current, forecast, realtime, loc, lightning, alertsData, blitzortung] = await Promise.all([
+    const [current, forecast, realtime, loc, lightning, alertsData, blitzortung, blitzStrikes] = await Promise.all([
       apiGet('/weather/current'),
       apiGet('/weather/forecast'),
       apiGet('/weather/realtime'),
@@ -1882,9 +1920,11 @@ async function loadWeather() {
       apiGet('/weather/lightning'),
       apiGet('/weather/alerts').catch(() => ({ alerts: [] })),
       apiGet('/settings/blitzortung').catch(() => ({})),
+      apiGet('/weather/blitzortung').catch(() => null),
     ]);
 
     const metric = (loc.units || 'imperial') === 'metric';
+    useMetric = metric;
 
     if (current.fetched_at) {
       const el = document.getElementById('weather-update-time');
@@ -1973,16 +2013,28 @@ async function loadWeather() {
           if (lightUnit) lightUnit.textContent = metric ? 'km away' : 'miles away';
           if (lightDesc) lightDesc.textContent = lightning.source || '';
         } else {
-          let noLightningText;
-          if (blitzortung?.enabled && blitzortung?.range_km) {
-            noLightningText = `No lightning detected within ${blitzortung.range_km} km`;
+          const bzStrikes = blitzStrikes?.strikes ?? [];
+          if (bzStrikes.length > 0) {
+            const nearest = bzStrikes.reduce((a, b) => a.distance_km < b.distance_km ? a : b);
+            const bKm = nearest.distance_km;
+            lightEl.textContent = metric ? bKm.toFixed(1) : (bKm * 0.621371).toFixed(1);
+            lightEl.style.fontSize = '';
+            lightEl.style.color = '#ef4444';
+            if (lightUnit) lightUnit.textContent = metric ? 'km away' : 'miles away';
+            if (lightDesc) lightDesc.textContent = 'Blitzortung';
           } else {
-            noLightningText = metric ? 'None detected within 400 kilometers' : 'None detected within 250 miles';
+            lightEl.style.color = '';
+            let noLightningText;
+            if (blitzortung?.enabled && blitzortung?.range_km) {
+              noLightningText = `No lightning detected within ${blitzortung.range_km} km`;
+            } else {
+              noLightningText = metric ? 'None detected within 400 kilometers' : 'None detected within 250 miles';
+            }
+            lightEl.textContent = noLightningText;
+            lightEl.style.fontSize = '1.5rem';
+            if (lightUnit) lightUnit.textContent = '';
+            if (lightDesc) lightDesc.textContent = '';
           }
-          lightEl.textContent = noLightningText;
-          lightEl.style.fontSize = '1.5rem';
-          if (lightUnit) lightUnit.textContent = '';
-          if (lightDesc) lightDesc.textContent = '';
         }
       }
     }
@@ -2561,6 +2613,7 @@ async function connectWS() {
     try {
       const msg = JSON.parse(evt.data);
       if (msg.type === 'weather_update') loadWeather();
+      if (msg.type === 'location_changed') _resetLightningTile();
       if (msg.type === 'lightning_strike') _handleBlitzortungStrike(msg.data);
       if (msg.type === 'monitoring_status') loadMonitoringStatus();
       if (msg.type === 'flexradio_update') {

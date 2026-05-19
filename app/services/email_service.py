@@ -125,6 +125,18 @@ Stay safe and 73!
         logger.error("Failed to send digest: %s", e)
 
 
+async def send_lightning_alert(db: AsyncSession, body: str) -> None:
+    smtp = await _get_smtp_config(db)
+    if not smtp or not smtp.get("host") or not smtp.get("to_addr"):
+        return
+    subject = "[Ham Shack Navigator] Lightning Alert — Strike Detected"
+    try:
+        await _send_email(smtp, subject, body)
+    except Exception as e:
+        logger.error("Lightning alert email failed: %s", e)
+        raise
+
+
 async def send_test_email(db: AsyncSession) -> bool:
     smtp = await _get_smtp_config(db)
     if not smtp or not smtp.get("host"):

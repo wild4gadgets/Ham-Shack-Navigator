@@ -49,6 +49,8 @@ export async function renderBlitzortungTab(container) {
     ? geohash4(lat, lon)
     : '(set location first)';
 
+  const chk = (id, val) => val ? 'checked' : '';
+
   container.innerHTML = `
     <div class="card">
       <div class="card-header"><i class="bi bi-lightning-fill me-2"></i>Blitzortung Live Lightning</div>
@@ -61,9 +63,10 @@ export async function renderBlitzortungTab(container) {
         </p>
 
         <form id="bz-form">
+          <!-- Detection -->
           <div class="mb-3 form-check form-switch">
             <input class="form-check-input" type="checkbox" id="bz-enabled"
-              ${data.enabled ? 'checked' : ''}>
+              ${chk('bz-enabled', data.enabled)}>
             <label class="form-check-label" for="bz-enabled" style="color:#fff">
               Enable Blitzortung lightning detection
             </label>
@@ -80,7 +83,7 @@ export async function renderBlitzortungTab(container) {
             </div>
           </div>
 
-          <div class="mb-3">
+          <div class="mb-4">
             <label class="form-label">Home geohash (read-only)</label>
             <input type="text" class="form-control" id="bz-geohash" readonly
               value="${hashDisplay}" style="${INP};opacity:0.7">
@@ -90,19 +93,85 @@ export async function renderBlitzortungTab(container) {
             </div>
           </div>
 
+          <hr style="border-color:#2a2a4a">
+
+          <!-- Notifications -->
+          <h6 class="text-white-50 mb-3">Strike Notifications</h6>
+
+          <div class="mb-3 form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="bz-notify-enabled"
+              ${chk('', data.notify_enabled)}>
+            <label class="form-check-label" for="bz-notify-enabled" style="color:#fff">
+              Send notifications when a strike is detected within the radius
+            </label>
+          </div>
+
+          <div id="bz-notify-options">
+            <div class="mb-3">
+              <label class="form-label">Notification channels</label>
+              <div class="d-flex flex-wrap gap-3">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="bz-notify-ntfy"
+                    ${chk('', data.notify_ntfy)}>
+                  <label class="form-check-label" for="bz-notify-ntfy">ntfy</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="bz-notify-telegram"
+                    ${chk('', data.notify_telegram)}>
+                  <label class="form-check-label" for="bz-notify-telegram">Telegram</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="bz-notify-ifttt"
+                    ${chk('', data.notify_ifttt)}>
+                  <label class="form-check-label" for="bz-notify-ifttt">IFTTT</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="bz-notify-email"
+                    ${chk('', data.notify_email)}>
+                  <label class="form-check-label" for="bz-notify-email">Email</label>
+                </div>
+              </div>
+              <div class="form-text">Each channel must also be configured and enabled in its own settings tab.</div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label" for="bz-notify-interval">Minimum notification interval (minutes)</label>
+              <input type="number" class="form-control" id="bz-notify-interval" min="1" max="1440"
+                value="${data.notify_interval_min ?? 15}" style="${INP};max-width:120px">
+              <div class="form-text">
+                Notifications will not be sent more often than this interval, even during continuous activity.
+              </div>
+            </div>
+          </div>
+
           <button type="submit" class="btn btn-primary">Save</button>
         </form>
       </div>
     </div>
   `;
 
+  // Toggle notify options visibility
+  const notifyEnabled = document.getElementById('bz-notify-enabled');
+  const notifyOptions = document.getElementById('bz-notify-options');
+  function syncNotifyOptions() {
+    notifyOptions.style.display = notifyEnabled.checked ? '' : 'none';
+  }
+  syncNotifyOptions();
+  notifyEnabled.addEventListener('change', syncNotifyOptions);
+
   document.getElementById('bz-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const msg = document.getElementById('bz-msg');
     try {
       await apiPut('/settings/blitzortung', {
-        enabled: document.getElementById('bz-enabled').checked,
-        range_km: parseInt(document.getElementById('bz-range').value, 10),
+        enabled:              document.getElementById('bz-enabled').checked,
+        range_km:             parseInt(document.getElementById('bz-range').value, 10),
+        notify_enabled:       document.getElementById('bz-notify-enabled').checked,
+        notify_ntfy:          document.getElementById('bz-notify-ntfy').checked,
+        notify_telegram:      document.getElementById('bz-notify-telegram').checked,
+        notify_ifttt:         document.getElementById('bz-notify-ifttt').checked,
+        notify_email:         document.getElementById('bz-notify-email').checked,
+        notify_interval_min:  parseInt(document.getElementById('bz-notify-interval').value, 10),
       });
       msg.className = 'alert alert-success';
       msg.textContent = 'Saved. Service restarted with new settings.';

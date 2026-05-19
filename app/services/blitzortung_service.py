@@ -45,6 +45,16 @@ _lat: float = 0.0
 _lon: float = 0.0
 _range_km: float = 40.0
 
+# --- Notification state ---
+_notify_enabled: bool = False
+_notify_ntfy: bool = False
+_notify_telegram: bool = False
+_notify_ifttt: bool = False
+_notify_email: bool = False
+_notify_interval_min: int = 15
+_last_notified_at: Optional[datetime] = None
+_notify_lock: threading.Lock = threading.Lock()
+
 
 # --- Geohash / distance helpers ---
 
@@ -79,6 +89,80 @@ def _bearing_deg(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return (math.degrees(math.atan2(x, y)) + 360) % 360
 
 
+_CARDINALS = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"]
+
+def _cardinal(deg: float) -> str:
+    return _CARDINALS[round(deg / 22.5) % 16]
+
+
+async def _send_lightning_notification(record: dict) -> None:
+    from database import AsyncSessionLocal
+    km = record["distance_km"]
+    mi = km * 0.621371
+    brng = record["bearing_deg"]
+    card = _cardinal(brng)
+    ts = datetime.fromisoformat(record["timestamp"]).strftime("%Y-%m-%d %H:%M:%S UTC")
+    lat, lon = record["lat"], record["lon"]
+
+    plain = (
+        f"Lightning strike detected {km:.1f} km ({mi:.1f} mi) away\n"
+        f"Bearing: {brng:.0f}° ({card})\n"
+        f"Location: {lat:.4f}, {lon:.4f}\n"
+        f"Time: {ts}"
+    )
+    html = (
+        f"<b>&#9889; Lightning Strike Detected</b>\n"
+        f"Distance: {km:.1f} km ({mi:.1f} mi)\n"
+        f"Bearing: {brng:.0f}° ({card})\n"
+        f"Location: {lat:.4f}, {lon:.4f}\n"
+        f"Time: {ts}"
+    )
+
+    async with AsyncSessionLocal() as db:
+        if _notify_ntfy:
+            try:
+                from services.ntfy_service import _get_ntfy_config, _publish
+                cfg = await _get_ntfy_config(db)
+                if cfg and cfg.get("enabled") and cfg.get("topic"):
+                    await _publish(cfg, "Ham Shack Navigator — Lightning Alert", plain,
+                                   priority="high", tags="zap,warning")
+                    logger.info("Blitzortung ntfy notification sent")
+            except Exception as exc:
+                logger.error("Blitzortung ntfy notification failed: %s", exc)
+
+        if _notify_telegram:
+            try:
+                from services.telegram_service import _get_telegram_config, _send_message
+                cfg = await _get_telegram_config(db)
+                if cfg and cfg.get("enabled") and cfg.get("bot_token") and cfg.get("chat_id"):
+                    await _send_message(cfg["bot_token"], cfg["chat_id"], html)
+                    logger.info("Blitzortung Telegram notification sent")
+            except Exception as exc:
+                logger.error("Blitzortung Telegram notification failed: %s", exc)
+
+        if _notify_ifttt:
+            try:
+                from services.ifttt_service import _get_ifttt_config, _post_event
+                cfg = await _get_ifttt_config(db)
+                if cfg and cfg.get("enabled") and cfg.get("webhook_key"):
+                    event = cfg.get("event_name_threshold", "ham_shack_alert")
+                    v1 = f"{km:.1f} km ({mi:.1f} mi)"
+                    v2 = f"{brng:.0f}° ({card})"
+                    v3 = f"{lat:.4f}, {lon:.4f} at {ts}"
+                    await _post_event(cfg["webhook_key"], event, v1, v2, v3)
+                    logger.info("Blitzortung IFTTT notification sent")
+            except Exception as exc:
+                logger.error("Blitzortung IFTTT notification failed: %s", exc)
+
+        if _notify_email:
+            try:
+                from services.email_service import send_lightning_alert
+                await send_lightning_alert(db, plain)
+                logger.info("Blitzortung email notification sent")
+            except Exception as exc:
+                logger.error("Blitzortung email notification failed: %s", exc)
+
+
 def _resolve_ipv4(hostname: str, port: int) -> str:
     results = socket.getaddrinfo(hostname, port, socket.AF_INET, socket.SOCK_STREAM)
     if not results:
@@ -94,7 +178,7 @@ def _on_connect(client: mqtt.Client, userdata: dict, flags, rc, properties=None)
         return
     cells = _get_cells(_lat, _lon)
     for cell in cells:
-        client.subscribe(f"blitzortung/1.1/{cell}/#", qos=0)
+        client.subscribe(f"blitzortung/1.1/{'/'.join(cell)}/#", qos=0)
     logger.info("Blitzortung MQTT connected; subscribed to %d cells centred on %s",
                 len(cells), cells[0])
     userdata["cells"] = cells
@@ -135,6 +219,15 @@ def _on_message(client: mqtt.Client, userdata: dict, msg: mqtt.MQTTMessage) -> N
         payload = {"type": "lightning_strike", "data": record}
         asyncio.run_coroutine_threadsafe(manager.broadcast(payload), _loop)
 
+    if _notify_enabled and _loop is not None:
+        with _notify_lock:
+            global _last_notified_at
+            now = datetime.now(timezone.utc)
+            elapsed_min = (now - _last_notified_at).total_seconds() / 60 if _last_notified_at else float("inf")
+            if elapsed_min >= _notify_interval_min:
+                _last_notified_at = now
+                asyncio.run_coroutine_threadsafe(_send_lightning_notification(record), _loop)
+
 
 # --- MQTT thread ---
 
@@ -160,9 +253,20 @@ def _run_mqtt() -> None:
 
 # --- Public API ---
 
-def start(lat: float, lon: float, range_km: float) -> None:
+def start(
+    lat: float,
+    lon: float,
+    range_km: float,
+    notify_enabled: bool = False,
+    notify_ntfy: bool = False,
+    notify_telegram: bool = False,
+    notify_ifttt: bool = False,
+    notify_email: bool = False,
+    notify_interval_min: int = 15,
+) -> None:
     """Start the MQTT background thread. Must be called from a running asyncio context."""
     global _thread, _lat, _lon, _range_km, _loop
+    global _notify_enabled, _notify_ntfy, _notify_telegram, _notify_ifttt, _notify_email, _notify_interval_min, _last_notified_at
 
     if is_running():
         stop()
@@ -170,6 +274,15 @@ def start(lat: float, lon: float, range_km: float) -> None:
     _lat = lat
     _lon = lon
     _range_km = range_km
+    _notify_enabled = notify_enabled
+    _notify_ntfy = notify_ntfy
+    _notify_telegram = notify_telegram
+    _notify_ifttt = notify_ifttt
+    _notify_email = notify_email
+    _notify_interval_min = notify_interval_min
+    _last_notified_at = None
+    with _strikes_lock:
+        _recent_strikes.clear()
     _stop_event.clear()
 
     try:

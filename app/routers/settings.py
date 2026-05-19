@@ -7,6 +7,7 @@ from urllib.parse import quote as _quote
 
 import aiohttp as _aiohttp
 from fastapi import APIRouter, Depends, HTTPException, Query
+from ws_manager import manager as _ws_manager
 
 logger = logging.getLogger(__name__)
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -117,7 +118,16 @@ async def _restart_blitzortung_if_enabled(db: AsyncSession) -> None:
     if lat is None or lon is None:
         logger.warning("Blitzortung restart skipped: no location configured")
         return
-    blitzortung_service.start(float(lat), float(lon), float(bz_data.get("range_km", 40)))
+    blitzortung_service.start(
+        float(lat), float(lon),
+        float(bz_data.get("range_km", 40)),
+        notify_enabled=bz_data.get("notify_enabled", False),
+        notify_ntfy=bz_data.get("notify_ntfy", False),
+        notify_telegram=bz_data.get("notify_telegram", False),
+        notify_ifttt=bz_data.get("notify_ifttt", False),
+        notify_email=bz_data.get("notify_email", False),
+        notify_interval_min=int(bz_data.get("notify_interval_min", 15)),
+    )
 
 
 # --- Location ---
@@ -130,6 +140,7 @@ async def get_location(db: AsyncSession = Depends(get_db), _: User = Depends(get
 async def put_location(body: LocationSettings, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     await _save_setting(db, "location", body.model_dump())
     await _restart_blitzortung_if_enabled(db)
+    await _ws_manager.broadcast({"type": "location_changed"})
     return {"detail": "Saved"}
 
 
@@ -274,6 +285,7 @@ async def activate_location_profile(
             location["active_profile_id"] = profile_id
             await _save_setting(db, "location", location)
             await _restart_blitzortung_if_enabled(db)
+            await _ws_manager.broadcast({"type": "location_changed"})
             return {"detail": "Activated"}
     raise HTTPException(status_code=404, detail="Profile not found")
 

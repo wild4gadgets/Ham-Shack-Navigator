@@ -249,12 +249,25 @@ class FlexRadioSettings(BaseModel):
 class BlitzortungSettings(BaseModel):
     enabled: bool = False
     range_km: int = 40
+    notify_enabled: bool = False
+    notify_ntfy: bool = False
+    notify_telegram: bool = False
+    notify_ifttt: bool = False
+    notify_email: bool = False
+    notify_interval_min: int = 15
 
     @field_validator("range_km")
     @classmethod
     def range_must_be_positive(cls, v: int) -> int:
         if v < 1:
             raise ValueError("range_km must be >= 1")
+        return v
+
+    @field_validator("notify_interval_min")
+    @classmethod
+    def interval_must_be_positive(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("notify_interval_min must be >= 1")
         return v
 
 
