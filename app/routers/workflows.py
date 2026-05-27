@@ -20,10 +20,39 @@ from ws_manager import manager
 router = APIRouter(prefix="/workflows", tags=["workflows"])
 
 
+def _step_summary(step: dict, i: int) -> str:
+    t = step["type"]
+    if t == "pause":
+        desc = step.get("description")
+        base = f"step {i}: pause {step['delay_after_sec']}s"
+        return f"{base} ({desc})" if desc else base
+    if t in ("kasa", "shelly"):
+        device = step.get("device_name") or step["ip_address"]
+        label = (step.get("port_label") or step.get("channel_label")) or (
+            f"port {step['port_index']}" if t == "kasa" else f"ch {step['channel_index']}"
+        )
+        return f"step {i}: {step['action'].upper()} {device} / {label} ({t})"
+    if t == "ifttt":
+        return f"step {i}: IFTTT '{step['event_name']}'"
+    return f"step {i}: {t}"
+
+
 async def _execute_workflow(workflow_id: int, workflow_name: str, is_system: bool, steps: list[dict]):
     """Run workflow steps in the background and broadcast completion via WebSocket."""
+    total = len(steps)
+    async with AsyncSessionLocal() as db:
+        await log_event(db, "workflow_started", "info",
+            f"Workflow '{workflow_name}' started ({total} step{'s' if total != 1 else ''})",
+            {"workflow_id": workflow_id, "workflow_name": workflow_name, "step_count": total})
+
     error = None
     for i, step in enumerate(steps, start=1):
+        summary = _step_summary(step, i)
+        async with AsyncSessionLocal() as db:
+            await log_event(db, "workflow_step_started", "info",
+                f"Workflow '{workflow_name}' — {summary}",
+                {"workflow_id": workflow_id, "workflow_name": workflow_name,
+                 "step": i, "step_type": step["type"]})
         try:
             if step["type"] == "pause":
                 await asyncio.sleep(step["delay_after_sec"])
@@ -42,9 +71,6 @@ async def _execute_workflow(workflow_id: int, workflow_name: str, is_system: boo
             elif step["type"] == "ifttt":
                 async with AsyncSessionLocal() as db:
                     cfg = await ifttt_service._get_ifttt_config(db)
-                    await log_event(db, "ifttt_step_started", "info",
-                        f"IFTTT event '{step['event_name']}' firing (workflow '{workflow_name}' step {i})",
-                        {"workflow_id": workflow_id, "workflow_name": workflow_name, "event_name": step["event_name"]})
                 if not cfg or not cfg.get("webhook_key"):
                     raise RuntimeError("IFTTT not configured (no webhook key)")
                 await ifttt_service._post_event(
@@ -54,20 +80,19 @@ async def _execute_workflow(workflow_id: int, workflow_name: str, is_system: boo
                     step.get("value2", ""),
                     step.get("value3", ""),
                 )
-                async with AsyncSessionLocal() as db:
-                    await log_event(db, "ifttt_step_completed", "info",
-                        f"IFTTT event '{step['event_name']}' sent successfully (workflow '{workflow_name}')",
-                        {"workflow_id": workflow_id, "workflow_name": workflow_name, "event_name": step["event_name"]})
                 if step["delay_after_sec"] > 0:
                     await asyncio.sleep(step["delay_after_sec"])
+            async with AsyncSessionLocal() as db:
+                await log_event(db, "workflow_step_completed", "info",
+                    f"Workflow '{workflow_name}' — {summary}: OK",
+                    {"workflow_id": workflow_id, "workflow_name": workflow_name, "step": i})
         except Exception as e:
             error = f"Step {i} failed: {e}"
-            if step["type"] == "ifttt":
-                async with AsyncSessionLocal() as db:
-                    await log_event(db, "ifttt_step_failed", "warning",
-                        f"IFTTT event '{step.get('event_name', '?')}' failed in workflow '{workflow_name}': {e}",
-                        {"workflow_id": workflow_id, "workflow_name": workflow_name,
-                         "event_name": step.get("event_name"), "error": str(e)})
+            async with AsyncSessionLocal() as db:
+                await log_event(db, "workflow_step_failed", "warning",
+                    f"Workflow '{workflow_name}' — {summary}: FAILED — {e}",
+                    {"workflow_id": workflow_id, "workflow_name": workflow_name,
+                     "step": i, "error": str(e)})
             break
 
     async with AsyncSessionLocal() as db:
@@ -381,7 +406,11 @@ async def run_workflow(
     steps_data = []
     for step in steps:
         if step.action == "pause":
-            steps_data.append({"type": "pause", "delay_after_sec": step.delay_after_sec})
+            steps_data.append({
+                "type": "pause",
+                "delay_after_sec": step.delay_after_sec,
+                "description": step.description or "",
+            })
         elif step.action == "ifttt":
             steps_data.append({
                 "type": "ifttt",
@@ -399,6 +428,8 @@ async def run_workflow(
                 "ip_address": step.kasa_port.device.ip_address,
                 "device_type": step.kasa_port.device.device_type,
                 "port_index": step.kasa_port.port_index,
+                "device_name": step.kasa_port.device.name,
+                "port_label": step.kasa_port.label or "",
             })
         elif step.shelly_channel_id:
             steps_data.append({
@@ -408,11 +439,10 @@ async def run_workflow(
                 "ip_address": step.shelly_channel.device.ip_address,
                 "channel_index": step.shelly_channel.channel_index,
                 "generation": step.shelly_channel.device.generation,
+                "device_name": step.shelly_channel.device.name,
+                "channel_label": step.shelly_channel.label or "",
             })
 
-    await log_event(db, "workflow_started", "info",
-        f"Workflow '{wf.name}' started ({len(steps_data)} steps)",
-        {"workflow_id": workflow_id, "workflow_name": wf.name, "step_count": len(steps_data)})
     background_tasks.add_task(_execute_workflow, workflow_id, wf.name, wf.is_system, steps_data)
     return {"running": True}
 
