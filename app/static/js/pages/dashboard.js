@@ -31,6 +31,7 @@ let blitzortungFlashTimer = null;
 let blitzortungMarkers = []; // {marker: L.CircleMarker, time: Date}
 let blitzortungCleanupTimer = null;
 let useMetric = false;
+let _nearestLightningKm = null;
 const BLITZ_FADE_MS = 15 * 60 * 1000;
 let flexRadioRefreshTimer = null;
 let solarRefreshTimer = null;
@@ -75,6 +76,7 @@ export async function renderDashboard(container) {
           <div class="card-header monitoring-header d-flex align-items-center gap-2 flex-wrap">
             <span class="me-1"><i class="bi bi-shield-check me-2"></i>Monitoring</span>
             <div id="monitoring-status-area"><span class="text-muted">Loading...</span></div>
+            <div id="monitoring-lightning-badge" style="display:none"></div>
             <div id="dashboard-pins" class="d-flex flex-wrap gap-1 align-items-center"></div>
             <div class="ms-auto d-flex align-items-center gap-2">
               <button id="btn-system-toggle" class="btn btn-sm btn-secondary" disabled>...</button>
@@ -1147,6 +1149,20 @@ function _measureCwCharsPerLine() {
   return Math.max(20, Math.floor(innerWidth / charWidth));
 }
 
+function _updateLightningBannerBadge(nearestKm) {
+  const badge = document.getElementById('monitoring-lightning-badge');
+  if (!badge) return;
+  if (nearestKm == null) {
+    badge.style.display = 'none';
+    badge.innerHTML = '';
+    return;
+  }
+  const distVal = useMetric ? nearestKm.toFixed(1) : (nearestKm * 0.621371).toFixed(1);
+  const distUnit = useMetric ? 'km' : 'mi';
+  badge.innerHTML = `<span class="badge bg-warning text-dark fw-bold"><i class="bi bi-lightning-fill me-1"></i>LIGHTNING ${distVal} ${distUnit}</span>`;
+  badge.style.display = '';
+}
+
 function _resetLightningTile() {
   // Clear map markers
   blitzortungMarkers.forEach(({ marker }) => marker.remove());
@@ -1169,6 +1185,9 @@ function _resetLightningTile() {
   const hist  = document.getElementById('blitzortung-history');
   if (badge) badge.style.display = 'none';
   if (hist)  { hist.style.display = 'none'; hist.innerHTML = ''; }
+
+  _nearestLightningKm = null;
+  _updateLightningBannerBadge(null);
 }
 
 function _handleBlitzortungStrike(data) {
@@ -1214,6 +1233,11 @@ function _handleBlitzortungStrike(data) {
   }
 
   if (data.distance_km != null) {
+    if (_nearestLightningKm == null || data.distance_km < _nearestLightningKm) {
+      _nearestLightningKm = data.distance_km;
+    }
+    _updateLightningBannerBadge(_nearestLightningKm);
+
     const lightEl   = document.getElementById('lightning-value');
     const lightUnit = document.getElementById('lightning-unit');
     const lightDesc = document.getElementById('lightning-desc');
@@ -2024,6 +2048,17 @@ async function loadWeather() {
 
     // ── Lightning ──
     {
+      // Banner badge always reflects Blitzortung nearest strike regardless of which
+      // source the lightning tile displays.
+      const bzStrikes = blitzStrikes?.strikes ?? [];
+      if (bzStrikes.length > 0) {
+        const nearest = bzStrikes.reduce((a, b) => a.distance_km < b.distance_km ? a : b);
+        _nearestLightningKm = nearest.distance_km;
+      } else {
+        _nearestLightningKm = null;
+      }
+      _updateLightningBannerBadge(_nearestLightningKm);
+
       const lightEl   = document.getElementById('lightning-value');
       const lightUnit = document.getElementById('lightning-unit');
       const lightDesc = document.getElementById('lightning-desc');
@@ -2036,10 +2071,8 @@ async function loadWeather() {
           if (lightUnit) lightUnit.textContent = metric ? 'km away' : 'miles away';
           if (lightDesc) lightDesc.textContent = lightning.source || '';
         } else {
-          const bzStrikes = blitzStrikes?.strikes ?? [];
           if (bzStrikes.length > 0) {
-            const nearest = bzStrikes.reduce((a, b) => a.distance_km < b.distance_km ? a : b);
-            const bKm = nearest.distance_km;
+            const bKm = _nearestLightningKm;
             lightEl.textContent = metric ? bKm.toFixed(1) : (bKm * 0.621371).toFixed(1);
             lightEl.style.fontSize = '';
             lightEl.style.color = '#ef4444';
