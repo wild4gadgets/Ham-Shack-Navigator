@@ -91,6 +91,7 @@ export async function renderDashboard(container) {
           </div>
           <div class="card-body d-flex align-items-center flex-wrap gap-2 py-2">
             <div id="flexradio-status" class="d-flex flex-wrap align-items-center gap-1"></div>
+            <span id="location-profile-badge" class="text-white" style="font-size:0.8rem"></span>
             <div class="ms-auto"><small id="weather-update-time" class="text-white-50"></small></div>
           </div>
         </div>
@@ -935,7 +936,7 @@ async function loadSystemState() {
 
 async function loadAll() {
   await loadFlexSettings();
-  await Promise.all([loadMonitoringStatus(), loadFlexRadioStatus(), loadWeather(), loadRadar(), loadPins(), loadSolarData(), loadSystemState(), loadDxCluster(), initPskTile()]);
+  await Promise.all([loadMonitoringStatus(), loadFlexRadioStatus(), loadWeather(), loadRadar(), loadPins(), loadSolarData(), loadSystemState(), loadDxCluster(), initPskTile(), loadLocationProfile()]);
   if (flexRadioRefreshTimer) clearInterval(flexRadioRefreshTimer);
   flexRadioRefreshTimer = setInterval(() => { if (!destroyed) loadFlexRadioStatus(); }, 5000);
   if (solarRefreshTimer) clearInterval(solarRefreshTimer);
@@ -977,6 +978,25 @@ async function loadMonitoringStatus() {
     }
   } catch (e) {
     console.error('Status load failed:', e);
+  }
+}
+
+async function loadLocationProfile() {
+  const el = document.getElementById('location-profile-badge');
+  if (!el) return;
+  try {
+    const [loc, profiles] = await Promise.all([
+      apiGet('/settings/location'),
+      apiGet('/settings/location/profiles'),
+    ]);
+    const activeId = loc?.active_profile_id;
+    const profile = Array.isArray(profiles) && activeId
+      ? profiles.find(p => p.id === activeId)
+      : null;
+    const name = profile?.name || loc?.name || '';
+    el.textContent = name ? `• ${name}` : '';
+  } catch {
+    el.textContent = '';
   }
 }
 
@@ -1163,19 +1183,22 @@ function _handleBlitzortungStrike(data) {
   const hist  = document.getElementById('blitzortung-history');
   if (!badge || !text) return;
 
-  const km  = data.distance_km != null ? data.distance_km.toFixed(1) : '?';
+  const distVal  = data.distance_km != null
+    ? (useMetric ? data.distance_km.toFixed(1) : (data.distance_km * 0.621371).toFixed(1))
+    : '?';
+  const distUnit = useMetric ? 'km' : 'mi';
   const brng = data.bearing_deg != null ? ` ${Math.round(data.bearing_deg)}°` : '';
   const ts  = data.timestamp
     ? new Date(data.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     : '';
 
-  text.textContent = `Live: ${km} km${brng}  ${ts}`;
+  text.textContent = `Live: ${distVal} ${distUnit}${brng}  ${ts}`;
   badge.style.display = '';
 
   if (hist) {
     hist.style.display = '';
     const row = document.createElement('div');
-    row.textContent = `${ts}  ${km} km${brng}`;
+    row.textContent = `${ts}  ${distVal} ${distUnit}${brng}`;
     hist.insertBefore(row, hist.firstChild);
     while (hist.children.length > 5) hist.removeChild(hist.lastChild);
   }
@@ -2026,7 +2049,9 @@ async function loadWeather() {
             lightEl.style.color = '';
             let noLightningText;
             if (blitzortung?.enabled && blitzortung?.range_km) {
-              noLightningText = `No lightning detected within ${blitzortung.range_km} km`;
+              const rangeVal  = metric ? blitzortung.range_km : Math.round(blitzortung.range_km * 0.621371);
+              const rangeUnit = metric ? 'km' : 'miles';
+              noLightningText = `No lightning detected within ${rangeVal} ${rangeUnit}`;
             } else {
               noLightningText = metric ? 'None detected within 400 kilometers' : 'None detected within 250 miles';
             }
@@ -2613,7 +2638,7 @@ async function connectWS() {
     try {
       const msg = JSON.parse(evt.data);
       if (msg.type === 'weather_update') loadWeather();
-      if (msg.type === 'location_changed') _resetLightningTile();
+      if (msg.type === 'location_changed') { _resetLightningTile(); loadLocationProfile(); }
       if (msg.type === 'lightning_strike') _handleBlitzortungStrike(msg.data);
       if (msg.type === 'monitoring_status') loadMonitoringStatus();
       if (msg.type === 'flexradio_update') {

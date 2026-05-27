@@ -16,7 +16,7 @@ import math
 import socket
 import threading
 from collections import deque
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import pygeohash as gh
@@ -317,9 +317,12 @@ def is_running() -> bool:
     return _thread is not None and _thread.is_alive()
 
 
+_STRIKE_MAX_AGE = timedelta(hours=1)
+
 def get_recent_strikes() -> list[dict]:
+    cutoff = datetime.now(timezone.utc) - _STRIKE_MAX_AGE
     with _strikes_lock:
-        return list(_recent_strikes)
+        return [s for s in _recent_strikes if datetime.fromisoformat(s["timestamp"]) > cutoff]
 
 
 def get_home_geohash(lat: float, lon: float) -> str:
