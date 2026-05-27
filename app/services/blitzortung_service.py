@@ -95,6 +95,26 @@ def _cardinal(deg: float) -> str:
     return _CARDINALS[round(deg / 22.5) % 16]
 
 
+async def _log_lightning_event(record: dict) -> None:
+    from database import AsyncSessionLocal
+    from services.monitoring_service import log_event
+    km = record["distance_km"]
+    mi = km * 0.621371
+    brng = record["bearing_deg"]
+    card = _cardinal(brng)
+    meta = {
+        "distance_km": km,
+        "distance_mi": round(mi, 2),
+        "bearing_deg": brng,
+        "bearing_cardinal": card,
+        "lat": record["lat"],
+        "lon": record["lon"],
+    }
+    msg = f"Lightning strike {km:.1f} km ({mi:.1f} mi) away, bearing {brng:.0f}° ({card})"
+    async with AsyncSessionLocal() as db:
+        await log_event(db, "lightning_strike", "warning", msg, meta)
+
+
 async def _send_lightning_notification(record: dict) -> None:
     from database import AsyncSessionLocal
     km = record["distance_km"]
@@ -218,6 +238,7 @@ def _on_message(client: mqtt.Client, userdata: dict, msg: mqtt.MQTTMessage) -> N
     if _loop is not None:
         payload = {"type": "lightning_strike", "data": record}
         asyncio.run_coroutine_threadsafe(manager.broadcast(payload), _loop)
+        asyncio.run_coroutine_threadsafe(_log_lightning_event(record), _loop)
 
     if _notify_enabled and _loop is not None:
         with _notify_lock:
