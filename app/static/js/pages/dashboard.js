@@ -963,7 +963,7 @@ async function loadMonitoringStatus() {
       style="${canToggle ? 'cursor:pointer' : ''}" title="${canToggle ? `Click to ${s.enabled ? 'stop' : 'start'} monitoring` : 'Admin access required'}">Monitoring ${s.enabled ? 'On' : 'Off'}</span>`;
     html += `<span id="monitoring-lightning-badge" style="display:none"></span>`;
     if (s.in_cooldown) {
-      html += `<span class="badge bg-info me-2">Cooldown: ${s.cooldown_remaining_min.toFixed(0)} min remaining</span>`;
+      html += `<span class="badge bg-info ms-1 me-2">Cooldown: ${s.cooldown_remaining_min.toFixed(0)} min remaining</span>`;
     }
     if (s.last_shutdown_at) {
       html += `<small class="text-muted ms-3">Last shutdown: ${new Date(s.last_shutdown_at).toLocaleString()}</small>`;
