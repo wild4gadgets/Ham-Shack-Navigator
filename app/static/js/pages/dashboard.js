@@ -32,6 +32,7 @@ let blitzortungMarkers = []; // {marker: L.CircleMarker, time: Date}
 let blitzortungCleanupTimer = null;
 let useMetric = false;
 let _nearestLightningKm = null;
+let _nearestLightningAt = 0; // epoch ms of last WS-sourced update
 const BLITZ_FADE_MS = 15 * 60 * 1000;
 let flexRadioRefreshTimer = null;
 let solarRefreshTimer = null;
@@ -1187,6 +1188,7 @@ function _resetLightningTile() {
   if (hist)  { hist.style.display = 'none'; hist.innerHTML = ''; }
 
   _nearestLightningKm = null;
+  _nearestLightningAt = 0;
   _updateLightningBannerBadge(null);
 }
 
@@ -1228,14 +1230,11 @@ function _handleBlitzortungStrike(data) {
   clearTimeout(blitzortungFlashTimer);
   blitzortungFlashTimer = setTimeout(() => badge.classList.remove('blitzortung-flash'), 2000);
 
-  if (data.lat != null && data.lon != null) {
-    _addBlitzortungMarker(data.lat, data.lon, data.timestamp);
-  }
-
   if (data.distance_km != null) {
     if (_nearestLightningKm == null || data.distance_km < _nearestLightningKm) {
       _nearestLightningKm = data.distance_km;
     }
+    _nearestLightningAt = Date.now();
     _updateLightningBannerBadge(_nearestLightningKm);
 
     const lightEl   = document.getElementById('lightning-value');
@@ -1248,6 +1247,10 @@ function _handleBlitzortungStrike(data) {
       if (lightUnit) lightUnit.textContent = useMetric ? 'km away' : 'miles away';
       if (lightDesc) lightDesc.textContent = 'Blitzortung';
     }
+  }
+
+  if (data.lat != null && data.lon != null) {
+    _addBlitzortungMarker(data.lat, data.lon, data.timestamp);
   }
 }
 
@@ -2054,7 +2057,10 @@ async function loadWeather() {
       if (bzStrikes.length > 0) {
         const nearest = bzStrikes.reduce((a, b) => a.distance_km < b.distance_km ? a : b);
         _nearestLightningKm = nearest.distance_km;
-      } else {
+        _nearestLightningAt = Date.now();
+      } else if (!_nearestLightningAt || Date.now() - _nearestLightningAt >= 70 * 60 * 1000) {
+        // Only clear if there's no recent WS-sourced strike (guards against race where REST
+        // call was in-flight before the strike arrived but resolves after the WS message).
         _nearestLightningKm = null;
       }
       _updateLightningBannerBadge(_nearestLightningKm);
