@@ -1158,9 +1158,7 @@ function _updateLightningBannerBadge(nearestKm) {
     badge.innerHTML = '';
     return;
   }
-  const distVal = useMetric ? nearestKm.toFixed(1) : (nearestKm * 0.621371).toFixed(1);
-  const distUnit = useMetric ? 'km' : 'mi';
-  badge.innerHTML = `<span class="badge bg-warning text-dark fw-bold"><i class="bi bi-lightning-fill me-1"></i>LIGHTNING ${distVal} ${distUnit}</span>`;
+  badge.innerHTML = `<span class="badge bg-warning text-dark fw-bold"><i class="bi bi-lightning-fill me-1"></i>Lightning</span>`;
   badge.style.display = '';
 }
 
