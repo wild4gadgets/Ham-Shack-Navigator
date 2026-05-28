@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 import aiohttp
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete
 
 from models import WeatherCache, Setting
 
@@ -53,6 +53,24 @@ async def _save_cache(db: AsyncSession, source: str, data: dict):
     else:
         cache = WeatherCache(source=source, data=json.dumps(data), fetched_at=now)
         db.add(cache)
+    await db.commit()
+
+
+_LOCATION_CACHE_KEYS = [
+    "nws_alerts",
+    "owm_current",
+    "owm_forecast",
+    "tomorrow_realtime",
+    "accuweather_forecast",
+    "accuweather_location_key",
+]
+
+
+async def clear_location_caches(db: AsyncSession) -> None:
+    """Delete all weather cache rows that are tied to a specific location."""
+    await db.execute(
+        delete(WeatherCache).where(WeatherCache.source.in_(_LOCATION_CACHE_KEYS))
+    )
     await db.commit()
 
 

@@ -140,6 +140,8 @@ async def get_location(db: AsyncSession = Depends(get_db), _: User = Depends(get
 @router.put("/location")
 async def put_location(body: LocationSettings, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     await _save_setting(db, "location", body.model_dump())
+    from services.weather_service import clear_location_caches
+    await clear_location_caches(db)
     await _restart_blitzortung_if_enabled(db)
     await _ws_manager.broadcast({"type": "location_changed"})
     return {"detail": "Saved"}
@@ -326,6 +328,8 @@ async def activate_location_profile(
             location = {k: v for k, v in p.items() if k != "id"}
             location["active_profile_id"] = profile_id
             await _save_setting(db, "location", location)
+            from services.weather_service import clear_location_caches
+            await clear_location_caches(db)
             await _restart_blitzortung_if_enabled(db)
             await _ws_manager.broadcast({"type": "location_changed"})
             await log_event(db, "profile_activated", "info",
