@@ -19,7 +19,8 @@ from services.monitoring_service import log_event
 from schemas import (
     LocationSettings, LocationProfile, ApiKeySettings, ThresholdSettings, SmtpSettings,
     NotificationSettings, KasaSettings, IftttSettings, TelegramSettings, NtfySettings,
-    TelnyxSettings, HomeAssistantSettings, DxclusterSettings, FlexRadioSettings, BlitzortungSettings,
+    HomeAssistantSettings, DxclusterSettings, FlexRadioSettings, BlitzortungSettings,
+    FlrigSettings,
 )
 import scheduler as sched
 
@@ -530,38 +531,6 @@ async def test_ntfy(db: AsyncSession = Depends(get_db), _: User = Depends(requir
         raise HTTPException(status_code=500, detail="Test failed — check server logs")
 
 
-# --- Telnyx ---
-@router.get("/telnyx")
-async def get_telnyx(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    data = await _get_setting(db, "telnyx")
-    if not data:
-        return {"api_key": None, "from_number": "+13039553461", "to_number": None, "enabled": False}
-    if data.get("api_key"):
-        data["api_key"] = _mask_key(data["api_key"])
-    return data
-
-
-@router.put("/telnyx")
-async def put_telnyx(body: TelnyxSettings, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
-    existing = await _get_setting(db, "telnyx") or {}
-    update = body.model_dump()
-    if update.get("api_key") and update["api_key"].startswith(MASKED):
-        update["api_key"] = existing.get("api_key", "")
-    await _save_setting(db, "telnyx", update)
-    return {"detail": "Saved"}
-
-
-@router.post("/telnyx/test")
-async def test_telnyx(db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
-    from services.telnyx_service import send_telnyx_test
-    try:
-        await send_telnyx_test(db)
-        return {"detail": "Test SMS sent"}
-    except Exception as e:
-        logger.error("Telnyx test failed: %s", e)
-        raise HTTPException(status_code=500, detail="Test failed — check server logs")
-
-
 # --- Home Assistant ---
 @router.get("/home-assistant")
 async def get_home_assistant(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
@@ -659,6 +628,22 @@ async def put_flexradio(body: FlexRadioSettings, db: AsyncSession = Depends(get_
             tone_freq=body.cw_tone_freq,
             threshold=body.cw_threshold,
         )
+    return {"detail": "Saved"}
+
+
+# --- flrig ---
+@router.get("/flrig")
+async def get_flrig(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    data = await _get_setting(db, "flrig")
+    defaults = FlrigSettings().model_dump()
+    return {**defaults, **(data or {})}
+
+
+@router.put("/flrig")
+async def put_flrig(body: FlrigSettings, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
+    await _save_setting(db, "flrig", body.model_dump())
+    from services.flrig_service import start_poller
+    start_poller()
     return {"detail": "Saved"}
 
 

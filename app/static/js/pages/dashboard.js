@@ -35,6 +35,7 @@ let _nearestLightningKm = null;
 let _nearestLightningAt = 0; // epoch ms of last WS-sourced update
 const BLITZ_FADE_MS = 15 * 60 * 1000;
 let flexRadioRefreshTimer = null;
+let flrigRefreshTimer = null;
 let solarRefreshTimer = null;
 let dxcRefreshTimer = null;
 let pskRefreshTimer = null;
@@ -93,6 +94,7 @@ export async function renderDashboard(container) {
           </div>
           <div class="card-body d-flex align-items-center flex-wrap gap-2 py-2">
             <div id="flexradio-status" class="d-flex flex-wrap align-items-center gap-1"></div>
+            <div id="flrig-status" class="d-flex flex-wrap align-items-center gap-1"></div>
             <span id="location-profile-badge" class="text-white" style="font-size:0.8rem"></span>
             <div class="ms-auto"><small id="weather-update-time" class="text-white-50"></small></div>
           </div>
@@ -884,6 +886,7 @@ function cleanup() {
   blitzortungMarkers = [];
   if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
   if (flexRadioRefreshTimer) { clearInterval(flexRadioRefreshTimer); flexRadioRefreshTimer = null; }
+  if (flrigRefreshTimer) { clearInterval(flrigRefreshTimer); flrigRefreshTimer = null; }
   if (solarRefreshTimer) { clearInterval(solarRefreshTimer); solarRefreshTimer = null; }
   if (dxcRefreshTimer) { clearInterval(dxcRefreshTimer); dxcRefreshTimer = null; }
   if (pskRefreshTimer) { clearInterval(pskRefreshTimer); pskRefreshTimer = null; }
@@ -938,9 +941,11 @@ async function loadSystemState() {
 
 async function loadAll() {
   await loadFlexSettings();
-  await Promise.all([loadMonitoringStatus(), loadFlexRadioStatus(), loadWeather(), loadRadar(), loadPins(), loadSolarData(), loadSystemState(), loadDxCluster(), initPskTile(), loadLocationProfile()]);
+  await Promise.all([loadMonitoringStatus(), loadFlexRadioStatus(), loadFlrigStatus(), loadWeather(), loadRadar(), loadPins(), loadSolarData(), loadSystemState(), loadDxCluster(), initPskTile(), loadLocationProfile()]);
   if (flexRadioRefreshTimer) clearInterval(flexRadioRefreshTimer);
   flexRadioRefreshTimer = setInterval(() => { if (!destroyed) loadFlexRadioStatus(); }, 5000);
+  if (flrigRefreshTimer) clearInterval(flrigRefreshTimer);
+  flrigRefreshTimer = setInterval(() => { if (!destroyed) loadFlrigStatus(); }, 5000);
   if (solarRefreshTimer) clearInterval(solarRefreshTimer);
   solarRefreshTimer = setInterval(() => { if (!destroyed) loadSolarData(); }, 30 * 60 * 1000);
   if (dxcRefreshTimer) clearInterval(dxcRefreshTimer);
@@ -1130,6 +1135,29 @@ async function loadFlexRadioStatus() {
     el.innerHTML = `<span class="freq-retro me-1">FlexRadio Status</span>${freq}${mode}${power}${rxtx}${tuneBtn}${moxBtn}${swr}`;
   } catch {
     pskRadioOffline = false;
+    el.innerHTML = '';
+  }
+}
+
+async function loadFlrigStatus() {
+  const el = document.getElementById('flrig-status');
+  if (!el) return;
+  try {
+    const s = await apiGet('/flrig/status');
+    if (!s.connected) {
+      el.innerHTML = '<span class="fw-bold text-danger" style="font-size:0.8rem">flrig Offline</span>';
+      return;
+    }
+    const freqMhz = s.freq_hz != null ? (s.freq_hz / 1e6).toFixed(3) : '--';
+    const mode = s.mode ? `<span class="badge ms-1" style="background:#4fc3f7;color:#000">${escHtml(s.mode)}</span>` : '';
+    const isTx = !!s.ptt;
+    const rxtx = `<span class="badge ms-1" style="background:${isTx ? '#dc3545' : '#198754'};color:#fff">${isTx ? 'TX' : 'RX'}</span>`;
+    const swrColor = s.swr == null ? '' : s.swr <= 2.0 ? '#198754' : s.swr <= 3.0 ? '#fd7e14' : '#dc3545';
+    const swr = s.swr != null ? `<span class="badge ms-1" style="background:${swrColor};color:#fff">SWR ${s.swr}:1</span>` : '';
+    el.innerHTML = `<span style="font-size:0.8rem;color:#4fc3f7;font-weight:600" class="me-1">flrig</span>` +
+      `<span class="badge ms-1" style="background:#4fc3f7;color:#000">${escHtml(freqMhz)} MHz</span>` +
+      mode + rxtx + swr;
+  } catch {
     el.innerHTML = '';
   }
 }
@@ -2692,6 +2720,7 @@ async function connectWS() {
           loadFlexRadioStatus();
         }
       }
+      if (msg.type === 'flrig_update') loadFlrigStatus();
       if (msg.type === 'cw_decode') updateCwTile(msg);
       if (msg.type === 'workflow_complete') {
         if (!msg.success && msg.error) alert(`Workflow failed: ${msg.error}`);

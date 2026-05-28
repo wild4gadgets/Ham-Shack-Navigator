@@ -58,6 +58,7 @@ from routers import (
     flexradio as flexradio_router,
     webhook as webhook_router,
     cw as cw_router,
+    flrig as flrig_router,
 )
 
 
@@ -130,6 +131,7 @@ app.include_router(dxcluster_router.router, prefix=prefix)
 app.include_router(pskreporter_router.router, prefix=prefix)
 app.include_router(qrz_router.router, prefix=prefix)
 app.include_router(flexradio_router.router, prefix=prefix)
+app.include_router(flrig_router.router, prefix=prefix)
 app.include_router(webhook_router.router, prefix=prefix)
 app.include_router(cw_router.router, prefix=prefix)
 

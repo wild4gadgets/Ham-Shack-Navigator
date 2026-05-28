@@ -29,7 +29,6 @@ from services.email_service import send_shutdown_notification, send_digest
 from services.ifttt_service import send_ifttt_shutdown
 from services.telegram_service import send_telegram_shutdown
 from services.ntfy_service import send_ntfy_shutdown
-from services.telnyx_service import send_telnyx_shutdown
 from services.weather_service import get_cached
 from services.ha_service import push_state_to_ha, post_ha_event
 from ws_manager import manager
@@ -137,18 +136,6 @@ async def _check_nws_alert_notifications(db, nws_data: dict | None):
     except Exception as e:
         logger.error("NWS alert ntfy failed: %s", e)
 
-    try:
-        from services.telnyx_service import _get_telnyx_config, _send_sms
-        cfg = await _get_telnyx_config(db)
-        if cfg and cfg.get("enabled") and cfg.get("api_key") \
-                and cfg.get("from_number") and cfg.get("to_number"):
-            ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-            text = f"Ham Shack Navigator - NWS Alert\n{event_names}\n{area}\n{ts}"
-            await _send_sms(cfg["api_key"], cfg["from_number"], cfg["to_number"], text)
-            logger.info("NWS alert Telnyx SMS sent: %s", event_names)
-    except Exception as e:
-        logger.error("NWS alert Telnyx failed: %s", e)
-
 
 async def _monitoring_poll():
     """Main monitoring poll — runs on interval."""
@@ -237,7 +224,6 @@ async def _run_shutdown(reason: str, meta: dict | None = None):
                 await send_ifttt_shutdown(db, reason, steps, meta)
                 await send_telegram_shutdown(db, reason, steps, meta)
                 await send_ntfy_shutdown(db, reason, steps, meta)
-                await send_telnyx_shutdown(db, reason, steps, meta)
                 await set_last_notification(db)
 
             await push_state_to_ha(db)
@@ -491,6 +477,9 @@ async def start_scheduler():
     from services.flexradio_service import start_listener as _start_flex, get_dax_audio_queue
     _start_flex()
 
+    from services.flrig_service import start_poller as _start_flrig
+    _start_flrig()
+
     from services.cw_decoder_service import start_decoder as _start_cw, DEFAULT_TONE_FREQ, DEFAULT_THRESHOLD
     _cw_settings: dict = {}
     try:
@@ -513,6 +502,9 @@ async def shutdown_scheduler():
 
     from services.cw_decoder_service import stop_decoder as _stop_cw
     _stop_cw()
+
+    from services.flrig_service import stop_poller as _stop_flrig
+    _stop_flrig()
 
     from services.flexradio_service import stop_listener as _stop_flex
     _stop_flex()

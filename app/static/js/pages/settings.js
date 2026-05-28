@@ -15,6 +15,7 @@ import { renderDxclusterTab } from '../components/settings/dxcluster.js';
 import { renderPskReporterTab } from '../components/settings/pskreporter.js';
 import { renderFlexRadioTab } from '../components/settings/flexradio.js';
 import { renderBlitzortungTab } from '../components/settings/blitzortung.js';
+import { renderFlrigTab } from '../components/settings/flrig.js';
 import { renderWebhookTab } from '../components/settings/webhook.js';
 import { renderProfilesTab } from '../components/settings/profiles.js';
 import { isAdmin } from '../state.js';
@@ -28,6 +29,7 @@ const ADMIN_NAV = [
   { id: 'dxcluster',    label: 'DX Cluster',    icon: 'reception-4'   },
   { id: 'pskreporter', label: 'PSK Reporter',  icon: 'broadcast-pin' },
   { id: 'flexradio',   label: 'FlexRadio',     icon: 'broadcast'     },
+  { id: 'flrig',       label: 'flrig',         icon: 'router'        },
   { id: 'blitzortung', label: 'Blitzortung',  icon: 'lightning-fill' },
   {
     groupId: 'controls', label: 'Controls', icon: 'toggles',
@@ -79,6 +81,7 @@ const RENDERERS = {
   dxcluster:        renderDxclusterTab,
   pskreporter:      renderPskReporterTab,
   flexradio:        renderFlexRadioTab,
+  flrig:            renderFlrigTab,
   blitzortung:      renderBlitzortungTab,
   webhook:          renderWebhookTab,
   profiles:         renderProfilesTab,

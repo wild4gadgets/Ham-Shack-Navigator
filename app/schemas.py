@@ -244,6 +244,27 @@ class FlexRadioSettings(BaseModel):
         return v[:4]
 
 
+# --- flrig ---
+class FlrigSettings(BaseModel):
+    enabled: bool = False
+    host: str = "localhost"
+    port: int = 12345
+    poll_interval_ms: int = 1000
+
+    @field_validator("port")
+    @classmethod
+    def port_range(cls, v):
+        if not 1 <= v <= 65535:
+            raise ValueError("port must be 1–65535")
+        return v
+
+    @field_validator("poll_interval_ms")
+    @classmethod
+    def min_poll_interval(cls, v):
+        if v < 250:
+            raise ValueError("poll_interval_ms must be >= 250")
+        return v
+
 
 # --- Blitzortung ---
 class BlitzortungSettings(BaseModel):
