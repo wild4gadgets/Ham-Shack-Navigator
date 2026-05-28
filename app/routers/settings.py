@@ -20,7 +20,7 @@ from schemas import (
     LocationSettings, LocationProfile, ApiKeySettings, ThresholdSettings, SmtpSettings,
     NotificationSettings, KasaSettings, IftttSettings, TelegramSettings, NtfySettings,
     HomeAssistantSettings, DxclusterSettings, FlexRadioSettings, BlitzortungSettings,
-    FlrigSettings,
+    FlrigSettings, RigControlSettings,
 )
 import scheduler as sched
 
@@ -618,16 +618,8 @@ async def get_flexradio(db: AsyncSession = Depends(get_db), _: User = Depends(ge
 @router.put("/flexradio")
 async def put_flexradio(body: FlexRadioSettings, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     await _save_setting(db, "flexradio", body.model_dump())
-    from services.flexradio_service import start_listener, get_dax_audio_queue
-    from services.cw_decoder_service import start_decoder, stop_decoder
+    from services.flexradio_service import start_listener
     start_listener()
-    if body.dax_enabled:
-        stop_decoder()
-        start_decoder(
-            get_dax_audio_queue(),
-            tone_freq=body.cw_tone_freq,
-            threshold=body.cw_threshold,
-        )
     return {"detail": "Saved"}
 
 
@@ -644,6 +636,19 @@ async def put_flrig(body: FlrigSettings, db: AsyncSession = Depends(get_db), _: 
     await _save_setting(db, "flrig", body.model_dump())
     from services.flrig_service import start_poller
     start_poller()
+    return {"detail": "Saved"}
+
+
+# --- Rig Control ---
+@router.get("/rig-control")
+async def get_rig_control(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    data = await _get_setting(db, "rig_control")
+    return RigControlSettings.model_validate(data).model_dump() if data else RigControlSettings().model_dump()
+
+
+@router.put("/rig-control")
+async def put_rig_control(body: RigControlSettings, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
+    await _save_setting(db, "rig_control", body.model_dump())
     return {"detail": "Saved"}
 
 

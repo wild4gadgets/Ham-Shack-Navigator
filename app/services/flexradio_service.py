@@ -66,15 +66,7 @@ _pre_tune_rfpower: int | None = None   # rfpower before tune started, so we can 
 _pre_tune_mode: str | None = None      # mode before tune started, so we can restore it
 _pre_tune_slice: int = 0               # slice index used for mode switch
 
-# Audio queue consumed by cw_decoder_service (and any future decoder).
-# Each item is a bytes object containing raw PCM from one VITA-49 packet.
-_dax_audio_queue: asyncio.Queue = asyncio.Queue(maxsize=200)
 _dax_udp_transport: asyncio.BaseTransport | None = None
-
-
-def get_dax_audio_queue() -> asyncio.Queue:
-    """Return the queue that receives raw PCM bytes from the DAX RX stream."""
-    return _dax_audio_queue
 
 
 # ── VITA-49 / DAX audio ──────────────────────────────────────────────────────
@@ -118,20 +110,7 @@ class _DaxAudioProtocol(asyncio.DatagramProtocol):
         elif self._packet_count == 100:
             logger.info("DAX audio: 100 packets received — stream is healthy")
 
-        pcm = _parse_vita49_audio(data, self._stream_id)
-        if pcm is None:
-            return
-
-        # Drop oldest item rather than block when the decoder falls behind
-        if _dax_audio_queue.full():
-            try:
-                _dax_audio_queue.get_nowait()
-            except asyncio.QueueEmpty:
-                pass
-        try:
-            _dax_audio_queue.put_nowait(pcm)
-        except asyncio.QueueFull:
-            pass
+        _parse_vita49_audio(data, self._stream_id)
 
     def error_received(self, exc: Exception) -> None:
         logger.warning("DAX UDP error: %s", exc)
@@ -474,9 +453,6 @@ async def _flex_listener():
                                     "freq": new_freq,
                                     "mode": new_mode,
                                 })
-                            if mode_changed:
-                                from services.cw_decoder_service import set_cw_mode
-                                set_cw_mode(new_mode.upper() in {"CW", "CWL", "CWU"})
 
                     # Transmit status
                     m = re.match(r"transmit\s+(.*)", body)

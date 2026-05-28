@@ -474,34 +474,17 @@ async def start_scheduler():
     _scheduler.start()
     await _load_scheduled_workflow_jobs()
 
-    from services.flexradio_service import start_listener as _start_flex, get_dax_audio_queue
+    from services.flexradio_service import start_listener as _start_flex
     _start_flex()
 
     from services.flrig_service import start_poller as _start_flrig
     _start_flrig()
 
-    from services.cw_decoder_service import start_decoder as _start_cw, DEFAULT_TONE_FREQ, DEFAULT_THRESHOLD
-    _cw_settings: dict = {}
-    try:
-        async with AsyncSessionLocal() as _db:
-            _row = (await _db.execute(select(Setting).where(Setting.key == "flexradio"))).scalar_one_or_none()
-            _cw_settings = json.loads(_row.value) if _row else {}
-    except Exception:
-        pass
-    _start_cw(
-        get_dax_audio_queue(),
-        tone_freq=float(_cw_settings.get("cw_tone_freq", DEFAULT_TONE_FREQ)),
-        threshold=float(_cw_settings.get("cw_threshold", DEFAULT_THRESHOLD)),
-    )
-
-    logger.info("Scheduler, FlexRadio listener, and CW decoder started")
+    logger.info("Scheduler, FlexRadio listener, and flrig poller started")
 
 
 async def shutdown_scheduler():
     global _scheduler
-
-    from services.cw_decoder_service import stop_decoder as _stop_cw
-    _stop_cw()
 
     from services.flrig_service import stop_poller as _stop_flrig
     _stop_flrig()

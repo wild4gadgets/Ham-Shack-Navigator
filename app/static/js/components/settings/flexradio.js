@@ -8,8 +8,6 @@ export async function renderFlexRadioTab(container) {
 
   const daxEnabled      = data.dax_enabled        ?? true;
   const daxChannel      = data.dax_channel        ?? 1;
-  const cwToneFreq      = data.cw_tone_freq       ?? 700;
-  const cwThreshold     = data.cw_threshold       ?? 0.15;
   const stepSmallKhz    = data.freq_step_small_khz ?? 50.0;
   const stepLargeKhz    = data.freq_step_large_khz ?? 100.0;
   const txBtnLabel      = data.tx_button_label ?? 'MOX';
@@ -35,7 +33,7 @@ export async function renderFlexRadioTab(container) {
           </div>
 
           <hr style="border-color:#2a2a4a">
-          <h6 class="text-white-50 mb-3">DAX Audio &amp; CW Decoder</h6>
+          <h6 class="text-white-50 mb-3">DAX Audio</h6>
 
           <div class="mb-3 form-check form-switch">
             <input class="form-check-input" type="checkbox" id="flex-dax-enabled"
@@ -43,7 +41,7 @@ export async function renderFlexRadioTab(container) {
             <label class="form-check-label" for="flex-dax-enabled">Enable DAX RX audio stream</label>
           </div>
 
-          <div class="mb-3" id="dax-options" style="${daxEnabled ? '' : 'opacity:0.5;pointer-events:none'}">
+          <div class="mb-4" id="dax-options" style="${daxEnabled ? '' : 'opacity:0.5;pointer-events:none'}">
             <label class="form-label">DAX Channel</label>
             <select class="form-select" id="flex-dax-channel" style="${INP}">
               ${[1,2,3,4,5,6,7,8].map(n =>
@@ -51,26 +49,6 @@ export async function renderFlexRadioTab(container) {
               ).join('')}
             </select>
             <div class="form-text">DAX RX channel assigned to the primary slice in SmartSDR.</div>
-          </div>
-
-          <div class="mb-3" id="cw-options" style="${daxEnabled ? '' : 'opacity:0.5;pointer-events:none'}">
-            <label class="form-label">CW Tone Frequency (Hz)</label>
-            <input type="number" class="form-control" id="flex-cw-tone-freq"
-              min="300" max="1200" step="10" value="${cwToneFreq}" style="${INP}">
-            <div class="form-text">Sidetone frequency to detect. Typical values: 500–800 Hz. Default: 700 Hz.</div>
-          </div>
-
-          <div class="mb-4" id="cw-threshold-wrap" style="${daxEnabled ? '' : 'opacity:0.5;pointer-events:none'}">
-            <label class="form-label d-flex justify-content-between">
-              <span>CW Detection Threshold</span>
-              <span id="flex-cw-threshold-val" class="text-white-50">${cwThreshold.toFixed(2)}</span>
-            </label>
-            <input type="range" class="form-range" id="flex-cw-threshold"
-              min="0.05" max="0.60" step="0.01" value="${cwThreshold}">
-            <div class="form-text">
-              Relative power level (0.05–0.60) at which a tone is considered "on".
-              Lower = more sensitive; higher = less false triggers. Default: 0.15.
-            </div>
           </div>
 
           <hr style="border-color:#2a2a4a">
@@ -107,19 +85,9 @@ export async function renderFlexRadioTab(container) {
     </div>
   `;
 
-  // Toggle DAX-dependent fields when the DAX switch changes
   document.getElementById('flex-dax-enabled').addEventListener('change', (e) => {
-    const on = e.target.checked;
-    for (const id of ['dax-options', 'cw-options', 'cw-threshold-wrap']) {
-      document.getElementById(id).style.cssText =
-        on ? '' : 'opacity:0.5;pointer-events:none';
-    }
-  });
-
-  // Live threshold label
-  document.getElementById('flex-cw-threshold').addEventListener('input', (e) => {
-    document.getElementById('flex-cw-threshold-val').textContent =
-      parseFloat(e.target.value).toFixed(2);
+    document.getElementById('dax-options').style.cssText =
+      e.target.checked ? '' : 'opacity:0.5;pointer-events:none';
   });
 
   document.getElementById('flex-form').addEventListener('submit', async (e) => {
@@ -131,8 +99,6 @@ export async function renderFlexRadioTab(container) {
         enabled:              document.getElementById('flex-enabled').checked,
         dax_enabled:          document.getElementById('flex-dax-enabled').checked,
         dax_channel:          parseInt(document.getElementById('flex-dax-channel').value, 10),
-        cw_tone_freq:         parseFloat(document.getElementById('flex-cw-tone-freq').value),
-        cw_threshold:         parseFloat(document.getElementById('flex-cw-threshold').value),
         freq_step_small_khz:  parseFloat(document.getElementById('flex-step-small').value),
         freq_step_large_khz:  parseFloat(document.getElementById('flex-step-large').value),
         tx_button_label:      (document.getElementById('flex-tx-btn-label').value.trim().toUpperCase() || 'MOX').slice(0, 4),

@@ -46,7 +46,6 @@ export function renderHelp(container) {
     <li><strong>DX Cluster band activity</strong> heatmap by region</li>
     <li><strong>PSK Reporter spot map</strong> with greyline overlay and band-colored markers</li>
     <li><strong>FlexRadio 6400 integration</strong> — real-time frequency, mode, power, and SWR display with click-to-tune and click-to-change-mode controls, frequency step buttons, and keyboard shortcuts</li>
-    <li><strong>CW decoder</strong> — live Morse decoding from the FlexRadio DAX audio stream, with WPM and SNR display</li>
     <li><strong>Draggable dashboard tiles</strong> — rearrange the layout to suit your workflow</li>
     <li><strong>Notifications</strong> via email, Telegram, IFTTT, and ntfy push notifications</li>
     <li><strong>Multi-user</strong> with Admin and Read-Only roles</li>
@@ -256,17 +255,6 @@ docker compose logs app -f</pre>
   </table>
   <p>Frequency step shortcuts require a FlexRadio to be connected. Step sizes are configurable in Settings → FlexRadio.</p>
 
-  <h4 style="color:#7eb8f7;margin-top:1.5rem">CW Decoder Tile</h4>
-  <p>The CW Decoder tile appears automatically when the FlexRadio is in CW, CWL, or CWU mode. It decodes Morse code in real time from the DAX audio stream. The tile shows:</p>
-  <ul>
-    <li><strong>Decoded text</strong> — two scrolling lines of monospace green text. When a line fills, content scrolls up. Click <strong>Clear</strong> (<i class="bi bi-trash"></i>) to reset.</li>
-    <li><strong>WPM</strong> — estimated code speed in words per minute.</li>
-    <li><strong>SNR</strong> — signal-to-noise ratio in dB, color-coded: green ≥10 dB, yellow ≥3 dB, red &lt;3 dB.</li>
-    <li><strong>Tone (Hz)</strong> — the CW sidetone frequency to listen for. Adjust if your sidetone doesn't match.</li>
-    <li><strong>Threshold slider</strong> — detection sensitivity (0.01–0.50). Lower = more sensitive; higher = fewer false triggers. Changes take effect immediately.</li>
-  </ul>
-  <p>DAX audio must be enabled in Settings → FlexRadio and the correct DAX channel must match the channel assigned in SmartSDR. The CW decoder only runs when DAX is enabled.</p>
-
   <h4 style="color:#7eb8f7;margin-top:1.5rem">Weather Cards</h4>
   <p>Three analog-gauge weather cards display current conditions:</p>
   <ul>
@@ -451,14 +439,8 @@ docker compose logs app -f</pre>
   <h4 style="color:#7eb8f7">FlexRadio 6000/6400 Series</h4>
   <p>Configure in <strong>Settings → FlexRadio</strong>. Enter the local IP address of your FlexRadio and enable the connection. Once connected, the status bar shows real-time frequency, mode, power, SWR, and TX/RX state with full interactive controls (see Section 5).</p>
 
-  <p><strong>DAX Audio &amp; CW Decoder</strong></p>
-  <p>Ham Shack Navigator can receive the FlexRadio DAX (Digital Audio eXchange) RX audio stream over UDP and use it to decode CW (Morse code) in real time.</p>
-  <ul>
-    <li>Enable <strong>DAX RX audio stream</strong> in Settings → FlexRadio and set the <strong>DAX Channel</strong> to match the channel assigned to your primary slice in SmartSDR.</li>
-    <li>The CW decoder uses a Goertzel filter tuned to the configured tone frequency. Set the <strong>CW Tone Frequency</strong> (Hz) to match your radio's CW sidetone pitch (typical: 600–800 Hz).</li>
-    <li>The <strong>CW Detection Threshold</strong> (0.05–0.60) controls sensitivity — lower values detect weaker signals but may false-trigger on noise; higher values are more selective.</li>
-    <li>The CW Decoder tile on the dashboard is only shown when the radio is in CW, CWL, or CWU mode. Tone and threshold can also be adjusted live from the tile itself without going to settings.</li>
-  </ul>
+  <p><strong>DAX Audio</strong></p>
+  <p>Ham Shack Navigator can receive the FlexRadio DAX (Digital Audio eXchange) RX audio stream over UDP. Enable <strong>DAX RX audio stream</strong> in Settings → FlexRadio and set the <strong>DAX Channel</strong> to match the channel assigned to your primary slice in SmartSDR.</p>
 
   <p><strong>Frequency Step Sizes</strong></p>
   <p>The step sizes used by the &lt;&lt;/&lt;/&gt;/&gt;&gt; buttons and keyboard shortcuts are configurable in Settings → FlexRadio → Frequency Step Sizes. Defaults are 50 kHz (small) and 100 kHz (large). Sizes are stored in kHz and can be set to any value (e.g., 1 kHz, 5 kHz, 500 kHz).</p>
@@ -497,7 +479,7 @@ docker compose logs app -f</pre>
       <tr><td><strong>Thresholds</strong></td><td>Wind mph, lightning miles, poll interval, cooldown, NWS alert notify level</td><td>Drives automatic shutdown logic. NWS alert notifications fire on new alerts through all configured channels.</td></tr>
       <tr><td><strong>DX Cluster</strong></td><td>Region (NA/EU/AS/AF/SA/OC), refresh interval</td><td>Affects band activity heatmap.</td></tr>
       <tr><td><strong>PSK Reporter</strong></td><td>Default callsign, direction, bands, modes, timespan</td><td>Persisted dashboard defaults.</td></tr>
-      <tr><td><strong>FlexRadio</strong></td><td>Radio IP, enable toggle, DAX RX enable, DAX channel, CW tone freq (Hz), CW threshold, small step (kHz), large step (kHz)</td><td>FlexRadio 6000/6400 series. DAX requires SmartSDR running on the same network. Step sizes control &lt;&lt;/&lt;/&gt;/&gt;&gt; buttons and keyboard shortcuts.</td></tr>
+      <tr><td><strong>FlexRadio</strong></td><td>Radio IP, enable toggle, DAX RX enable, DAX channel, small step (kHz), large step (kHz)</td><td>FlexRadio 6000/6400 series. DAX requires SmartSDR running on the same network. Step sizes control &lt;&lt;/&lt;/&gt;/&gt;&gt; buttons and keyboard shortcuts.</td></tr>
       <tr><td><strong>Kasa Devices</strong></td><td>Device IP, name, type, port labels, dashboard pins</td><td>Multiple devices supported.</td></tr>
       <tr><td><strong>Shelly Devices</strong></td><td>Device IP, name, channels, generation, labels, pins</td><td>Gen 1 and Gen 2 supported.</td></tr>
       <tr><td><strong>Home Assistant</strong></td><td>Poll token, HA URL, HA access token</td><td>Pull and push modes are independent.</td></tr>
@@ -652,13 +634,6 @@ docker compose logs app --tail=50</pre>
       <div class="card-body">
         <strong style="color:#7eb8f7">FlexRadio not showing on dashboard</strong>
         <p class="mt-1 mb-0">Verify the FlexRadio IP address in Settings → FlexRadio and that the radio is powered on and reachable from the server. The connection uses TCP port 4992 (SmartSDR API). Both the server and radio must be on the same subnet.</p>
-      </div>
-    </div>
-
-    <div class="card" style="background:#1a1a2e;border-color:#2a2a4a">
-      <div class="card-body">
-        <strong style="color:#7eb8f7">CW decoder tile not appearing</strong>
-        <p class="mt-1 mb-0">The CW tile only appears when the radio is in CW, CWL, or CWU mode. Also verify that DAX RX audio is enabled in Settings → FlexRadio, the correct DAX channel is set, and SmartSDR has DAX running with that channel assigned to your primary slice. The server must be able to receive UDP on port 4991.</p>
       </div>
     </div>
 

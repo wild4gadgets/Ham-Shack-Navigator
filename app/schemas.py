@@ -229,8 +229,6 @@ class FlexRadioSettings(BaseModel):
     enabled: bool = False
     dax_enabled: bool = True
     dax_channel: int = 1
-    cw_tone_freq: float = 700.0
-    cw_threshold: float = 0.15
     freq_step_small_khz: float = 50.0
     freq_step_large_khz: float = 100.0
     tx_button_label: str = "MOX"
@@ -242,6 +240,18 @@ class FlexRadioSettings(BaseModel):
         if not v:
             return "MOX"
         return v[:4]
+
+
+# --- Rig Control ---
+class RigControlSettings(BaseModel):
+    active_rig: str = "flexradio"
+
+    @field_validator("active_rig")
+    @classmethod
+    def valid_rig(cls, v):
+        if v not in ("flexradio", "flrig"):
+            raise ValueError("active_rig must be 'flexradio' or 'flrig'")
+        return v
 
 
 # --- flrig ---

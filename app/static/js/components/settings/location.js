@@ -34,7 +34,7 @@ function activeProfile(profiles, id) {
 
 export async function renderLocationTab(container) {
   container.innerHTML = '<div class="text-muted p-3">Loading...</div>';
-  let active, profiles;
+  let active, profiles, rigControl;
   try {
     active = await apiGet('/settings/location');
   } catch (e) {
@@ -44,12 +44,17 @@ export async function renderLocationTab(container) {
   try {
     profiles = await apiGet('/settings/location/profiles');
   } catch {
-    profiles = [];  // profiles endpoint not yet available (container needs rebuild)
+    profiles = [];
   }
-  buildUI(container, active, profiles || []);
+  try {
+    rigControl = await apiGet('/settings/rig-control');
+  } catch {
+    rigControl = { active_rig: 'flexradio' };
+  }
+  buildUI(container, active, profiles || [], rigControl);
 }
 
-function buildUI(container, active, profiles) {
+function buildUI(container, active, profiles, rigControl = { active_rig: 'flexradio' }) {
   const activeId = active.active_profile_id || '';
   const units = active.units || 'imperial';
   const prof = activeProfile(profiles, activeId);
@@ -172,6 +177,40 @@ function buildUI(container, active, profiles) {
       </div>
     </div>
   `;
+
+  const rigCard = document.createElement('div');
+  rigCard.className = 'card mt-3';
+  rigCard.innerHTML = `
+    <div class="card-header"><i class="bi bi-broadcast me-2"></i>Rig Control</div>
+    <div class="card-body">
+      <div id="rig-control-msg" class="alert" style="display:none"></div>
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Active Rig Backend</label>
+        <select class="form-select" id="rig-control-select">
+          <option value="flexradio" ${rigControl.active_rig === 'flexradio' ? 'selected' : ''}>FlexRadio (SmartSDR)</option>
+          <option value="flrig" ${rigControl.active_rig === 'flrig' ? 'selected' : ''}>flrig</option>
+        </select>
+        <div class="form-text">Selects which rig control backend drives the dashboard controls (PTT, frequency, mode, etc.).</div>
+      </div>
+      <button type="button" class="btn btn-primary" id="rig-control-save">Save</button>
+    </div>
+  `;
+  container.appendChild(rigCard);
+
+  document.getElementById('rig-control-save')?.addEventListener('click', async () => {
+    const msg = document.getElementById('rig-control-msg');
+    const active_rig = document.getElementById('rig-control-select').value;
+    try {
+      await apiPut('/settings/rig-control', { active_rig });
+      msg.className = 'alert alert-success';
+      msg.textContent = 'Rig control saved.';
+      msg.style.display = '';
+    } catch (err) {
+      msg.className = 'alert alert-danger';
+      msg.textContent = err.message;
+      msg.style.display = '';
+    }
+  });
 
   attachHandlers(container, active, profiles);
 }

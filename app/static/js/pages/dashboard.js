@@ -48,13 +48,13 @@ let pskSpotLayer = null;
 let pskTerminator = null;
 let pskTerminatorTimer = null;
 let systemState = { last: null, startup_id: null, shutdown_id: null };
-let cwLine1 = '';
-let cwLine2 = '';
-let _cwCharsPerLine = 0;  // measured on first use
 let flexFreqSteps = { small: 50.0, large: 100.0 };
 let _txButtonLabel = 'MOX';
 let _optimisticFreqMhz = null;
+let _optimisticFlrigFreqHz = null;
 let _currentRfpower = null;  // latest rfpower from WS broadcast; bypasses stale server-fetch
+let _activeRig = 'flexradio'; // 'flexradio' | 'flrig'
+let _lastFlrigStatus = null;
 const _bandFreqMemory = {};
 const _HF_BANDS = ['160m','80m','60m','40m','30m','20m','17m','15m','12m','10m'];
 const _BAND_DEFAULTS = {
@@ -97,46 +97,6 @@ export async function renderDashboard(container) {
             <div id="flrig-status" class="d-flex flex-wrap align-items-center gap-1"></div>
             <span id="location-profile-badge" class="text-white" style="font-size:0.8rem"></span>
             <div class="ms-auto"><small id="weather-update-time" class="text-white-50"></small></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- CW Decoder — independent draggable -->
-      <div class="db-section db-draggable" data-section="cw" id="cw-tile-row" style="display:none">
-        <div class="drag-handle"><i class="bi bi-grip-horizontal"></i></div>
-        <div class="card">
-          <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <span><i class="bi bi-soundwave me-2"></i>CW Decoder</span>
-            <div class="d-flex gap-2 align-items-center flex-wrap">
-              <label class="d-flex align-items-center gap-1 mb-0" title="CW tone frequency in Hz (200–1200)">
-                <small class="text-muted">Tone</small>
-                <input type="number" id="cw-tone-input" min="200" max="1200" step="10" value="700"
-                  class="form-control form-control-sm" style="width:72px"
-                  title="CW tone frequency (200–1200 Hz)">
-                <small class="text-muted">Hz</small>
-              </label>
-              <label class="d-flex align-items-center gap-1 mb-0" title="Detection threshold floor — higher = less sensitive (0.01–0.50)">
-                <small class="text-muted">Thr</small>
-                <input type="range" id="cw-thresh-slider" min="0.01" max="0.50" step="0.01" value="0.15"
-                  style="width:72px;cursor:pointer" title="Detection threshold (0.01–0.50)">
-                <small id="cw-thresh-val" class="text-muted" style="width:2.8em;text-align:right">0.15</small>
-              </label>
-              <span id="cw-wpm" class="badge bg-secondary">-- WPM</span>
-              <span id="cw-snr" class="badge bg-secondary">SNR --</span>
-              <button id="btn-cw-clear" class="btn btn-sm btn-outline-secondary" title="Clear decoded text">
-                <i class="bi bi-trash"></i>
-              </button>
-            </div>
-          </div>
-          <div class="card-body p-2">
-            <div id="cw-text-display"
-              style="font-family:monospace;font-size:1rem;height:52px;
-                     overflow:hidden;
-                     background:#0d0d1a;border:1px solid #2a2a4a;border-radius:4px;
-                     padding:8px;color:#00e676">
-              <div id="cw-line1" style="white-space:pre;overflow:hidden;height:24px;line-height:24px"><span class="text-muted">Waiting for CW signal…</span></div>
-              <div id="cw-line2" style="white-space:pre;overflow:hidden;height:24px;line-height:24px"></div>
-            </div>
           </div>
         </div>
       </div>
@@ -531,45 +491,6 @@ export async function renderDashboard(container) {
       await loadSystemState();
     }
   });
-  document.getElementById('btn-cw-clear')?.addEventListener('click', async () => {
-    cwLine1 = '';
-    cwLine2 = '';
-    _cwLastText = '';
-    _cwCharsPerLine = 0;
-    const l1 = document.getElementById('cw-line1');
-    const l2 = document.getElementById('cw-line2');
-    if (l1) l1.textContent = '';
-    if (l2) l2.textContent = '';
-    try { await apiPost('/cw/clear', {}); } catch (_) { /* best-effort */ }
-  });
-
-  // CW params: load current values then wire controls
-  try {
-    const cwStatus = await apiGet('/cw/status');
-    const toneInput  = document.getElementById('cw-tone-input');
-    const thrSlider  = document.getElementById('cw-thresh-slider');
-    const thrVal     = document.getElementById('cw-thresh-val');
-    if (toneInput && cwStatus.tone_freq) toneInput.value = cwStatus.tone_freq;
-    if (thrSlider && cwStatus.threshold)  { thrSlider.value = cwStatus.threshold; if (thrVal) thrVal.textContent = Number(cwStatus.threshold).toFixed(2); }
-  } catch (_) { /* decoder not running yet */ }
-
-  let _cwParamTimer = null;
-  function scheduleCwParamSave() {
-    clearTimeout(_cwParamTimer);
-    _cwParamTimer = setTimeout(async () => {
-      const tone = parseFloat(document.getElementById('cw-tone-input')?.value);
-      const thr  = parseFloat(document.getElementById('cw-thresh-slider')?.value);
-      try { await apiPut('/cw/params', { tone_freq: tone, threshold: thr }); } catch (_) { /* best-effort */ }
-    }, 400);
-  }
-
-  document.getElementById('cw-tone-input')?.addEventListener('change', scheduleCwParamSave);
-  document.getElementById('cw-thresh-slider')?.addEventListener('input', e => {
-    const v = document.getElementById('cw-thresh-val');
-    if (v) v.textContent = parseFloat(e.target.value).toFixed(2);
-    scheduleCwParamSave();
-  });
-
   document.getElementById('flexradio-status')?.addEventListener('click', e => {
     const stepBtn = e.target.closest('.freq-step-btn');
     if (stepBtn) {
@@ -590,6 +511,24 @@ export async function renderDashboard(container) {
     if (moxBtn) { toggleMox(moxBtn); return; }
     const tuneBtn = e.target.closest('#flex-tune-btn');
     if (tuneBtn) toggleTuneCarrier(tuneBtn);
+  });
+
+  document.getElementById('flrig-status')?.addEventListener('click', e => {
+    const stepBtn = e.target.closest('.flrig-step-btn');
+    if (stepBtn) {
+      const dir = stepBtn.dataset.step;
+      if (dir === '-large') stepFlrigFreq(-flexFreqSteps.large);
+      else if (dir === '-small') stepFlrigFreq(-flexFreqSteps.small);
+      else if (dir === '+small') stepFlrigFreq(flexFreqSteps.small);
+      else if (dir === '+large') stepFlrigFreq(flexFreqSteps.large);
+      return;
+    }
+    const freqBadge = e.target.closest('#flrig-freq-badge');
+    if (freqBadge) { openTuneModal((parseFloat(freqBadge.dataset.freqHz) / 1e6).toFixed(6)); return; }
+    const modeBadge = e.target.closest('#flrig-mode-badge');
+    if (modeBadge) { openModeModal(modeBadge.dataset.mode); return; }
+    const pttBtn = e.target.closest('#flrig-ptt-btn');
+    if (pttBtn) { togglePtt(pttBtn); return; }
   });
 
   function openTuneModal(currentFreq) {
@@ -613,10 +552,16 @@ export async function renderDashboard(container) {
     btn.disabled = true;
     btn.textContent = '…';
     try {
-      await apiPost('/flexradio/tune', { freq_mhz: freq });
-      _optimisticFreqMhz = freq;
+      if (_activeRig === 'flrig') {
+        await apiPost('/flrig/tune', { frequency_hz: Math.round(freq * 1e6) });
+        _optimisticFlrigFreqHz = Math.round(freq * 1e6);
+        loadFlrigStatus();
+      } else {
+        await apiPost('/flexradio/tune', { freq_mhz: freq });
+        _optimisticFreqMhz = freq;
+        loadFlexRadioStatus();
+      }
       bootstrap.Modal.getInstance(document.getElementById('tune-modal'))?.hide();
-      loadFlexRadioStatus();
     } catch (e) {
       alert(`Tune failed: ${e.message}`);
     } finally {
@@ -636,10 +581,16 @@ export async function renderDashboard(container) {
     const freq = _bandFreqMemory[band] ?? _BAND_DEFAULTS[band];
     bandBtn.disabled = true;
     try {
-      await apiPost('/flexradio/tune', { freq_mhz: freq });
-      _optimisticFreqMhz = freq;
+      if (_activeRig === 'flrig') {
+        await apiPost('/flrig/tune', { frequency_hz: Math.round(freq * 1e6) });
+        _optimisticFlrigFreqHz = Math.round(freq * 1e6);
+        loadFlrigStatus();
+      } else {
+        await apiPost('/flexradio/tune', { freq_mhz: freq });
+        _optimisticFreqMhz = freq;
+        loadFlexRadioStatus();
+      }
       bootstrap.Modal.getInstance(document.getElementById('tune-modal'))?.hide();
-      loadFlexRadioStatus();
     } catch (err) {
       alert(`Tune failed: ${err.message}`);
     } finally {
@@ -652,8 +603,11 @@ export async function renderDashboard(container) {
   function openModeModal(currentMode) {
     const container = document.getElementById('mode-modal-buttons');
     if (container) {
-      container.innerHTML = MODES.map(m => {
-        const active = m === (currentMode || '').toUpperCase();
+      const modes = _activeRig === 'flrig' && _lastFlrigStatus?.available_modes?.length
+        ? _lastFlrigStatus.available_modes
+        : MODES;
+      container.innerHTML = modes.map(m => {
+        const active = m.toUpperCase() === (currentMode || '').toUpperCase();
         return `<button class="btn btn-sm ${active ? 'btn-success' : 'btn-outline-secondary'}" data-mode-pick="${m}">${m}</button>`;
       }).join('');
     }
@@ -666,7 +620,11 @@ export async function renderDashboard(container) {
     const mode = btn.dataset.modePick;
     btn.disabled = true;
     try {
-      await apiPost('/flexradio/mode', { mode });
+      if (_activeRig === 'flrig') {
+        await apiPost('/flrig/mode', { mode });
+      } else {
+        await apiPost('/flexradio/mode', { mode });
+      }
       bootstrap.Modal.getInstance(document.getElementById('mode-modal'))?.hide();
     } catch (err) {
       alert(`Mode change failed: ${err.message}`);
@@ -830,7 +788,7 @@ export async function renderDashboard(container) {
 }
 
 const DEFAULT_TILE_ORDER = [
-  'monitoring', 'cw', 'weather', 'forecast', 'radar', 'solar', 'alerts', 'psk',
+  'monitoring', 'weather', 'forecast', 'radar', 'solar', 'alerts', 'psk',
 ];
 
 async function restoreTileOrder() {
@@ -941,6 +899,7 @@ async function loadSystemState() {
 
 async function loadAll() {
   await loadFlexSettings();
+  await loadRigControlSettings();
   await Promise.all([loadMonitoringStatus(), loadFlexRadioStatus(), loadFlrigStatus(), loadWeather(), loadRadar(), loadPins(), loadSolarData(), loadSystemState(), loadDxCluster(), initPskTile(), loadLocationProfile()]);
   if (flexRadioRefreshTimer) clearInterval(flexRadioRefreshTimer);
   flexRadioRefreshTimer = setInterval(() => { if (!destroyed) loadFlexRadioStatus(); }, 5000);
@@ -1047,6 +1006,13 @@ async function loadFlexSettings() {
   } catch { /* keep defaults */ }
 }
 
+async function loadRigControlSettings() {
+  try {
+    const s = await apiGet('/settings/rig-control');
+    _activeRig = s.active_rig ?? 'flexradio';
+  } catch { /* keep default */ }
+}
+
 async function stepFreq(deltaKhz) {
   const badge = document.getElementById('flex-freq-badge');
   if (!badge) return;
@@ -1071,21 +1037,53 @@ async function stepFreq(deltaKhz) {
   }
 }
 
+async function stepFlrigFreq(deltaKhz) {
+  const badge = document.getElementById('flrig-freq-badge');
+  if (!badge) return;
+  const currentHz = parseFloat(badge.dataset.freqHz);
+  if (isNaN(currentHz)) return;
+  const newHz = Math.round(currentHz + deltaKhz * 1000);
+  if (newHz <= 0) return;
+  const newMhz = (newHz / 1e6).toFixed(3);
+  const newBand = amateurBand(newMhz);
+  badge.dataset.freqHz = newHz;
+  badge.textContent = `${newMhz} MHz${newBand ? ' · ' + newBand : ''}`;
+  _optimisticFlrigFreqHz = newHz;
+  try {
+    await apiPost('/flrig/tune', { frequency_hz: newHz });
+  } catch {
+    const oldMhz = (currentHz / 1e6).toFixed(3);
+    const oldBand = amateurBand(oldMhz);
+    badge.dataset.freqHz = currentHz;
+    badge.textContent = `${oldMhz} MHz${oldBand ? ' · ' + oldBand : ''}`;
+    _optimisticFlrigFreqHz = null;
+  }
+}
+
+async function togglePtt(btn) {
+  const isTx = btn.dataset.isTx === '1';
+  btn.disabled = true;
+  try {
+    await apiPost('/flrig/ptt', { active: !isTx });
+  } catch (e) {
+    alert(`PTT failed: ${e.message}`);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function loadFlexRadioStatus() {
   const el = document.getElementById('flexradio-status');
   if (!el) return;
+  if (_activeRig !== 'flexradio') { el.innerHTML = ''; return; }
   try {
     const s = await apiGet('/flexradio/status');
-    const cwRow = document.getElementById('cw-tile-row');
     if (!s.connected) {
       pskRadioOffline = true;
       el.innerHTML = '<span class="fw-bold text-danger">Radio Offline</span>';
-      if (cwRow) cwRow.style.display = 'none';
       return;
     }
     pskRadioOffline = false;
-    const isCwMode = ['CW', 'CWL', 'CWU'].includes((s.mode || '').toUpperCase());
-    if (cwRow) cwRow.style.display = isCwMode ? '' : 'none';
     if (!s.freq_mhz) return;
     // If we have an optimistic freq from a recent step, use it until the server
     // confirms the new value — prevents the badge from briefly reverting to the
@@ -1142,41 +1140,44 @@ async function loadFlexRadioStatus() {
 async function loadFlrigStatus() {
   const el = document.getElementById('flrig-status');
   if (!el) return;
+  if (_activeRig !== 'flrig') { el.innerHTML = ''; return; }
   try {
     const s = await apiGet('/flrig/status');
+    _lastFlrigStatus = s;
     if (!s.connected) {
       el.innerHTML = '<span class="fw-bold text-danger" style="font-size:0.8rem">flrig Offline</span>';
       return;
     }
-    const freqMhz = s.freq_hz != null ? (s.freq_hz / 1e6).toFixed(3) : '--';
-    const mode = s.mode ? `<span class="badge ms-1" style="background:#4fc3f7;color:#000">${escHtml(s.mode)}</span>` : '';
+    const freqHz = s.freq_hz ?? 0;
+    let displayHz = freqHz;
+    if (_optimisticFlrigFreqHz !== null) {
+      if (Math.abs(freqHz - _optimisticFlrigFreqHz) < 500) {
+        _optimisticFlrigFreqHz = null;
+      } else {
+        displayHz = _optimisticFlrigFreqHz;
+      }
+    }
+    const displayMhz = (displayHz / 1e6).toFixed(3);
+    const band = amateurBand(displayMhz);
+    if (band && _HF_BANDS.includes(band)) _bandFreqMemory[band] = displayHz / 1e6;
     const isTx = !!s.ptt;
-    const rxtx = `<span class="badge ms-1" style="background:${isTx ? '#dc3545' : '#198754'};color:#fff">${isTx ? 'TX' : 'RX'}</span>`;
     const swrColor = s.swr == null ? '' : s.swr <= 2.0 ? '#198754' : s.swr <= 3.0 ? '#fd7e14' : '#dc3545';
     const swr = s.swr != null ? `<span class="badge ms-1" style="background:${swrColor};color:#fff">SWR ${s.swr}:1</span>` : '';
+    const btnStyle = 'background:#1a1f2e;color:#4fc3f7;border:1px solid #4fc3f7;padding:1px 5px;font-size:0.7rem;line-height:1.4;border-radius:3px;cursor:pointer';
+    const freqStepBtns = `<button class="flrig-step-btn ms-1" data-step="-large" style="${btnStyle}" title="Decrease ${flexFreqSteps.large} kHz">&lt;&lt;</button><button class="flrig-step-btn ms-1" data-step="-small" style="${btnStyle}" title="Decrease ${flexFreqSteps.small} kHz">&lt;</button>`;
+    const freqBadge = `<span id="flrig-freq-badge" class="badge ms-1" style="background:#4fc3f7;color:#000;cursor:pointer" data-freq-hz="${displayHz}">${escHtml(displayMhz)} MHz${band ? ' · ' + band : ''}</span>`;
+    const freqStepBtnsR = `<button class="flrig-step-btn ms-1" data-step="+small" style="${btnStyle}" title="Increase ${flexFreqSteps.small} kHz">&gt;</button><button class="flrig-step-btn ms-1" data-step="+large" style="${btnStyle}" title="Increase ${flexFreqSteps.large} kHz">&gt;&gt;</button>`;
+    const mode = s.mode ? `<span id="flrig-mode-badge" class="badge ms-2" style="background:#4fc3f7;color:#000;cursor:pointer" data-mode="${escHtml(s.mode)}">${escHtml(s.mode)}</span>` : '';
+    const rxtx = `<span class="badge ms-1" style="background:${isTx ? '#dc3545' : '#198754'};color:#fff">${isTx ? 'TX' : 'RX'}</span>`;
+    const pttStyle = isTx
+      ? 'background:#dc3545;color:#fff;border:1px solid #dc3545;'
+      : 'background:#1a1f2e;color:#dc3545;border:1px solid #dc3545;';
+    const pttBtn = `<button id="flrig-ptt-btn" class="ms-1" data-is-tx="${isTx ? '1' : '0'}" style="${pttStyle}padding:1px 7px;font-size:0.7rem;line-height:1.4;border-radius:3px;cursor:pointer;font-weight:700">PTT</button>`;
     el.innerHTML = `<span style="font-size:0.8rem;color:#4fc3f7;font-weight:600" class="me-1">flrig</span>` +
-      `<span class="badge ms-1" style="background:#4fc3f7;color:#000">${escHtml(freqMhz)} MHz</span>` +
-      mode + rxtx + swr;
+      freqStepBtns + freqBadge + freqStepBtnsR + mode + rxtx + pttBtn + swr;
   } catch {
     el.innerHTML = '';
   }
-}
-
-// ── CW Decoder tile ──────────────────────────────────────────────────────────
-
-let _cwLastText = '';
-
-function _measureCwCharsPerLine() {
-  const display = document.getElementById('cw-text-display');
-  if (!display) return 80;
-  const probe = document.createElement('span');
-  probe.style.cssText = 'font-family:monospace;font-size:1rem;visibility:hidden;position:absolute;white-space:pre';
-  probe.textContent = 'M';
-  display.appendChild(probe);
-  const charWidth = probe.getBoundingClientRect().width || 9.6;
-  display.removeChild(probe);
-  const innerWidth = display.clientWidth - 16;  // 8px padding each side
-  return Math.max(20, Math.floor(innerWidth / charWidth));
 }
 
 function _updateLightningBannerBadge(nearestKm) {
@@ -1278,45 +1279,6 @@ function _handleBlitzortungStrike(data) {
 
   if (data.lat != null && data.lon != null) {
     _addBlitzortungMarker(data.lat, data.lon, data.timestamp);
-  }
-}
-
-function updateCwTile(msg) {
-  if (msg.text !== undefined && msg.text !== _cwLastText) {
-    const incoming = msg.text || '';
-    let newChars = incoming.length > _cwLastText.length ? incoming.slice(_cwLastText.length) : incoming;
-    _cwLastText = incoming;
-
-    if (!_cwCharsPerLine) _cwCharsPerLine = _measureCwCharsPerLine();
-    const cpl = _cwCharsPerLine;
-
-    // Fill line1 first, then line2; when line2 fills, scroll up
-    for (const ch of newChars) {
-      if (cwLine2.length === 0 && cwLine1.length < cpl) {
-        cwLine1 += ch;
-      } else {
-        cwLine2 += ch;
-        if (cwLine2.length >= cpl) {
-          cwLine1 = cwLine2;
-          cwLine2 = '';
-        }
-      }
-    }
-
-    const l1 = document.getElementById('cw-line1');
-    const l2 = document.getElementById('cw-line2');
-    if (l1) l1.textContent = cwLine1;
-    if (l2) l2.textContent = cwLine2;
-  }
-
-  const wpmBadge = document.getElementById('cw-wpm');
-  if (wpmBadge) wpmBadge.textContent = `${msg.wpm ?? '--'} WPM`;
-
-  const snrBadge = document.getElementById('cw-snr');
-  if (snrBadge) {
-    const snr = msg.snr ?? null;
-    snrBadge.textContent = snr !== null ? `SNR ${snr} dB` : 'SNR --';
-    snrBadge.className = 'badge ' + (snr === null ? 'bg-secondary' : snr >= 10 ? 'bg-success' : snr >= 3 ? 'bg-warning text-dark' : 'bg-danger');
   }
 }
 
@@ -2721,7 +2683,6 @@ async function connectWS() {
         }
       }
       if (msg.type === 'flrig_update') loadFlrigStatus();
-      if (msg.type === 'cw_decode') updateCwTile(msg);
       if (msg.type === 'workflow_complete') {
         if (!msg.success && msg.error) alert(`Workflow failed: ${msg.error}`);
         loadSystemState();
