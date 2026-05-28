@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 async def execute_shutdown(db: AsyncSession, reason: str = "Manual trigger") -> list[str]:
     """Execute the system shutdown workflow in order. Returns list of step descriptions."""
-    wf_result = await db.execute(select(Workflow).where(Workflow.is_system == True))
+    wf_result = await db.execute(select(Workflow).where(Workflow.is_system == True, Workflow.name == "Shutdown"))
     workflow = wf_result.scalar_one_or_none()
 
     if not workflow:
