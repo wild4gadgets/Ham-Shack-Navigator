@@ -15,10 +15,11 @@ from sqlalchemy import select
 
 from dependencies import get_db, get_current_user, require_admin
 from models import User, Setting
+from services.monitoring_service import log_event
 from schemas import (
     LocationSettings, LocationProfile, ApiKeySettings, ThresholdSettings, SmtpSettings,
     NotificationSettings, KasaSettings, IftttSettings, TelegramSettings, NtfySettings,
-    HomeAssistantSettings, DxclusterSettings, FlexRadioSettings, BlitzortungSettings,
+    TelnyxSettings, HomeAssistantSettings, DxclusterSettings, FlexRadioSettings, BlitzortungSettings,
 )
 import scheduler as sched
 
@@ -225,6 +226,9 @@ async def create_location_profile(
     new_profile["id"] = str(_uuid.uuid4())
     profiles.append(new_profile)
     await _save_setting(db, "location_profiles", profiles)
+    await log_event(db, "profile_created", "info",
+                    f"Location profile '{new_profile.get('name', '')}' created",
+                    {"profile_id": new_profile["id"]})
     return new_profile
 
 
@@ -244,6 +248,9 @@ async def update_location_profile(
             updated["id"] = profile_id
             profiles[i] = updated
             await _save_setting(db, "location_profiles", profiles)
+            await log_event(db, "profile_updated", "info",
+                            f"Location profile '{updated.get('name', '')}' updated",
+                            {"profile_id": profile_id})
             # Keep active location in sync if this profile is currently active
             location = await _get_setting(db, "location") or {}
             if location.get("active_profile_id") == profile_id:
@@ -266,7 +273,11 @@ async def delete_location_profile(
     new_profiles = [p for p in profiles if p["id"] != profile_id]
     if len(new_profiles) == len(profiles):
         raise HTTPException(status_code=404, detail="Profile not found")
+    deleted = next((p for p in profiles if p["id"] == profile_id), {})
     await _save_setting(db, "location_profiles", new_profiles)
+    await log_event(db, "profile_deleted", "info",
+                    f"Location profile '{deleted.get('name', '')}' deleted",
+                    {"profile_id": profile_id})
     return {"detail": "Deleted"}
 
 
@@ -286,6 +297,9 @@ async def activate_location_profile(
             await _save_setting(db, "location", location)
             await _restart_blitzortung_if_enabled(db)
             await _ws_manager.broadcast({"type": "location_changed"})
+            await log_event(db, "profile_activated", "info",
+                            f"Location profile '{p.get('name', '')}' activated",
+                            {"profile_id": profile_id})
             return {"detail": "Activated"}
     raise HTTPException(status_code=404, detail="Profile not found")
 
@@ -478,6 +492,38 @@ async def test_ntfy(db: AsyncSession = Depends(get_db), _: User = Depends(requir
         return {"detail": "Test notification sent"}
     except Exception as e:
         logger.error("ntfy test failed: %s", e)
+        raise HTTPException(status_code=500, detail="Test failed — check server logs")
+
+
+# --- Telnyx ---
+@router.get("/telnyx")
+async def get_telnyx(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    data = await _get_setting(db, "telnyx")
+    if not data:
+        return {"api_key": None, "from_number": "+13039553461", "to_number": None, "enabled": False}
+    if data.get("api_key"):
+        data["api_key"] = _mask_key(data["api_key"])
+    return data
+
+
+@router.put("/telnyx")
+async def put_telnyx(body: TelnyxSettings, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
+    existing = await _get_setting(db, "telnyx") or {}
+    update = body.model_dump()
+    if update.get("api_key") and update["api_key"].startswith(MASKED):
+        update["api_key"] = existing.get("api_key", "")
+    await _save_setting(db, "telnyx", update)
+    return {"detail": "Saved"}
+
+
+@router.post("/telnyx/test")
+async def test_telnyx(db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
+    from services.telnyx_service import send_telnyx_test
+    try:
+        await send_telnyx_test(db)
+        return {"detail": "Test SMS sent"}
+    except Exception as e:
+        logger.error("Telnyx test failed: %s", e)
         raise HTTPException(status_code=500, detail="Test failed — check server logs")
 
 
