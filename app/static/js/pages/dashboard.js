@@ -77,7 +77,6 @@ export async function renderDashboard(container) {
           <div class="card-header monitoring-header d-flex align-items-center gap-2 flex-wrap">
             <span class="me-1"><i class="bi bi-shield-check me-2"></i>Monitoring</span>
             <div id="monitoring-status-area"><span class="text-muted">Loading...</span></div>
-            <div id="monitoring-lightning-badge" style="display:none"></div>
             <div id="dashboard-pins" class="d-flex flex-wrap gap-1 align-items-center"></div>
             <div class="ms-auto d-flex align-items-center gap-2">
               <button id="btn-system-toggle" class="btn btn-sm btn-secondary" disabled>...</button>
@@ -962,6 +961,7 @@ async function loadMonitoringStatus() {
     const canToggle = isAdmin();
     let html = `<span id="btn-armed-toggle" class="badge ${s.enabled ? 'bg-success' : 'bg-danger'} me-2"
       style="${canToggle ? 'cursor:pointer' : ''}" title="${canToggle ? `Click to ${s.enabled ? 'stop' : 'start'} monitoring` : 'Admin access required'}">Monitoring ${s.enabled ? 'On' : 'Off'}</span>`;
+    html += `<span id="monitoring-lightning-badge" style="display:none"></span>`;
     if (s.in_cooldown) {
       html += `<span class="badge bg-info me-2">Cooldown: ${s.cooldown_remaining_min.toFixed(0)} min remaining</span>`;
     }
@@ -969,6 +969,7 @@ async function loadMonitoringStatus() {
       html += `<small class="text-muted ms-3">Last shutdown: ${new Date(s.last_shutdown_at).toLocaleString()}</small>`;
     }
     area.innerHTML = html;
+    _updateLightningBannerBadge(_nearestLightningKm);
 
     if (canToggle) {
       document.getElementById('btn-armed-toggle').addEventListener('click', async () => {
