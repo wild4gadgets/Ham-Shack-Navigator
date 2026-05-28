@@ -261,6 +261,37 @@ async def update_location_profile(
     raise HTTPException(status_code=404, detail="Profile not found")
 
 
+@router.patch("/location/profiles/{profile_id}")
+async def rename_location_profile(
+    profile_id: str,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    new_name = (body.get("name") or "").strip()
+    if not new_name:
+        raise HTTPException(status_code=422, detail="Name is required")
+    profiles = await _get_setting(db, "location_profiles")
+    if not isinstance(profiles, list):
+        raise HTTPException(status_code=404, detail="Profile not found")
+    for i, p in enumerate(profiles):
+        if p["id"] == profile_id:
+            old_name = p.get("name", "")
+            p["name"] = new_name
+            profiles[i] = p
+            await _save_setting(db, "location_profiles", profiles)
+            # Keep active location name in sync
+            location = await _get_setting(db, "location") or {}
+            if location.get("active_profile_id") == profile_id:
+                location["name"] = new_name
+                await _save_setting(db, "location", location)
+            await log_event(db, "profile_renamed", "info",
+                            f"Location profile renamed '{old_name}' → '{new_name}'",
+                            {"profile_id": profile_id})
+            return p
+    raise HTTPException(status_code=404, detail="Profile not found")
+
+
 @router.delete("/location/profiles/{profile_id}")
 async def delete_location_profile(
     profile_id: str,

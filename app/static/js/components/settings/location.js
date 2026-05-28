@@ -1,4 +1,4 @@
-import { apiGet, apiPut, apiPost, apiDelete } from '../../api.js';
+import { apiGet, apiPut, apiPost, apiPatch, apiDelete } from '../../api.js';
 
 // Compute 6-character Maidenhead grid locator from lat/lon
 function maidenhead(lat, lon) {
@@ -76,6 +76,10 @@ function buildUI(container, active, profiles) {
           <div class="col-auto d-flex gap-2">
             <button type="button" class="btn btn-outline-success" id="loc-new-btn" title="New profile">
               <i class="bi bi-plus-lg"></i> New
+            </button>
+            <button type="button" class="btn btn-outline-secondary" id="loc-rename-btn"
+              title="Rename this profile" ${!activeId ? 'disabled' : ''}>
+              <i class="bi bi-pencil"></i>
             </button>
             <button type="button" class="btn btn-outline-danger" id="loc-delete-btn"
               title="Delete this profile" ${!activeId ? 'disabled' : ''}>
@@ -206,6 +210,24 @@ function attachHandlers(container, active, profiles) {
         gridsquare: document.getElementById('loc-gridsquare').value,
       });
       await apiPost(`/settings/location/profiles/${created.id}/activate`);
+      const [newActive, newProfiles] = await Promise.all([
+        apiGet('/settings/location'),
+        apiGet('/settings/location/profiles'),
+      ]);
+      buildUI(container, newActive, newProfiles);
+    } catch (err) {
+      showMsg('danger', err.message);
+    }
+  });
+
+  // ── Rename profile ──
+  document.getElementById('loc-rename-btn')?.addEventListener('click', async () => {
+    if (!activeId) return;
+    const prof = activeProfile(profiles, activeId);
+    const newName = prompt('New profile name:', prof?.name || '')?.trim();
+    if (!newName || newName === prof?.name) return;
+    try {
+      await apiPatch(`/settings/location/profiles/${activeId}`, { name: newName });
       const [newActive, newProfiles] = await Promise.all([
         apiGet('/settings/location'),
         apiGet('/settings/location/profiles'),
