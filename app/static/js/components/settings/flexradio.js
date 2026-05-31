@@ -11,6 +11,7 @@ export async function renderFlexRadioTab(container) {
   const stepSmallKhz    = data.freq_step_small_khz ?? 50.0;
   const stepLargeKhz    = data.freq_step_large_khz ?? 100.0;
   const txBtnLabel      = data.tx_button_label ?? 'MOX';
+  const pingIntervalSec = data.ping_interval_sec ?? 30;
 
   container.innerHTML = `
     <div class="card">
@@ -24,6 +25,13 @@ export async function renderFlexRadioTab(container) {
             <input type="text" class="form-control" id="flex-ip"
               placeholder="192.168.1.x" value="${data.ip ?? ''}" style="${INP}">
             <div class="form-text">Local IP address of your FlexRadio 6400. Leave blank to disable.</div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Radio Ping Test (seconds)</label>
+            <input type="number" class="form-control" id="flex-ping-interval"
+              min="5" step="1" value="${pingIntervalSec}" style="${INP};width:8rem">
+            <div class="form-text">How often to ping the radio IP to check network reachability. Minimum 5 seconds.</div>
           </div>
 
           <div class="mb-4 form-check form-switch">
@@ -97,6 +105,7 @@ export async function renderFlexRadioTab(container) {
       await apiPut('/settings/flexradio', {
         ip:                   document.getElementById('flex-ip').value.trim(),
         enabled:              document.getElementById('flex-enabled').checked,
+        ping_interval_sec:    Math.max(5, parseInt(document.getElementById('flex-ping-interval').value, 10) || 30),
         dax_enabled:          document.getElementById('flex-dax-enabled').checked,
         dax_channel:          parseInt(document.getElementById('flex-dax-channel').value, 10),
         freq_step_small_khz:  parseFloat(document.getElementById('flex-step-small').value),

@@ -40,6 +40,8 @@ FLEX_PORT = 4992
 DAX_UDP_PORT = 4991   # UDP port the radio sends VITA-49 audio frames to
 
 _flex_task: asyncio.Task | None = None
+_ping_task: asyncio.Task | None = None
+_ping_status: bool | None = None
 _writer: asyncio.StreamWriter | None = None
 _seq: int = 0
 _flex_state: dict = {
@@ -293,6 +295,7 @@ def get_state() -> dict:
         "swr": _get_swr(),
         "dax_stream_id": _flex_state.get("dax_stream_id"),
         "updated_at": _flex_state["updated_at"],
+        "ping_online": _ping_status,
     }
 
 
@@ -313,6 +316,36 @@ def _parse_kv(text: str) -> dict:
     for m in re.finditer(r'(\w+)=([^\s]+)', text):
         result[m.group(1)] = m.group(2)
     return result
+
+
+async def _ping_once(ip: str) -> bool:
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "ping", "-c", "1", "-W", "2", ip,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await asyncio.wait_for(proc.wait(), timeout=5.0)
+        return proc.returncode == 0
+    except Exception:
+        return False
+
+
+async def _ping_loop():
+    global _ping_status
+    while True:
+        settings = await _get_settings()
+        ip = settings.get("ip", "").strip()
+        enabled = settings.get("enabled", False)
+        interval = max(5, int(settings.get("ping_interval_sec", 30)))
+
+        if not enabled or not ip:
+            _ping_status = None
+            await asyncio.sleep(30)
+            continue
+
+        _ping_status = await _ping_once(ip)
+        await asyncio.sleep(interval)
 
 
 async def _flex_listener():
@@ -595,17 +628,24 @@ async def _flex_listener():
 
 
 def start_listener():
-    """Start (or restart) the background FlexRadio listener task."""
-    global _flex_task
+    """Start (or restart) the background FlexRadio listener and ping tasks."""
+    global _flex_task, _ping_task
     if _flex_task is None or _flex_task.done():
         _flex_task = asyncio.create_task(_flex_listener())
         logger.info("FlexRadio listener task created")
+    if _ping_task is None or _ping_task.done():
+        _ping_task = asyncio.create_task(_ping_loop())
+        logger.info("FlexRadio ping task created")
 
 
 def stop_listener():
-    """Cancel the background FlexRadio listener task."""
-    global _flex_task
+    """Cancel the background FlexRadio listener and ping tasks."""
+    global _flex_task, _ping_task, _ping_status
     if _flex_task and not _flex_task.done():
         _flex_task.cancel()
         _flex_task = None
+    if _ping_task and not _ping_task.done():
+        _ping_task.cancel()
+        _ping_task = None
+    _ping_status = None
     _stop_dax_udp()

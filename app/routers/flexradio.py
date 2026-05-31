@@ -111,6 +111,7 @@ async def get_flexradio_status(_: User = Depends(get_current_user)):
 
     return {
         "connected": connected,
+        "ping_online": state.get("ping_online"),
         "freq_mhz": primary.get("RF_frequency") if connected else None,
         "mode": primary.get("mode") if connected else None,
         "in_use": primary.get("in_use") if connected else None,

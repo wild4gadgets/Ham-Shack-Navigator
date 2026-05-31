@@ -1078,13 +1078,21 @@ async function loadFlexRadioStatus() {
   if (_activeRig !== 'flexradio') { el.innerHTML = ''; return; }
   try {
     const s = await apiGet('/flexradio/status');
+    const pingBadge = s.ping_online === true
+      ? '<span class="badge ms-1" style="background:#198754;color:#fff">Online</span>'
+      : s.ping_online === false
+        ? '<span class="badge ms-1" style="background:#dc3545;color:#fff">Offline</span>'
+        : '';
     if (!s.connected) {
       pskRadioOffline = true;
-      el.innerHTML = '<span class="fw-bold text-danger">Radio Offline</span>';
+      el.innerHTML = `<span class="freq-retro me-1">FlexRadio Status</span>${pingBadge}<span class="fw-bold text-danger ms-2">SmartSDR Offline</span>`;
       return;
     }
     pskRadioOffline = false;
-    if (!s.freq_mhz) return;
+    if (!s.freq_mhz) {
+      el.innerHTML = `<span class="freq-retro me-1">FlexRadio Status</span>${pingBadge}<span class="text-warning ms-2" style="font-size:0.8rem">Connecting…</span>`;
+      return;
+    }
     // If we have an optimistic freq from a recent step, use it until the server
     // confirms the new value — prevents the badge from briefly reverting to the
     // pre-step frequency when an unrelated WS event fires before the radio
@@ -1130,7 +1138,7 @@ async function loadFlexRadioStatus() {
       : '';
     const swrColor = s.swr == null ? '' : s.swr <= 2.0 ? '#198754' : s.swr <= 3.0 ? '#fd7e14' : '#dc3545';
     const swr = s.swr != null ? `<span class="badge ms-1" style="background:${swrColor};color:#fff">SWR ${s.swr}:1</span>` : '';
-    el.innerHTML = `<span class="freq-retro me-1">FlexRadio Status</span>${freq}${mode}${power}${rxtx}${tuneBtn}${moxBtn}${swr}`;
+    el.innerHTML = `<span class="freq-retro me-1">FlexRadio Status</span>${pingBadge}${freq}${mode}${power}${rxtx}${tuneBtn}${moxBtn}${swr}`;
   } catch {
     pskRadioOffline = false;
     el.innerHTML = '';
@@ -2046,11 +2054,23 @@ async function loadWeather() {
       if (bzStrikes.length > 0) {
         const nearest = bzStrikes.reduce((a, b) => a.distance_km < b.distance_km ? a : b);
         _nearestLightningKm = nearest.distance_km;
-        _nearestLightningAt = Date.now();
+        // Use the actual timestamp of the most recent strike so the 70-min clearing
+        // window is measured from the real last strike, not from when loadWeather ran.
+        const mostRecentStrikeMs = bzStrikes.reduce((max, s) => {
+          const t = s.timestamp ? new Date(s.timestamp).getTime() : 0;
+          return t > max ? t : max;
+        }, 0);
+        if (mostRecentStrikeMs > _nearestLightningAt) {
+          _nearestLightningAt = mostRecentStrikeMs;
+        }
       } else if (!_nearestLightningAt || Date.now() - _nearestLightningAt >= 70 * 60 * 1000) {
         // Only clear if there's no recent WS-sourced strike (guards against race where REST
         // call was in-flight before the strike arrived but resolves after the WS message).
         _nearestLightningKm = null;
+        const bzBadge = document.getElementById('blitzortung-badge');
+        const bzHist  = document.getElementById('blitzortung-history');
+        if (bzBadge) bzBadge.style.display = 'none';
+        if (bzHist)  { bzHist.style.display = 'none'; bzHist.innerHTML = ''; }
       }
       _updateLightningBannerBadge(_nearestLightningKm);
 

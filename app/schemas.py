@@ -227,6 +227,7 @@ class PskReporterSettings(BaseModel):
 class FlexRadioSettings(BaseModel):
     ip: str = ""
     enabled: bool = False
+    ping_interval_sec: int = 30
     dax_enabled: bool = True
     dax_channel: int = 1
     freq_step_small_khz: float = 50.0
