@@ -8,8 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from models import Workflow, WorkflowStep, KasaPort, KasaDevice
+from models import Workflow, WorkflowStep, KasaPort, KasaDevice, ShellyChannel
 from services.kasa_service import control_port
+from services.shelly_service import control_channel
 from services.monitoring_service import log_event
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,10 @@ async def execute_shutdown(db: AsyncSession, reason: str = "Manual trigger") -> 
     result = await db.execute(
         select(WorkflowStep)
         .where(WorkflowStep.workflow_id == workflow.id)
-        .options(selectinload(WorkflowStep.kasa_port).selectinload(KasaPort.device))
+        .options(
+            selectinload(WorkflowStep.kasa_port).selectinload(KasaPort.device),
+            selectinload(WorkflowStep.shelly_channel).selectinload(ShellyChannel.device),
+        )
         .order_by(WorkflowStep.step_order)
     )
     steps = result.scalars().all()
@@ -57,25 +61,45 @@ async def execute_shutdown(db: AsyncSession, reason: str = "Manual trigger") -> 
             executed.append(action_desc + " \u2713")
             continue
 
-        port = step.kasa_port
-        device = port.device
-        label = port.label or f"Port {port.port_index}"
-        action_desc = f"Step {step.step_order}: {step.action.upper()} {label} ({device.ip_address})"
-
-        try:
-            await control_port(device.ip_address, device.device_type, port.port_index, step.action)
-            executed.append(action_desc + " \u2713")
-            await log_event(db, "kasa_action", "info",
-                            f"{step.action.upper()} {label}",
-                            {"device": device.name, "port": label, "action": step.action})
-            logger.info("Shutdown step %d: %s %s", step.step_order, step.action, label)
-        except Exception as e:
-            error_desc = action_desc + f" FAILED: {e}"
-            executed.append(error_desc)
-            await log_event(db, "error", "critical",
-                            f"Kasa action failed: {step.action} {label}: {e}",
-                            {"device": device.name, "port": label, "action": step.action, "error": str(e)})
-            logger.error("Shutdown step %d failed: %s", step.step_order, e)
+        if step.shelly_channel_id is not None:
+            channel = step.shelly_channel
+            device = channel.device
+            label = channel.label or f"Channel {channel.channel_index}"
+            action_desc = f"Step {step.step_order}: {step.action.upper()} {label} ({device.ip_address})"
+            try:
+                await control_channel(device.ip_address, channel.channel_index, step.action, device.generation)
+                executed.append(action_desc + " \u2713")
+                await log_event(db, "shelly_action", "info",
+                                f"{step.action.upper()} {label}",
+                                {"device": device.name, "channel": label, "action": step.action})
+                logger.info("Shutdown step %d: %s %s", step.step_order, step.action, label)
+            except Exception as e:
+                executed.append(action_desc + f" FAILED: {e}")
+                await log_event(db, "error", "critical",
+                                f"Shelly action failed: {step.action} {label}: {e}",
+                                {"device": device.name, "channel": label, "action": step.action, "error": str(e)})
+                logger.error("Shutdown step %d failed: %s", step.step_order, e)
+        elif step.kasa_port_id is not None:
+            port = step.kasa_port
+            device = port.device
+            label = port.label or f"Port {port.port_index}"
+            action_desc = f"Step {step.step_order}: {step.action.upper()} {label} ({device.ip_address})"
+            try:
+                await control_port(device.ip_address, device.device_type, port.port_index, step.action)
+                executed.append(action_desc + " \u2713")
+                await log_event(db, "kasa_action", "info",
+                                f"{step.action.upper()} {label}",
+                                {"device": device.name, "port": label, "action": step.action})
+                logger.info("Shutdown step %d: %s %s", step.step_order, step.action, label)
+            except Exception as e:
+                executed.append(action_desc + f" FAILED: {e}")
+                await log_event(db, "error", "critical",
+                                f"Kasa action failed: {step.action} {label}: {e}",
+                                {"device": device.name, "port": label, "action": step.action, "error": str(e)})
+                logger.error("Shutdown step %d failed: %s", step.step_order, e)
+        else:
+            logger.warning("Shutdown step %d has no device assigned, skipping", step.step_order)
+            executed.append(f"Step {step.step_order}: SKIPPED (no device)")
 
         if step.delay_after_sec > 0:
             logger.info("Waiting %d seconds after step %d", step.delay_after_sec, step.step_order)
