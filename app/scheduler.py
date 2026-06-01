@@ -23,8 +23,9 @@ from services.weather_service import fetch_all
 from services.monitoring_service import (
     check_conditions, is_in_cooldown, set_last_shutdown, log_event,
     is_notification_in_cooldown, set_last_notification, log_weather_fetch_results,
+    mark_post_cooldown_checked,
 )
-from services.shutdown_service import execute_shutdown
+from services.shutdown_service import execute_shutdown, any_shutdown_workflow_device_on
 from services.email_service import send_shutdown_notification, send_digest
 from services.ifttt_service import send_ifttt_shutdown
 from services.telegram_service import send_telegram_shutdown
@@ -185,6 +186,21 @@ async def _monitoring_poll():
 
         # Check thresholds
         should_trigger, reason, meta = await check_conditions(db)
+
+        # Post-cooldown device guard: runs once when cooldown first expires.
+        # If weather APIs don't detect ongoing danger but a device the shutdown
+        # workflow would turn off is found on, re-trigger the shutdown.
+        if not should_trigger and not monitoring.get("post_cooldown_checked", True):
+            await mark_post_cooldown_checked(db)
+            try:
+                device_on, device_desc = await any_shutdown_workflow_device_on(db)
+                if device_on:
+                    should_trigger = True
+                    reason = f"Post-cooldown device guard: {device_desc} is on"
+                    meta = {"device": device_desc, "source": "post_cooldown_guard"}
+                    logger.info("Post-cooldown guard triggered: %s", device_desc)
+            except Exception as e:
+                logger.error("Post-cooldown device guard error: %s", e)
 
         await manager.broadcast({"type": "monitoring_status", "triggered": should_trigger, "reason": reason})
 

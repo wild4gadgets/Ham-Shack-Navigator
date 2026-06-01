@@ -276,14 +276,27 @@ async def set_last_shutdown(db: AsyncSession):
     if row:
         data = json.loads(row.value)
         data["last_shutdown_at"] = now_iso
+        data["post_cooldown_checked"] = False
         row.value = json.dumps(data)
     else:
         row = Setting(key="monitoring", value=json.dumps({
             "enabled": True,
             "last_shutdown_at": now_iso,
+            "post_cooldown_checked": False,
         }))
         db.add(row)
     await db.commit()
+
+
+async def mark_post_cooldown_checked(db: AsyncSession):
+    """Mark that the post-cooldown device guard has run for the current cooldown cycle."""
+    result = await db.execute(select(Setting).where(Setting.key == "monitoring"))
+    row = result.scalar_one_or_none()
+    if row:
+        data = json.loads(row.value)
+        data["post_cooldown_checked"] = True
+        row.value = json.dumps(data)
+        await db.commit()
 
 
 _NOTIFICATION_COOLDOWN_MIN = 30

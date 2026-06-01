@@ -9,8 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from models import Workflow, WorkflowStep, KasaPort, KasaDevice, ShellyChannel
-from services.kasa_service import control_port
-from services.shelly_service import control_channel
+from services.kasa_service import control_port, get_port_states
+from services.shelly_service import control_channel, get_channel_states
 from services.monitoring_service import log_event
 
 logger = logging.getLogger(__name__)
@@ -106,3 +106,54 @@ async def execute_shutdown(db: AsyncSession, reason: str = "Manual trigger") -> 
             await asyncio.sleep(step.delay_after_sec)
 
     return executed
+
+
+async def any_shutdown_workflow_device_on(db: AsyncSession) -> tuple[bool, str]:
+    """Return (True, description) if any device the shutdown workflow turns off is currently on."""
+    wf_result = await db.execute(
+        select(Workflow).where(Workflow.is_system == True, Workflow.name == "Shutdown")
+    )
+    workflow = wf_result.scalar_one_or_none()
+    if not workflow:
+        return False, ""
+
+    result = await db.execute(
+        select(WorkflowStep)
+        .where(WorkflowStep.workflow_id == workflow.id, WorkflowStep.action == "off")
+        .options(
+            selectinload(WorkflowStep.kasa_port).selectinload(KasaPort.device),
+            selectinload(WorkflowStep.shelly_channel).selectinload(ShellyChannel.device),
+        )
+    )
+    steps = result.scalars().all()
+
+    for step in steps:
+        if step.shelly_channel_id is not None:
+            channel = step.shelly_channel
+            device = channel.device
+            try:
+                states = await get_channel_states(
+                    device.ip_address, channel.channel_index + 1, device.generation
+                )
+                for state in states:
+                    if state["channel_index"] == channel.channel_index and state["is_on"]:
+                        label = channel.label or f"Channel {channel.channel_index}"
+                        logger.info("Post-cooldown guard: Shelly %s — %s is on", device.name, label)
+                        return True, f"{device.name} — {label}"
+            except Exception as e:
+                logger.warning("Post-cooldown Shelly check failed for %s: %s", device.ip_address, e)
+
+        elif step.kasa_port_id is not None:
+            port = step.kasa_port
+            device = port.device
+            try:
+                states = await get_port_states(device.ip_address, device.device_type)
+                for state in states:
+                    if state["port_index"] == port.port_index and state["is_on"]:
+                        label = port.label or f"Port {port.port_index}"
+                        logger.info("Post-cooldown guard: Kasa %s — %s is on", device.name, label)
+                        return True, f"{device.name} — {label}"
+            except Exception as e:
+                logger.warning("Post-cooldown Kasa check failed for %s: %s", device.ip_address, e)
+
+    return False, ""
