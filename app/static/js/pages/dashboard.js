@@ -78,7 +78,7 @@ export async function renderDashboard(container) {
       <div class="db-section" data-section="monitoring">
         <div class="card">
           <div class="card-header monitoring-header d-flex align-items-center gap-2 flex-wrap">
-            <span class="me-1"><i class="bi bi-shield-check me-2"></i>Monitoring</span>
+            <span class="me-1"><i class="bi bi-shield-check me-2"></i>System Monitor</span>
             <div id="monitoring-status-area"><span class="text-muted">Loading...</span></div>
             <div id="dashboard-pins" class="d-flex flex-wrap gap-1 align-items-center"></div>
             <div class="ms-auto d-flex align-items-center gap-2">
@@ -1049,26 +1049,12 @@ async function loadMonitoringStatus() {
     const s = await apiGet('/monitoring/status');
     const area = document.getElementById('monitoring-status-area');
     if (!area) return;
-    const canToggle = isAdmin();
-    let html = `<span id="btn-armed-toggle" class="badge ${s.enabled ? 'bg-success' : 'bg-danger'} me-2"
-      style="${canToggle ? 'cursor:pointer' : ''}" title="${canToggle ? `Click to ${s.enabled ? 'stop' : 'start'} monitoring` : 'Admin access required'}">Monitoring ${s.enabled ? 'On' : 'Off'}</span>`;
-    html += `<span id="monitoring-lightning-badge" style="display:none"></span>`;
+    let html = `<span id="monitoring-lightning-badge" style="display:none"></span>`;
     if (s.in_cooldown) {
       html += `<span class="badge bg-info ms-1 me-2">Cooldown: ${s.cooldown_remaining_min.toFixed(0)} min remaining</span>`;
     }
-
     area.innerHTML = html;
     _updateLightningBannerBadge(_nearestLightningKm);
-
-    if (canToggle) {
-      document.getElementById('btn-armed-toggle').addEventListener('click', async () => {
-        const toggle = document.getElementById('btn-armed-toggle');
-        toggle.style.opacity = '0.5';
-        toggle.style.pointerEvents = 'none';
-        await (s.enabled ? apiPost('/monitoring/disable') : apiPost('/monitoring/enable'));
-        await loadMonitoringStatus();
-      });
-    }
   } catch (e) {
     console.error('Status load failed:', e);
   }
@@ -2457,7 +2443,7 @@ function renderPins() {
     const label = escHtml(pin.label || (pin.type === 'kasa' ? `Port ${pin.port_index + 1}` : `Ch ${pin.channel_index}`));
     const icon = pin.type === 'kasa' ? 'bi-plug' : 'bi-toggles';
     const bg = isOn === null ? '#6c757d' : (isOn ? '#198754' : '#dc3545');
-    const stateText = isOn === null ? '?' : (isOn ? 'ON' : 'OFF');
+    const stateText = isOn === null ? '' : (isOn ? 'ON' : 'OFF');
     const cursor = isAdmin() ? 'pointer' : 'default';
     return `<button class="pin-badge border-0 rounded" style="background:${bg};color:#fff;cursor:${cursor};font-size:0.72rem;padding:3px 9px;line-height:1.4"
       data-pin-type="${pin.type}" data-pin-id="${pin.id}" title="${escHtml(pin.device_name)}" ${isAdmin() ? '' : 'disabled'}>
