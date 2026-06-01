@@ -94,6 +94,16 @@ async def check_conditions(db: AsyncSession) -> tuple[bool, str, dict]:
         if km is not None:
             lightning_candidates.append((km * MILES_PER_KM, "RainViewer"))
 
+    try:
+        from services.blitzortung_service import get_recent_strikes, is_running
+        if is_running():
+            strikes = get_recent_strikes()
+            if strikes:
+                nearest_km = min(s["distance_km"] for s in strikes)
+                lightning_candidates.append((nearest_km * MILES_PER_KM, "Blitzortung"))
+    except Exception:
+        pass
+
     if lightning_candidates:
         nearest_miles, nearest_source = min(lightning_candidates, key=lambda x: x[0])
         if nearest_miles <= lightning_threshold:
