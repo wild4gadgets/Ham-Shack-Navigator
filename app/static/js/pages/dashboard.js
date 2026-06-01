@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut } from '../api.js';
+import { apiGet, apiPost, apiPut, apiDelete } from '../api.js';
 import { getToken, isAdmin } from '../state.js';
 
 async function apiFetchXml(path) {
@@ -48,6 +48,8 @@ let pskSpotLayer = null;
 let pskTerminator = null;
 let pskTerminatorTimer = null;
 let systemState = { last: null, startup_id: null, shutdown_id: null };
+let _workflowDelayTimer = null;
+let _runningWorkflowName = null;
 let flexFreqSteps = { small: 50.0, large: 100.0 };
 let _txButtonLabel = 'MOX';
 let _optimisticFreqMhz = null;
@@ -80,7 +82,13 @@ export async function renderDashboard(container) {
             <div id="monitoring-status-area"><span class="text-muted">Loading...</span></div>
             <div id="dashboard-pins" class="d-flex flex-wrap gap-1 align-items-center"></div>
             <div class="ms-auto d-flex align-items-center gap-2">
-              <button id="btn-system-toggle" class="btn btn-sm btn-secondary" disabled>...</button>
+              <span id="workflow-step-badge" class="badge bg-info" style="display:none"></span>
+              <span id="workflow-delay-badge" class="badge bg-secondary" style="display:none"></span>
+              <div class="dropdown" id="system-workflow-dropdown">
+                <button class="btn btn-sm btn-secondary dropdown-toggle" id="btn-system-toggle"
+                        type="button" data-bs-toggle="dropdown" aria-expanded="false" disabled>...</button>
+                <ul class="dropdown-menu dropdown-menu-end" id="workflow-dropdown-menu"></ul>
+              </div>
               <button id="btn-reset-layout" class="btn btn-sm btn-outline-secondary" title="Reset tile layout to default">
                 <i class="bi bi-layout-three-columns"></i>
               </button>
@@ -469,25 +477,35 @@ export async function renderDashboard(container) {
     document.getElementById('btn-system-toggle').title = 'Admin access required';
   }
 
-  document.getElementById('btn-system-toggle').addEventListener('click', async () => {
-    if (!isAdmin()) return;
-    const effectiveStatus = computeDeviceStatusFromPins() ?? systemState.device_status ?? 'unknown';
-    const isUp = effectiveStatus === 'up' || effectiveStatus === 'partial';
-    const targetName = isUp ? 'Shutdown' : 'Startup';
-    const targetId = isUp ? systemState.shutdown_id : systemState.startup_id;
-    if (!targetId) return;
-    if (!confirm(`Run ${targetName} workflow now?`)) return;
-    const btn = document.getElementById('btn-system-toggle');
-    btn.disabled = true;
-    btn.textContent = 'Running\u2026';
+  document.getElementById('system-workflow-dropdown').addEventListener('show.bs.dropdown', () => {
+    _populateWorkflowDropdown();
+  });
+
+  document.getElementById('workflow-dropdown-menu').addEventListener('click', async e => {
+    e.preventDefault();
+    bootstrap.Dropdown.getInstance(document.getElementById('btn-system-toggle'))?.hide();
+    const endBtn = e.target.closest('#workflow-end-btn');
+    if (endBtn) {
+      if (!confirm(`Stop workflow '${_runningWorkflowName}'?`)) return;
+      try {
+        await apiDelete('/workflows/running');
+      } catch (err) {
+        alert(`Could not end workflow: ${err.message}`);
+      }
+      return;
+    }
+    const item = e.target.closest('[data-workflow-id]');
+    if (!item) return;
+    const id = parseInt(item.dataset.workflowId, 10);
+    const name = item.dataset.workflowName;
+    if (!confirm(`Run workflow '${name}' now?`)) return;
+    _setWorkflowRunning(name);
     try {
-      await apiPost(`/workflows/${targetId}/run`, {});
-      // Workflow is running in the background; button updates on workflow_complete WS event
-    } catch (e) {
-      // 504 means the proxy dropped the response but the workflow was already queued;
-      // the workflow_complete WS event will still arrive, so treat it like a success.
-      if (e.message.includes('504')) return;
-      alert(`Could not start workflow: ${e.message}`);
+      await apiPost(`/workflows/${id}/run`, {});
+    } catch (err) {
+      if (err.message.includes('504')) return;
+      alert(`Could not start workflow: ${err.message}`);
+      _clearWorkflowRunning();
       await loadSystemState();
     }
   });
@@ -877,6 +895,7 @@ function computeDeviceStatusFromPins() {
 }
 
 function updateSystemStatusButton() {
+  if (_runningWorkflowName) return;
   const btn = document.getElementById('btn-system-toggle');
   if (!btn) return;
   // Pin states are the ground truth (they reflect actual device reachability, including
@@ -886,15 +905,123 @@ function updateSystemStatusButton() {
   const labels  = { up: 'System Up', partial: 'Partially Up', down: 'System Down', unknown: 'Status Unknown' };
   const classes = { up: 'btn-success', partial: 'btn-warning', down: 'btn-danger', unknown: 'btn-secondary' };
   btn.textContent = labels[ds] ?? 'Status Unknown';
-  btn.className   = `btn btn-sm ${classes[ds] ?? 'btn-secondary'}`;
+  btn.className   = `btn btn-sm ${classes[ds] ?? 'btn-secondary'} dropdown-toggle`;
   btn.disabled    = !isAdmin();
+}
+
+function _setWorkflowRunning(workflowName) {
+  _runningWorkflowName = workflowName;
+  const btn = document.getElementById('btn-system-toggle');
+  if (btn) {
+    btn.textContent = `${workflowName} running…`;
+    btn.className = 'btn btn-sm btn-warning dropdown-toggle';
+    btn.disabled = !isAdmin();
+  }
+}
+
+function _updateWorkflowStepBadge(stepLabel) {
+  if (_workflowDelayTimer) { clearInterval(_workflowDelayTimer); _workflowDelayTimer = null; }
+  const badge = document.getElementById('workflow-step-badge');
+  if (badge) { badge.textContent = stepLabel; badge.style.display = ''; }
+  const delay = document.getElementById('workflow-delay-badge');
+  if (delay) delay.style.display = 'none';
+}
+
+function _updateWorkflowDelayBadge(delaySec) {
+  if (_workflowDelayTimer) { clearInterval(_workflowDelayTimer); _workflowDelayTimer = null; }
+  const badge = document.getElementById('workflow-delay-badge');
+  if (!badge) return;
+  let remaining = delaySec;
+  badge.textContent = `Delay ${remaining}s`;
+  badge.style.display = '';
+  _workflowDelayTimer = setInterval(() => {
+    remaining -= 1;
+    if (remaining <= 0) {
+      clearInterval(_workflowDelayTimer);
+      _workflowDelayTimer = null;
+      badge.style.display = 'none';
+    } else {
+      badge.textContent = `Delay ${remaining}s`;
+    }
+  }, 1000);
+}
+
+function _clearWorkflowRunning() {
+  _runningWorkflowName = null;
+  if (_workflowDelayTimer) { clearInterval(_workflowDelayTimer); _workflowDelayTimer = null; }
+  const step = document.getElementById('workflow-step-badge');
+  if (step) step.style.display = 'none';
+  const delay = document.getElementById('workflow-delay-badge');
+  if (delay) delay.style.display = 'none';
+  updateSystemStatusButton();
+}
+
+async function _populateWorkflowDropdown() {
+  const menu = document.getElementById('workflow-dropdown-menu');
+  if (!menu) return;
+  menu.innerHTML = '<li><span class="dropdown-item-text text-muted small">Loading…</span></li>';
+  let workflows;
+  try {
+    workflows = await apiGet('/workflows');
+  } catch {
+    menu.innerHTML = '<li><span class="dropdown-item-text text-danger small">Failed to load workflows</span></li>';
+    return;
+  }
+  menu.innerHTML = '';
+  if (_runningWorkflowName) {
+    const statusLi = document.createElement('li');
+    statusLi.innerHTML = `<span class="dropdown-item-text text-warning fw-semibold">Workflow ‘${_runningWorkflowName}’ running</span>`;
+    menu.appendChild(statusLi);
+    const endLi = document.createElement('li');
+    const endA = document.createElement('a');
+    endA.className = 'dropdown-item text-danger';
+    endA.href = '#';
+    endA.id = 'workflow-end-btn';
+    endA.textContent = 'End Workflow';
+    endLi.appendChild(endA);
+    menu.appendChild(endLi);
+    if (workflows.length) {
+      const divLi = document.createElement('li');
+      divLi.innerHTML = '<hr class="dropdown-divider">';
+      menu.appendChild(divLi);
+      for (const wf of workflows) {
+        const li = document.createElement('li');
+        const a = document.createElement('a');
+        a.className = 'dropdown-item disabled';
+        a.href = '#';
+        a.textContent = wf.name;
+        li.appendChild(a);
+        menu.appendChild(li);
+      }
+    }
+  } else if (!workflows.length) {
+    const li = document.createElement('li');
+    li.innerHTML = '<span class="dropdown-item-text text-muted">No workflows defined</span>';
+    menu.appendChild(li);
+  } else {
+    for (const wf of workflows) {
+      const li = document.createElement('li');
+      const a = document.createElement('a');
+      a.className = 'dropdown-item';
+      a.href = '#';
+      a.dataset.workflowId = wf.id;
+      a.dataset.workflowName = wf.name;
+      a.textContent = wf.name;
+      li.appendChild(a);
+      menu.appendChild(li);
+    }
+  }
 }
 
 async function loadSystemState() {
   try {
     systemState = await apiGet('/workflows/system-state');
   } catch { return; }
-  updateSystemStatusButton();
+  if (systemState.running_workflow_name) {
+    _setWorkflowRunning(systemState.running_workflow_name);
+  } else {
+    updateSystemStatusButton();
+  }
 }
 
 async function loadAll() {
@@ -929,9 +1056,7 @@ async function loadMonitoringStatus() {
     if (s.in_cooldown) {
       html += `<span class="badge bg-info ms-1 me-2">Cooldown: ${s.cooldown_remaining_min.toFixed(0)} min remaining</span>`;
     }
-    if (s.last_shutdown_at) {
-      html += `<small class="text-muted ms-3">Last shutdown: ${new Date(s.last_shutdown_at).toLocaleString()}</small>`;
-    }
+
     area.innerHTML = html;
     _updateLightningBannerBadge(_nearestLightningKm);
 
@@ -2703,7 +2828,17 @@ async function connectWS() {
         }
       }
       if (msg.type === 'flrig_update') loadFlrigStatus();
+      if (msg.type === 'workflow_started') {
+        _setWorkflowRunning(msg.workflow_name);
+      }
+      if (msg.type === 'workflow_step_started') {
+        _updateWorkflowStepBadge(msg.step_label);
+      }
+      if (msg.type === 'workflow_delay') {
+        _updateWorkflowDelayBadge(msg.delay_sec);
+      }
       if (msg.type === 'workflow_complete') {
+        _clearWorkflowRunning();
         if (!msg.success && msg.error) alert(`Workflow failed: ${msg.error}`);
         loadSystemState();
       }
