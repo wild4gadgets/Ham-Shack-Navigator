@@ -2069,6 +2069,7 @@ async function loadPskSpots() {
 // ── Weather loading ──────────────────────────────────────────────────────────
 
 async function loadWeather() {
+  const _weatherFetchStart = Date.now();
   try {
     const [current, forecast, realtime, loc, lightning, alertsData, blitzortung, blitzStrikes] = await Promise.all([
       apiGet('/weather/current'),
@@ -2174,9 +2175,9 @@ async function loadWeather() {
         if (mostRecentStrikeMs > _nearestLightningAt) {
           _nearestLightningAt = mostRecentStrikeMs;
         }
-      } else if (!_nearestLightningAt || Date.now() - _nearestLightningAt >= 70 * 60 * 1000) {
-        // Only clear if there's no recent WS-sourced strike (guards against race where REST
-        // call was in-flight before the strike arrived but resolves after the WS message).
+      } else if (!_nearestLightningAt || _nearestLightningAt < _weatherFetchStart - 5000) {
+        // Clear only when the last WS-sourced strike predates this REST call by >5 s,
+        // ruling out the race where a strike's WS message arrives while the fetch is in-flight.
         _nearestLightningKm = null;
         const bzBadge = document.getElementById('blitzortung-badge');
         const bzHist  = document.getElementById('blitzortung-history');
