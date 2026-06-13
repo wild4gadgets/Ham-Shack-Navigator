@@ -1,0 +1,9 @@
+# Normalize line endings: ensure shell scripts and Docker files always use LF.
+# Without this, editing on Windows can save CRLF which breaks scripts that
+# run inside the Linux container.
+* text=auto
+*.sh text eol=lf
+*.py text eol=lf
+Dockerfile text eol=lf
+docker-compose.yml text eol=lf
+nginx/entrypoint.sh text eol=lf

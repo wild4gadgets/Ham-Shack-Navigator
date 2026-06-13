@@ -142,6 +142,13 @@ function render(container) {
                 <label class="form-label">Delay After (seconds)</label>
                 <input type="number" min="0" class="form-control" id="step-shelly-delay" value="0" />
               </div>
+              <div class="mb-3">
+                <label class="form-label">Depends on Kasa port <small class="text-muted">(skip step if this port is off)</small></label>
+                <select class="form-select" id="step-shelly-depends">
+                  <option value="">None</option>
+                  ${portOptions}
+                </select>
+              </div>
             </div>
             <div id="step-ifttt-fields" style="display:none">
               <div class="mb-3">
@@ -267,7 +274,9 @@ function render(container) {
       const channelId = parseInt(document.getElementById('step-shelly-channel').value);
       const action = document.getElementById('step-shelly-action').value;
       const delay = parseInt(document.getElementById('step-shelly-delay').value) || 0;
-      newStep = { shelly_channel_id: channelId, kasa_port_id: null, action, delay_after_sec: delay, description };
+      const dependsPortId = parseInt(document.getElementById('step-shelly-depends').value) || null;
+      newStep = { shelly_channel_id: channelId, kasa_port_id: null, action, delay_after_sec: delay, description,
+                  depends_on_kasa_port_id: dependsPortId };
     } else {
       const portId = parseInt(document.getElementById('step-port').value);
       const action = document.getElementById('step-action').value;
@@ -462,6 +471,7 @@ function renderStepEditor(wf) {
     document.getElementById('step-delay').value = '0';
     document.getElementById('step-shelly-action').value = 'off';
     document.getElementById('step-shelly-delay').value = '0';
+    document.getElementById('step-shelly-depends').value = '';
     document.getElementById('step-ifttt-event').value = '';
     document.getElementById('step-ifttt-value1').value = '';
     document.getElementById('step-ifttt-value2').value = '';
@@ -533,6 +543,7 @@ function openEditModal(index) {
     document.getElementById('step-shelly-channel').value = step.shelly_channel_id;
     document.getElementById('step-shelly-action').value = step.action;
     document.getElementById('step-shelly-delay').value = step.delay_after_sec;
+    document.getElementById('step-shelly-depends').value = step.depends_on_kasa_port_id || '';
   } else {
     document.getElementById('step-type').value = 'kasa';
     document.getElementById('step-kasa-fields').style.display = '';
@@ -584,6 +595,11 @@ function renderStepList() {
       const descPart = step.description ? `<span style="color:#a0b0c8">${step.description}</span>` : '';
       const sep = delayPart && descPart ? '<span style="color:#555"> &mdash; </span>' : '';
       subContent = descPart + sep + delayPart;
+      if (step.depends_on_kasa_port_id) {
+        const depPort = ports.find(p => p.id === step.depends_on_kasa_port_id);
+        const depLabel = depPort ? (depPort.label || `Port ${depPort.port_index}`) : `Port ID ${step.depends_on_kasa_port_id}`;
+        subContent += `${subContent ? ' ' : ''}<span class="badge bg-dark border border-secondary" title="Skipped if this Kasa port is off">↳ ${depLabel}</span>`;
+      }
     } else {
       const port = ports.find(p => p.id === step.kasa_port_id);
       const portLabel = port ? (port.label || `Port ${port.port_index + 1}`) : `Port ID ${step.kasa_port_id}`;

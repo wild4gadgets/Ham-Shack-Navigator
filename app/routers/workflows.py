@@ -91,6 +91,27 @@ async def _execute_workflow(workflow_id: int, workflow_name: str, is_system: boo
                                                  "delay_sec": step["delay_after_sec"]})
                         await asyncio.sleep(step["delay_after_sec"])
                 elif step["type"] == "shelly":
+                    dep = step.get("depends_on_kasa_port")
+                    if dep:
+                        try:
+                            parent_states = await kasa_service.get_port_states(dep["ip_address"], dep["device_type"])
+                            parent_on = any(
+                                s["port_index"] == dep["port_index"] and s["is_on"]
+                                for s in parent_states
+                            )
+                        except Exception:
+                            parent_on = False
+                        if not parent_on:
+                            dep_label = dep.get("port_label") or dep.get("device_name") or dep["ip_address"]
+                            async with AsyncSessionLocal() as db:
+                                await log_event(db, "workflow_step_skipped", "info",
+                                    f"Workflow '{workflow_name}' — {summary}: SKIPPED (parent {dep_label} is off)",
+                                    {"workflow_id": workflow_id, "workflow_name": workflow_name,
+                                     "step": i, "skipped_reason": f"parent {dep_label} is off"})
+                            await manager.broadcast({"type": "workflow_step_skipped", "workflow_id": workflow_id,
+                                                     "workflow_name": workflow_name, "step": i, "total": total,
+                                                     "reason": f"parent {dep_label} is off"})
+                            continue
                     await shelly_service.control_channel(
                         step["ip_address"], step["channel_index"], step["action"], step["generation"]
                     )
@@ -289,6 +310,10 @@ async def put_steps(
                     raise HTTPException(status_code=400, detail=f"Shelly channel ID {step.shelly_channel_id} not found")
             else:
                 raise HTTPException(status_code=400, detail="Action step must specify kasa_port_id or shelly_channel_id")
+            if step.depends_on_kasa_port_id:
+                r = await db.execute(select(KasaPort).where(KasaPort.id == step.depends_on_kasa_port_id))
+                if not r.scalar_one_or_none():
+                    raise HTTPException(status_code=400, detail=f"Depends-on Kasa port ID {step.depends_on_kasa_port_id} not found")
         else:
             raise HTTPException(status_code=400, detail="Action must be 'on', 'off', 'pause', or 'ifttt'")
 
@@ -307,6 +332,7 @@ async def put_steps(
             ifttt_value1=step_req.ifttt_value1 if step_req.action == "ifttt" else None,
             ifttt_value2=step_req.ifttt_value2 if step_req.action == "ifttt" else None,
             ifttt_value3=step_req.ifttt_value3 if step_req.action == "ifttt" else None,
+            depends_on_kasa_port_id=step_req.depends_on_kasa_port_id if is_device_action else None,
         )
         db.add(step)
     await db.commit()
@@ -449,6 +475,7 @@ async def run_workflow(
         .options(
             selectinload(WorkflowStep.kasa_port).selectinload(KasaPort.device),
             selectinload(WorkflowStep.shelly_channel).selectinload(ShellyChannel.device),
+            selectinload(WorkflowStep.depends_on_kasa_port).selectinload(KasaPort.device),
         )
         .where(WorkflowStep.workflow_id == workflow_id)
         .order_by(WorkflowStep.step_order)
@@ -485,6 +512,16 @@ async def run_workflow(
                 "port_label": step.kasa_port.label or "",
             })
         elif step.shelly_channel_id:
+            dep = None
+            if step.depends_on_kasa_port_id and step.depends_on_kasa_port:
+                dp = step.depends_on_kasa_port
+                dep = {
+                    "ip_address": dp.device.ip_address,
+                    "device_type": dp.device.device_type,
+                    "port_index": dp.port_index,
+                    "device_name": dp.device.name,
+                    "port_label": dp.label or "",
+                }
             steps_data.append({
                 "type": "shelly",
                 "action": step.action,
@@ -494,6 +531,7 @@ async def run_workflow(
                 "generation": step.shelly_channel.device.generation,
                 "device_name": step.shelly_channel.device.name,
                 "channel_label": step.shelly_channel.label or "",
+                "depends_on_kasa_port": dep,
             })
 
     global _running_task, _running_workflow_name, _running_workflow_id

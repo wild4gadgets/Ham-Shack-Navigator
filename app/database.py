@@ -53,6 +53,7 @@ async def _migrate_db():
         await conn.run_sync(_migrate_workflow_steps_add_ifttt)
         await conn.run_sync(_migrate_add_scheduled_workflows)
         await conn.run_sync(_migrate_add_user_role)
+        await conn.run_sync(_migrate_workflow_steps_add_depends_on)
 
 
 def _migrate_add_workflows(conn):
@@ -224,6 +225,17 @@ def _migrate_add_scheduled_workflows(conn):
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
     """))
+
+
+def _migrate_workflow_steps_add_depends_on(conn):
+    """Add depends_on_kasa_port_id column to workflow_steps for device dependency tracking."""
+    sa = __import__("sqlalchemy")
+    info = conn.execute(sa.text("PRAGMA table_info(workflow_steps)")).fetchall()
+    cols = {col[1] for col in info}
+    if "depends_on_kasa_port_id" not in cols:
+        conn.execute(sa.text(
+            "ALTER TABLE workflow_steps ADD COLUMN depends_on_kasa_port_id INTEGER REFERENCES kasa_ports(id)"
+        ))
 
 
 def _migrate_add_user_role(conn):

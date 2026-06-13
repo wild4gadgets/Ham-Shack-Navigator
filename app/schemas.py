@@ -404,6 +404,7 @@ class WorkflowStepRequest(BaseModel):
     ifttt_value1: Optional[str] = None
     ifttt_value2: Optional[str] = None
     ifttt_value3: Optional[str] = None
+    depends_on_kasa_port_id: int | None = None
 
 
 class WorkflowStepsRequest(BaseModel):
@@ -423,6 +424,7 @@ class WorkflowStepResponse(BaseModel):
     ifttt_value1: Optional[str] = None
     ifttt_value2: Optional[str] = None
     ifttt_value3: Optional[str] = None
+    depends_on_kasa_port_id: int | None = None
 
     class Config:
         from_attributes = True

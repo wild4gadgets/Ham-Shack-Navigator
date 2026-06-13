@@ -86,10 +86,9 @@ export function renderHelp(container) {
   <h2 id="h-install" class="help-section-title">3. Installation</h2>
 
   <h4 style="color:#7eb8f7">Getting the Code</h4>
-  <p>If you have collaborator access to the repository:</p>
   <pre class="help-code">git clone https://github.com/wild4gadgets/Ham-Shack-Navigator.git
 cd Ham-Shack-Navigator</pre>
-  <p>If you received a ZIP archive, extract it and open a terminal in the extracted folder.</p>
+  <p>Or download and extract the ZIP archive from the GitHub releases page, then open a terminal in the extracted folder.</p>
 
   <h4 style="color:#7eb8f7;margin-top:1.5rem">Windows</h4>
   <ol>
@@ -135,13 +134,14 @@ sudo usermod -aG docker $USER
 docker --version</pre>
     </li>
     <li>Clone the repository and enter the folder:
-      <pre class="help-code">git clone https://github.com/wild4gadgets/Ham-Shack-Navigator.git
+      <pre class="help-code">git clone https://github.com/YOUR_USERNAME/Ham-Shack-Navigator.git
 cd Ham-Shack-Navigator</pre>
     </li>
     <li>Create and populate your <code>.env</code> file:
       <pre class="help-code">cp .env.example .env
-# Generate a secret and set it:
-echo "JWT_SECRET=$(openssl rand -hex 32)" > .env</pre>
+# Generate a random secret:
+openssl rand -hex 32
+# Paste the output as the JWT_SECRET value in .env, then set TZ to your timezone.</pre>
     </li>
     <li>Start the application:
       <pre class="help-code">docker compose up --build -d</pre>
@@ -655,7 +655,7 @@ docker compose logs app --tail=50</pre>
 
   <hr style="border-color:#2a2a4a;margin-top:3rem"/>
   <div class="text-center" style="color:#64748b;font-size:0.8rem;margin-top:1rem">
-    Ham Shack Navigator &mdash; User Manual &mdash; K0EHR
+    Ham Shack Navigator &mdash; User Manual
   </div>
 
 </div>

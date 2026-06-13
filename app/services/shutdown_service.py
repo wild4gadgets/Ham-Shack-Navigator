@@ -16,6 +16,67 @@ from services.monitoring_service import log_event
 logger = logging.getLogger(__name__)
 
 
+async def _kasa_port_is_on(port, device) -> bool:
+    """Return True if the Kasa port is currently on, False if off or unreachable."""
+    try:
+        states = await get_port_states(device.ip_address, device.device_type)
+        return any(s["port_index"] == port.port_index and s["is_on"] for s in states)
+    except Exception:
+        return False
+
+
+async def all_shutdown_devices_off(db: AsyncSession) -> bool:
+    """Return True if every 'off'-action device step in the Shutdown workflow is currently
+    off or unreachable (i.e. nothing needs shutting down). Returns False when there are no
+    device off-steps, so a workflow with only pauses/IFTTT steps is never silently skipped."""
+    wf_result = await db.execute(
+        select(Workflow).where(Workflow.is_system == True, Workflow.name == "Shutdown")
+    )
+    workflow = wf_result.scalar_one_or_none()
+    if not workflow:
+        return False
+
+    result = await db.execute(
+        select(WorkflowStep)
+        .where(WorkflowStep.workflow_id == workflow.id, WorkflowStep.action == "off")
+        .options(
+            selectinload(WorkflowStep.kasa_port).selectinload(KasaPort.device),
+            selectinload(WorkflowStep.shelly_channel).selectinload(ShellyChannel.device),
+        )
+    )
+    steps = result.scalars().all()
+
+    device_steps = [s for s in steps if s.kasa_port_id is not None or s.shelly_channel_id is not None]
+    if not device_steps:
+        return False  # Nothing to check; don't suppress the workflow
+
+    for step in device_steps:
+        if step.shelly_channel_id is not None:
+            channel = step.shelly_channel
+            device = channel.device
+            try:
+                states = await get_channel_states(
+                    device.ip_address, channel.channel_index + 1, device.generation
+                )
+                for state in states:
+                    if state["channel_index"] == channel.channel_index and state["is_on"]:
+                        return False
+            except Exception:
+                pass  # Unreachable → treat as off
+        elif step.kasa_port_id is not None:
+            port = step.kasa_port
+            device = port.device
+            try:
+                states = await get_port_states(device.ip_address, device.device_type)
+                for state in states:
+                    if state["port_index"] == port.port_index and state["is_on"]:
+                        return False
+            except Exception:
+                pass  # Unreachable → treat as off
+
+    return True
+
+
 async def execute_shutdown(db: AsyncSession, reason: str = "Manual trigger") -> list[str]:
     """Execute the system shutdown workflow in order. Returns list of step descriptions."""
     wf_result = await db.execute(select(Workflow).where(Workflow.is_system == True, Workflow.name == "Shutdown"))
@@ -34,6 +95,7 @@ async def execute_shutdown(db: AsyncSession, reason: str = "Manual trigger") -> 
         .options(
             selectinload(WorkflowStep.kasa_port).selectinload(KasaPort.device),
             selectinload(WorkflowStep.shelly_channel).selectinload(ShellyChannel.device),
+            selectinload(WorkflowStep.depends_on_kasa_port).selectinload(KasaPort.device),
         )
         .order_by(WorkflowStep.step_order)
     )
@@ -43,6 +105,14 @@ async def execute_shutdown(db: AsyncSession, reason: str = "Manual trigger") -> 
         logger.warning("Shutdown triggered but no steps configured")
         await log_event(db, "shutdown_triggered", "warning",
                         f"Shutdown triggered ({reason}) but no steps configured",
+                        {"reason": reason})
+        return []
+
+    # Skip the workflow entirely when all target devices are already off.
+    if await all_shutdown_devices_off(db):
+        logger.info("Shutdown skipped — all devices already off (%s)", reason)
+        await log_event(db, "shutdown_skipped", "info",
+                        f"Shutdown skipped ({reason}): all devices already off",
                         {"reason": reason})
         return []
 
@@ -58,7 +128,7 @@ async def execute_shutdown(db: AsyncSession, reason: str = "Manual trigger") -> 
             logger.info("Shutdown step %d: pause %ds", step.step_order, dur)
             await log_event(db, "kasa_action", "info", f"Pause {dur}s", {"duration_sec": dur})
             await asyncio.sleep(dur)
-            executed.append(action_desc + " \u2713")
+            executed.append(action_desc + " ✓")
             continue
 
         if step.shelly_channel_id is not None:
@@ -66,9 +136,27 @@ async def execute_shutdown(db: AsyncSession, reason: str = "Manual trigger") -> 
             device = channel.device
             label = channel.label or f"Channel {channel.channel_index}"
             action_desc = f"Step {step.step_order}: {step.action.upper()} {label} ({device.ip_address})"
+
+            # If this Shelly depends on a Kasa port, skip it when the parent is off.
+            if step.depends_on_kasa_port_id is not None:
+                parent_port = step.depends_on_kasa_port
+                parent_device = parent_port.device
+                parent_label = parent_port.label or f"Port {parent_port.port_index}"
+                parent_on = await _kasa_port_is_on(parent_port, parent_device)
+                if not parent_on:
+                    skip_desc = f"Step {step.step_order}: SKIPPED {label} (parent {parent_label} is off)"
+                    executed.append(skip_desc)
+                    await log_event(db, "shelly_action", "info",
+                                    f"Skipped {step.action.upper()} {label}: parent {parent_label} is off",
+                                    {"device": device.name, "channel": label, "action": step.action,
+                                     "parent_device": parent_device.name, "parent_port": parent_label})
+                    logger.info("Shutdown step %d skipped: %s parent (%s) is off",
+                                step.step_order, label, parent_label)
+                    continue
+
             try:
                 await control_channel(device.ip_address, channel.channel_index, step.action, device.generation)
-                executed.append(action_desc + " \u2713")
+                executed.append(action_desc + " ✓")
                 await log_event(db, "shelly_action", "info",
                                 f"{step.action.upper()} {label}",
                                 {"device": device.name, "channel": label, "action": step.action})
@@ -86,7 +174,7 @@ async def execute_shutdown(db: AsyncSession, reason: str = "Manual trigger") -> 
             action_desc = f"Step {step.step_order}: {step.action.upper()} {label} ({device.ip_address})"
             try:
                 await control_port(device.ip_address, device.device_type, port.port_index, step.action)
-                executed.append(action_desc + " \u2713")
+                executed.append(action_desc + " ✓")
                 await log_event(db, "kasa_action", "info",
                                 f"{step.action.upper()} {label}",
                                 {"device": device.name, "port": label, "action": step.action})

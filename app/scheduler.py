@@ -399,6 +399,7 @@ async def _run_scheduled_workflow(sw_id: int):
             .options(
                 selectinload(WorkflowStep.kasa_port).selectinload(KasaPort.device),
                 selectinload(WorkflowStep.shelly_channel).selectinload(ShellyChannel.device),
+                selectinload(WorkflowStep.depends_on_kasa_port).selectinload(KasaPort.device),
             )
             .where(WorkflowStep.workflow_id == sw.workflow_id)
             .order_by(WorkflowStep.step_order)
@@ -434,6 +435,16 @@ async def _run_scheduled_workflow(sw_id: int):
                     "port_label": step.kasa_port.label or "",
                 })
             elif step.shelly_channel_id:
+                dep = None
+                if step.depends_on_kasa_port_id and step.depends_on_kasa_port:
+                    dp = step.depends_on_kasa_port
+                    dep = {
+                        "ip_address": dp.device.ip_address,
+                        "device_type": dp.device.device_type,
+                        "port_index": dp.port_index,
+                        "device_name": dp.device.name,
+                        "port_label": dp.label or "",
+                    }
                 steps_data.append({
                     "type": "shelly",
                     "action": step.action,
@@ -443,6 +454,7 @@ async def _run_scheduled_workflow(sw_id: int):
                     "generation": step.shelly_channel.device.generation,
                     "device_name": step.shelly_channel.device.name,
                     "channel_label": step.shelly_channel.label or "",
+                    "depends_on_kasa_port": dep,
                 })
 
         wf_id, wf_name, wf_system = wf.id, wf.name, wf.is_system

@@ -145,10 +145,12 @@ class WorkflowStep(Base):
     ifttt_value1: Mapped[str | None] = mapped_column(String, nullable=True)
     ifttt_value2: Mapped[str | None] = mapped_column(String, nullable=True)
     ifttt_value3: Mapped[str | None] = mapped_column(String, nullable=True)
+    depends_on_kasa_port_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("kasa_ports.id"), nullable=True)
 
     workflow: Mapped["Workflow"] = relationship("Workflow", back_populates="steps")
-    kasa_port: Mapped["KasaPort | None"] = relationship("KasaPort")
+    kasa_port: Mapped["KasaPort | None"] = relationship("KasaPort", foreign_keys="[WorkflowStep.kasa_port_id]")
     shelly_channel: Mapped["ShellyChannel | None"] = relationship("ShellyChannel")
+    depends_on_kasa_port: Mapped["KasaPort | None"] = relationship("KasaPort", foreign_keys="[WorkflowStep.depends_on_kasa_port_id]")
 
     __table_args__ = (UniqueConstraint("workflow_id", "step_order"),)
 
