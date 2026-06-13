@@ -134,7 +134,7 @@ sudo usermod -aG docker $USER
 docker --version</pre>
     </li>
     <li>Clone the repository and enter the folder:
-      <pre class="help-code">git clone https://github.com/YOUR_USERNAME/Ham-Shack-Navigator.git
+      <pre class="help-code">git clone https://github.com/wild4gadgets/Ham-Shack-Navigator.git
 cd Ham-Shack-Navigator</pre>
     </li>
     <li>Create and populate your <code>.env</code> file:

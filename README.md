@@ -139,7 +139,7 @@ Ham Shack Navigator runs as a Docker container. The backend is a **FastAPI** (Py
 
 2. Clone the repository and open Terminal in the project folder:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/Ham-Shack-Navigator.git
+   git clone https://github.com/wild4gadgets/Ham-Shack-Navigator.git
    cd Ham-Shack-Navigator
    ```
 
@@ -173,7 +173,7 @@ Ham Shack Navigator runs as a Docker container. The backend is a **FastAPI** (Py
 
 2. Clone the repository:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/Ham-Shack-Navigator.git
+   git clone https://github.com/wild4gadgets/Ham-Shack-Navigator.git
    cd Ham-Shack-Navigator
    ```
 
