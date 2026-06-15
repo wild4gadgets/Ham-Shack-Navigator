@@ -68,7 +68,17 @@ export async function renderIftttTab(container) {
         </form>
       </div>
     </div>
+
+    <div class="mt-3">
+      <button type="button" class="btn btn-outline-secondary btn-sm fw-bold" id="btn-goto-webhook" style="color:#fff">
+        <i class="bi bi-link-45deg me-1"></i>Create Webhook key/secret
+      </button>
+    </div>
   `;
+
+  document.getElementById('btn-goto-webhook').addEventListener('click', () => {
+    document.querySelector('#settings-nav [data-tab="webhook"]')?.click();
+  });
 
   document.getElementById('btn-copy-url').addEventListener('click', () => {
     navigator.clipboard.writeText(webhookUrl);

@@ -7,7 +7,7 @@ import bcrypt
 
 SECRET_KEY = os.getenv("JWT_SECRET", "insecure-default-change-me")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_HOURS = 24
+ACCESS_TOKEN_EXPIRE_HOURS = 24 * 30  # 30 days
 
 # ── WebSocket one-time tickets ────────────────────────────────────────────────
 # Short-lived (30 s), single-use tokens that replace long-lived JWTs in WS URLs.

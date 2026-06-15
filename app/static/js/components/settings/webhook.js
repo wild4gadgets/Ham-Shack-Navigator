@@ -14,6 +14,7 @@ export async function renderWebhookTab(container) {
   const exampleWorkflow = 'My%20Workflow';
   const exampleKey = data.api_key || '<your-api-key>';
   const webhookBase = `${baseUrl}/api/v1/webhooks/workflows/`;
+  const urlTokenBase = `${baseUrl}/api/v1/webhooks/run/`;
 
   const curlExample =
 `# Invoke by workflow name (URL-encode spaces as %20)
@@ -45,6 +46,38 @@ Example for a workflow named "Ham Shack Startup":
     X-API-Key: ${exampleKey}
 
   (No body required — 202 response means accepted)`;
+
+  function buildIftttExample(key) {
+    const k = key || '<your-api-key>';
+    return `IFTTT "Make a web request" action settings:
+
+  Method:       POST
+  URL:          ${urlTokenBase}${k}/{Workflow Name}
+  Content Type: application/json
+  Body:         (leave empty)
+
+Example — trigger the "Startup" workflow:
+  URL: ${urlTokenBase}${k}/Startup
+
+The API key is part of the URL — no headers needed.
+Copy it from the panel above when you generate/regenerate.
+
+── Alexa setup (via IFTTT) ────────────────────────────
+
+1. Go to ifttt.com → Create
+2. IF THIS  → Amazon Alexa → "Say a specific phrase"
+             Phrase: "run shack startup"   (choose any phrase)
+3. THEN THAT → Webhooks → "Make a web request"
+             URL: ${urlTokenBase}${k}/Startup
+             Method: POST
+             Content Type: application/json
+             Body: (leave empty)
+4. Save the applet.
+5. In the Alexa app, enable the IFTTT skill if not already enabled.
+6. Say: "Alexa, trigger run shack startup"
+
+Repeat for each workflow (Shutdown, etc.) with a different phrase.`;
+  }
 
   container.innerHTML = `
     <div class="card">
@@ -99,6 +132,9 @@ Example for a workflow named "Ham Shack Startup":
             <li class="nav-item">
               <a class="nav-link" href="#" data-wh-tab="mobile">Mobile</a>
             </li>
+            <li class="nav-item">
+              <a class="nav-link" href="#" data-wh-tab="ifttt">IFTTT / Alexa</a>
+            </li>
           </ul>
 
           <div id="wh-tab-curl">
@@ -109,6 +145,9 @@ Example for a workflow named "Ham Shack Startup":
           </div>
           <div id="wh-tab-mobile" style="display:none">
             <pre class="p-3 rounded" style="background:#1a1a2e;color:#e0e0e0;font-size:0.75rem;white-space:pre-wrap">${mobileExample}</pre>
+          </div>
+          <div id="wh-tab-ifttt" style="display:none">
+            <pre class="p-3 rounded" id="wh-ifttt-example" style="background:#1a1a2e;color:#e0e0e0;font-size:0.75rem;white-space:pre-wrap">${buildIftttExample(null)}</pre>
           </div>
         </div>
 
@@ -127,7 +166,7 @@ Example for a workflow named "Ham Shack Startup":
       e.preventDefault();
       document.querySelectorAll('[data-wh-tab]').forEach(l => l.classList.remove('active'));
       link.classList.add('active');
-      ['curl', 'streamdeck', 'mobile'].forEach(t => {
+      ['curl', 'streamdeck', 'mobile', 'ifttt'].forEach(t => {
         document.getElementById(`wh-tab-${t}`).style.display = link.dataset.whTab === t ? '' : 'none';
       });
     });
@@ -165,6 +204,9 @@ Example for a workflow named "Ham Shack Startup":
       document.getElementById('btn-copy-wh-key').disabled = false;
       document.getElementById('btn-regen-wh-key').textContent = 'Regenerate';
       data.api_key = masked;
+      // Update IFTTT example with the real key while it's available in this session
+      const iftttEl = document.getElementById('wh-ifttt-example');
+      if (iftttEl) iftttEl.textContent = buildIftttExample(result.api_key);
       msg.className = 'alert alert-success';
       msg.textContent = isRegen ? 'API key regenerated. Copy and update your devices.' : 'API key generated. Copy it now.';
       msg.style.display = '';

@@ -27,6 +27,7 @@ export function renderHelp(container) {
       <div><a href="#h-users" class="help-toc-link">12. User Management</a></div>
       <div><a href="#h-events" class="help-toc-link">13. Events Log</a></div>
       <div><a href="#h-webhook" class="help-toc-link">14. Remote Webhook API</a></div>
+      <div><a href="#h-webhook-ifttt" class="help-toc-link" style="padding-left:1.25rem">↳ IFTTT &amp; Alexa Integration</a></div>
       <div><a href="#h-maintenance" class="help-toc-link">15. Maintenance</a></div>
       <div><a href="#h-troubleshooting" class="help-toc-link">16. Troubleshooting</a></div>
     </div>
@@ -488,7 +489,7 @@ docker compose logs app -f</pre>
       <tr><td><strong>Telegram</strong></td><td>Bot token, chat ID</td><td>Get bot token from @BotFather.</td></tr>
       <tr><td><strong>ntfy</strong></td><td>Server URL, topic, optional token</td><td>Free push notifications; ntfy.sh or self-hosted.</td></tr>
       <tr><td><strong>Notification Toggles</strong></td><td>Per-channel, per-event enable/disable</td><td>Covers email, Telegram, IFTTT, and ntfy. Visible to read-only users.</td></tr>
-      <tr><td><strong>Remote Webhook</strong></td><td>Generate API key for external workflow invocation</td><td>Used by Stream Deck, mobile apps.</td></tr>
+      <tr><td><strong>Remote Webhook</strong></td><td>Generate API key for external workflow invocation</td><td>Used by Stream Deck, mobile apps, IFTTT, and Alexa. See section 14a for IFTTT/Alexa setup.</td></tr>
       <tr><td><strong>Account</strong></td><td>Change password, change email</td><td>Available to all users.</td></tr>
     </tbody>
   </table>
@@ -564,6 +565,114 @@ curl -X POST https://&lt;your-server&gt;:5000/api/v1/webhooks/workflows/Startup 
     <li><strong>Content Type:</strong> application/json (or leave blank)</li>
   </ul>
   <p>Rate limit: 30 requests per minute per IP address.</p>
+
+  <h2 id="h-webhook-ifttt" class="help-section-title" style="font-size:1.1rem;margin-top:2rem">14a. IFTTT &amp; Alexa Voice Control</h2>
+  <p>HSN includes a second webhook endpoint that puts the API key directly in the URL — no custom headers required. This format is compatible with IFTTT's free-tier "Make a web request" action, which doesn't support adding headers. It enables a simple chain:</p>
+
+  <div class="text-center my-3" style="font-size:0.95rem;color:#a0c8e8">
+    <strong>Alexa</strong> &nbsp;→&nbsp; <strong>IFTTT applet</strong> &nbsp;→&nbsp; <strong>HSN webhook URL</strong> &nbsp;→&nbsp; <strong>HSN workflow runs</strong>
+  </div>
+
+  <h4 style="color:#7eb8f7;margin-top:1.5rem">URL Format</h4>
+  <pre class="help-code">POST https://&lt;your-server&gt;:5000/api/v1/webhooks/run/&lt;api-key&gt;/&lt;workflow-name&gt;
+
+# Examples:
+POST https://hamshack.example.com:5000/api/v1/webhooks/run/a3f8c1.../Startup
+POST https://hamshack.example.com:5000/api/v1/webhooks/run/a3f8c1.../Shutdown
+POST https://hamshack.example.com:5000/api/v1/webhooks/run/a3f8c1.../My%20Workflow</pre>
+  <p>Workflow names are case-sensitive. Spaces must be URL-encoded as <code>%20</code>. The same API key used for header-based calls works here — there is only one key. A 202 response means the workflow was accepted and is running.</p>
+
+  <div class="alert alert-info mt-2 mb-3" style="background:#1a2a3a;border-color:#3a6a8a;color:#a0c8e8;font-size:0.9rem">
+    <i class="bi bi-shield-check me-2"></i>
+    <strong>Security:</strong> All traffic is encrypted — the API key travels inside the TLS tunnel and is never exposed in transit. It will appear in your server's nginx access log, which is only readable by users with shell access to your server.
+  </div>
+
+  <h4 style="color:#7eb8f7;margin-top:1.5rem">Step 1 — Generate Your API Key</h4>
+  <ol>
+    <li>Go to <strong>Settings → IFTTT Automations</strong> and click <strong>Create Webhook key/secret</strong> at the bottom, or navigate directly to <strong>Settings → Remote Webhook</strong>.</li>
+    <li>Click <strong>Generate Key</strong>. The full key is displayed once — <strong>copy it now</strong>.</li>
+    <li>Switch to the <strong>IFTTT / Alexa</strong> tab — the ready-to-use URLs for your workflows are shown with the real key filled in.</li>
+  </ol>
+
+  <h4 style="color:#7eb8f7;margin-top:1.5rem">Step 2 — Create an IFTTT Applet</h4>
+  <p>You need one IFTTT applet per workflow you want to trigger. Here is a complete walkthrough for triggering the <strong>Startup</strong> workflow:</p>
+  <ol>
+    <li>Go to <a href="https://ifttt.com" target="_blank" style="color:#7eb8f7">ifttt.com</a> and sign in (free account is sufficient).</li>
+    <li>Click <strong>Create</strong> in the top navigation.</li>
+    <li>Click <strong>If This</strong> → choose your trigger (see trigger options below).</li>
+    <li>Click <strong>Then That</strong> → search for <strong>Webhooks</strong> → select <strong>Make a web request</strong>.</li>
+    <li>Fill in the action fields:
+      <table class="table table-sm mt-2 mb-2" style="color:#e0e0e0;font-size:0.85rem;border-color:#2a2a4a">
+        <thead style="background:#1a1a3e;color:#7eb8f7"><tr><th>Field</th><th>Value</th></tr></thead>
+        <tbody style="background:#12122a">
+          <tr><td><strong>URL</strong></td><td><code>https://&lt;your-server&gt;:5000/api/v1/webhooks/run/&lt;api-key&gt;/Startup</code></td></tr>
+          <tr><td><strong>Method</strong></td><td>POST</td></tr>
+          <tr><td><strong>Content Type</strong></td><td>application/json</td></tr>
+          <tr><td><strong>Body</strong></td><td>(leave empty)</td></tr>
+        </tbody>
+      </table>
+    </li>
+    <li>Click <strong>Create action</strong>, then <strong>Finish</strong>.</li>
+    <li>Repeat for each additional workflow (e.g., create a separate applet for Shutdown with <code>/Shutdown</code> at the end of the URL).</li>
+  </ol>
+
+  <h4 style="color:#7eb8f7;margin-top:1.5rem">IFTTT Trigger Options</h4>
+  <p>The "If This" trigger in step 3 above can be anything IFTTT supports. Common choices for ham shack use:</p>
+  <table class="table table-sm" style="color:#e0e0e0;font-size:0.875rem;border-color:#2a2a4a">
+    <thead style="background:#1a1a3e;color:#7eb8f7">
+      <tr><th>Trigger service</th><th>Trigger type</th><th>Use case</th></tr>
+    </thead>
+    <tbody style="background:#12122a">
+      <tr><td><strong>Amazon Alexa</strong></td><td>Say a specific phrase</td><td>Voice control — "Alexa, trigger run shack startup"</td></tr>
+      <tr><td><strong>Google Assistant</strong></td><td>Say a simple phrase</td><td>Voice control via Google Home or Android</td></tr>
+      <tr><td><strong>Button widget</strong></td><td>Button press</td><td>One-tap trigger from the IFTTT mobile app</td></tr>
+      <tr><td><strong>Date &amp; Time</strong></td><td>Every day at a time</td><td>Scheduled trigger (HSN's built-in scheduler is simpler for this)</td></tr>
+      <tr><td><strong>Webhooks</strong></td><td>Receive a web request</td><td>Chaining — another service triggers IFTTT, which triggers HSN</td></tr>
+    </tbody>
+  </table>
+
+  <h4 style="color:#7eb8f7;margin-top:1.5rem">Step 3 — Alexa Voice Control Setup</h4>
+  <p>To use Alexa as the IFTTT trigger:</p>
+  <ol>
+    <li>In your IFTTT applet, choose <strong>Amazon Alexa</strong> as the "If This" service.</li>
+    <li>Select <strong>Say a specific phrase</strong>.</li>
+    <li>Enter your phrase — for example: <code>run shack startup</code>.</li>
+    <li>Complete the applet with the "Make a web request" action as described above.</li>
+    <li>In the <strong>Amazon Alexa app</strong> on your phone, ensure the <strong>IFTTT skill</strong> is enabled (search "IFTTT" in the Skills store and enable it).</li>
+    <li>Say: <strong>"Alexa, trigger run shack startup"</strong> — Alexa forwards the phrase to IFTTT, which POSTs to your HSN webhook URL, which runs the workflow.</li>
+  </ol>
+
+  <div class="alert alert-warning mt-2 mb-3" style="background:#2a2000;border-color:#6a5000;color:#d4a800;font-size:0.9rem">
+    <i class="bi bi-exclamation-triangle me-2"></i>
+    <strong>Important:</strong> The Alexa phrase must always be prefixed with "trigger" — e.g., "Alexa, trigger run shack startup." This is an IFTTT requirement; Alexa passes the exact phrase after "trigger" to the IFTTT skill. You cannot omit the word "trigger."
+  </div>
+
+  <h4 style="color:#7eb8f7;margin-top:1.5rem">Complete Example — Startup &amp; Shutdown by Voice</h4>
+  <pre class="help-code"># Applet 1 — Startup
+  If This:  Amazon Alexa → Say a specific phrase → "run shack startup"
+  Then That: Webhooks → Make a web request
+             URL:    https://hamshack.k0ehr.tech:5000/api/v1/webhooks/run/&lt;key&gt;/Startup
+             Method: POST
+             Body:   (empty)
+
+# Applet 2 — Shutdown
+  If This:  Amazon Alexa → Say a specific phrase → "run shack shutdown"
+  Then That: Webhooks → Make a web request
+             URL:    https://hamshack.k0ehr.tech:5000/api/v1/webhooks/run/&lt;key&gt;/Shutdown
+             Method: POST
+             Body:   (empty)
+
+# Voice commands:
+  "Alexa, trigger run shack startup"
+  "Alexa, trigger run shack shutdown"</pre>
+
+  <h4 style="color:#7eb8f7;margin-top:1.5rem">Testing &amp; Verification</h4>
+  <p>After setting up an applet:</p>
+  <ul>
+    <li>Run the voice command (or use the IFTTT app's <strong>Check now</strong> button on the applet) to test it without waiting for a natural trigger.</li>
+    <li>Open the HSN <strong>Events log</strong> — you should see a <code>workflow_started</code> event with <code>source: ifttt</code> confirming the workflow was triggered via the webhook URL.</li>
+    <li>IFTTT also shows a run history for each applet — check it if the workflow does not appear in the Events log.</li>
+  </ul>
 
   <!-- 15. Maintenance -->
   <h2 id="h-maintenance" class="help-section-title">15. Maintenance</h2>
