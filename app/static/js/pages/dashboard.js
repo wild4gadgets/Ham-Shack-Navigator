@@ -38,6 +38,7 @@ let flexRadioRefreshTimer = null;
 let flrigRefreshTimer = null;
 let solarRefreshTimer = null;
 let dxcRefreshTimer = null;
+let radarRefreshTimer = null;
 let pskRefreshTimer = null;
 let pskCountdownTimer = null;
 let pskNextRefreshAt = null;
@@ -865,6 +866,7 @@ function cleanup() {
   if (flrigRefreshTimer) { clearInterval(flrigRefreshTimer); flrigRefreshTimer = null; }
   if (solarRefreshTimer) { clearInterval(solarRefreshTimer); solarRefreshTimer = null; }
   if (dxcRefreshTimer) { clearInterval(dxcRefreshTimer); dxcRefreshTimer = null; }
+  if (radarRefreshTimer) { clearInterval(radarRefreshTimer); radarRefreshTimer = null; }
   if (pskRefreshTimer) { clearInterval(pskRefreshTimer); pskRefreshTimer = null; }
   if (pskCountdownTimer) { clearInterval(pskCountdownTimer); pskCountdownTimer = null; }
   pskNextRefreshAt = null;
@@ -1034,6 +1036,8 @@ async function loadAll() {
   flrigRefreshTimer = setInterval(() => { if (!destroyed) loadFlrigStatus(); }, 5000);
   if (solarRefreshTimer) clearInterval(solarRefreshTimer);
   solarRefreshTimer = setInterval(() => { if (!destroyed) loadSolarData(); }, 30 * 60 * 1000);
+  if (radarRefreshTimer) clearInterval(radarRefreshTimer);
+  radarRefreshTimer = setInterval(() => { if (!destroyed) loadRadar(); }, 5 * 60 * 1000);
   if (dxcRefreshTimer) clearInterval(dxcRefreshTimer);
   try {
     const dxcSettings = await apiGet('/settings/dxcluster');
