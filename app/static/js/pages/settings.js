@@ -45,24 +45,17 @@ const ADMIN_NAV = [
   {
     groupId: 'notifications', label: 'Notifications', icon: 'bell',
     children: [
-      { id: 'smtp',          label: 'SMTP / Email', icon: 'envelope' },
-      { id: 'telegram',      label: 'Telegram',     icon: 'telegram' },
-      { id: 'ntfy',          label: 'ntfy',         icon: 'bell-fill' },
-      { id: 'notifications', label: 'Toggles',      icon: 'toggles' },
+      { id: 'smtp',     label: 'SMTP / Email', icon: 'envelope' },
+      { id: 'telegram', label: 'Telegram',     icon: 'telegram' },
+      { id: 'ntfy',     label: 'ntfy',         icon: 'bell-fill' },
     ],
   },
   { id: 'account', label: 'Account', icon: 'person' },
 ];
 
 const READONLY_NAV = [
-  {
-    groupId: 'notifications', label: 'Notifications', icon: 'bell',
-    children: [
-      { id: 'notifications', label: 'Toggles', icon: 'toggles' },
-    ],
-  },
   { id: 'profiles', label: 'Profiles', icon: 'layout-three-columns' },
-  { id: 'account', label: 'Account', icon: 'person' },
+  { id: 'account',  label: 'Account',  icon: 'person' },
 ];
 
 const RENDERERS = {

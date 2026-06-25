@@ -53,6 +53,9 @@ let _workflowDelayTimer = null;
 let _runningWorkflowName = null;
 let flexFreqSteps = { small: 50.0, large: 100.0 };
 let _txButtonLabel = 'MOX';
+let _flexRadios = [];
+let _selectedRadioIndex = -1; // -1 = not yet initialised
+let _nonPrimaryPingCache = { idx: -1, success: null, rtt_ms: null, ts: 0 };
 let _optimisticFreqMhz = null;
 let _optimisticFlrigFreqHz = null;
 let _currentRfpower = null;  // latest rfpower from WS broadcast; bypasses stale server-fetch
@@ -104,7 +107,6 @@ export async function renderDashboard(container) {
           <div class="card-body d-flex align-items-center flex-wrap gap-2 py-2">
             <div id="flexradio-status" class="d-flex flex-wrap align-items-center gap-1"></div>
             <div id="flrig-status" class="d-flex flex-wrap align-items-center gap-1"></div>
-            <span id="location-profile-badge" class="text-white" style="font-size:0.8rem"></span>
             <div class="ms-auto"><small id="weather-update-time" class="text-white-50"></small></div>
           </div>
         </div>
@@ -508,6 +510,14 @@ export async function renderDashboard(container) {
       alert(`Could not start workflow: ${err.message}`);
       _clearWorkflowRunning();
       await loadSystemState();
+    }
+  });
+  document.getElementById('flexradio-status')?.addEventListener('change', e => {
+    const sel = e.target.closest('#flex-radio-picker');
+    if (sel) {
+      _selectedRadioIndex = parseInt(sel.value, 10);
+      _nonPrimaryPingCache = { idx: -1, success: null, rtt_ms: null, ts: 0 }; // force immediate ping
+      loadFlexRadioStatus();
     }
   });
   document.getElementById('flexradio-status')?.addEventListener('click', e => {
@@ -1115,10 +1125,24 @@ function amateurBand(mhz) {
 async function loadFlexSettings() {
   try {
     const s = await apiGet('/settings/flexradio');
-    flexFreqSteps.small = s.freq_step_small_khz ?? 50.0;
-    flexFreqSteps.large = s.freq_step_large_khz ?? 100.0;
-    _txButtonLabel = s.tx_button_label ?? 'MOX';
+    _flexRadios = Array.isArray(s.radios) ? s.radios : [];
+    const primary = _flexRadios.find(r => r.enabled) || _flexRadios[0] || {};
+    flexFreqSteps.small = primary.freq_step_small_khz ?? 50.0;
+    flexFreqSteps.large = primary.freq_step_large_khz ?? 100.0;
+    _txButtonLabel = primary.tx_button_label ?? 'MOX';
+    if (_selectedRadioIndex === -1) {
+      const primaryIdx = _flexRadios.findIndex(r => r.enabled);
+      _selectedRadioIndex = Math.max(0, primaryIdx);
+    }
   } catch { /* keep defaults */ }
+}
+
+function _flexPickerHtml() {
+  if (_flexRadios.length <= 1) return '';
+  const opts = _flexRadios.map((r, i) =>
+    `<option value="${i}"${i === _selectedRadioIndex ? ' selected' : ''}>${escHtml(r.name || `Radio ${i + 1}`)}</option>`
+  ).join('');
+  return `<select id="flex-radio-picker" style="background:#1a1f2e;color:#e0e0e0;border:1px solid #2a2a4a;border-radius:3px;font-size:0.75rem;padding:1px 4px;margin-left:6px;cursor:pointer">${opts}</select>`;
 }
 
 async function loadRigControlSettings() {
@@ -1191,21 +1215,62 @@ async function loadFlexRadioStatus() {
   const el = document.getElementById('flexradio-status');
   if (!el) return;
   if (_activeRig !== 'flexradio') { el.innerHTML = ''; return; }
+
+  const picker = _flexPickerHtml();
+  const selectedRadio = _flexRadios[_selectedRadioIndex] || {};
+  const primaryIdx = _flexRadios.findIndex(r => r.enabled);
+  const isPrimary = _flexRadios.length <= 1 || _selectedRadioIndex === primaryIdx || primaryIdx === -1;
+  const radioLabel = _flexRadios.length > 1 ? escHtml(selectedRadio.name || `Radio ${_selectedRadioIndex + 1}`) : 'FlexRadio Status';
+
+  // Non-primary radio selected — show ping status only, throttled to ping_interval_sec
+  if (!isPrimary) {
+    pskRadioOffline = false;
+    const ip = selectedRadio.ip || '';
+    const pingEnabled = selectedRadio.ping_enabled !== false;
+    if (!ip) {
+      el.innerHTML = `<span class="freq-retro me-1">${radioLabel}</span><span class="text-muted ms-2" style="font-size:0.8rem">No IP configured</span>${picker}`;
+      return;
+    }
+    if (!pingEnabled) {
+      el.innerHTML = `<span class="freq-retro me-1">${radioLabel}</span><span class="text-muted ms-2" style="font-size:0.8rem">Ping disabled</span>${picker}`;
+      return;
+    }
+    const intervalMs = (selectedRadio.ping_interval_sec ?? 30) * 1000;
+    const cache = _nonPrimaryPingCache;
+    const cacheValid = cache.idx === _selectedRadioIndex && (Date.now() - cache.ts) < intervalMs;
+    const pingResult = cacheValid ? cache : await (async () => {
+      try {
+        const res = await apiPost('/settings/flexradio/ping', { ip });
+        _nonPrimaryPingCache = { idx: _selectedRadioIndex, success: res.success, rtt_ms: res.rtt_ms, ts: Date.now() };
+        return _nonPrimaryPingCache;
+      } catch {
+        return { success: null, rtt_ms: null };
+      }
+    })();
+    const pingBadge = pingResult.success === true
+      ? `<span class="badge ms-1" style="background:#198754;color:#fff">Online${pingResult.rtt_ms != null ? ' · ' + pingResult.rtt_ms + ' ms' : ''}</span>`
+      : pingResult.success === false
+        ? `<span class="badge ms-1" style="background:#dc3545;color:#fff">Offline</span>`
+        : '';
+    el.innerHTML = `<span class="freq-retro me-1">${radioLabel}</span>${pingBadge}${picker}`;
+    return;
+  }
+
   try {
     const s = await apiGet('/flexradio/status');
     const pingBadge = s.ping_online === true
-      ? '<span class="badge ms-1" style="background:#198754;color:#fff">Online</span>'
+      ? `<span class="badge ms-1" style="background:#198754;color:#fff">Online${s.ping_rtt_ms != null ? ' · ' + s.ping_rtt_ms + ' ms' : ''}</span>`
       : s.ping_online === false
         ? '<span class="badge ms-1" style="background:#dc3545;color:#fff">Offline</span>'
         : '';
     if (!s.connected) {
       pskRadioOffline = true;
-      el.innerHTML = `<span class="freq-retro me-1">FlexRadio Status</span>${pingBadge}<span class="fw-bold text-danger ms-2">SmartSDR Offline</span>`;
+      el.innerHTML = `<span class="freq-retro me-1">${radioLabel}</span>${pingBadge}<span class="fw-bold text-danger ms-2">SmartSDR Offline</span>${picker}`;
       return;
     }
     pskRadioOffline = false;
     if (!s.freq_mhz) {
-      el.innerHTML = `<span class="freq-retro me-1">FlexRadio Status</span>${pingBadge}<span class="text-warning ms-2" style="font-size:0.8rem">Connecting…</span>`;
+      el.innerHTML = `<span class="freq-retro me-1">${radioLabel}</span>${pingBadge}<span class="text-warning ms-2" style="font-size:0.8rem">Connecting…</span>${picker}`;
       return;
     }
     // If we have an optimistic freq from a recent step, use it until the server
@@ -1253,10 +1318,10 @@ async function loadFlexRadioStatus() {
       : '';
     const swrColor = s.swr == null ? '' : s.swr <= 2.0 ? '#198754' : s.swr <= 3.0 ? '#fd7e14' : '#dc3545';
     const swr = s.swr != null ? `<span class="badge ms-1" style="background:${swrColor};color:#fff">SWR ${s.swr}:1</span>` : '';
-    el.innerHTML = `<span class="freq-retro me-1">FlexRadio Status</span>${pingBadge}${freq}${mode}${power}${rxtx}${tuneBtn}${moxBtn}${swr}`;
+    el.innerHTML = `<span class="freq-retro me-1">${radioLabel}</span>${pingBadge}${freq}${mode}${power}${rxtx}${tuneBtn}${moxBtn}${swr}${picker}`;
   } catch {
     pskRadioOffline = false;
-    el.innerHTML = '';
+    el.innerHTML = picker;
   }
 }
 

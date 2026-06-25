@@ -42,6 +42,7 @@ DAX_UDP_PORT = 4991   # UDP port the radio sends VITA-49 audio frames to
 _flex_task: asyncio.Task | None = None
 _ping_task: asyncio.Task | None = None
 _ping_status: bool | None = None
+_ping_rtt_ms: float | None = None
 _writer: asyncio.StreamWriter | None = None
 _seq: int = 0
 _flex_state: dict = {
@@ -296,15 +297,31 @@ def get_state() -> dict:
         "dax_stream_id": _flex_state.get("dax_stream_id"),
         "updated_at": _flex_state["updated_at"],
         "ping_online": _ping_status,
+        "ping_rtt_ms": _ping_rtt_ms,
     }
 
 
 async def _get_settings() -> dict:
+    """Return the primary radio's settings as a flat dict.
+
+    Handles both the legacy single-radio format and the new multi-radio list
+    format ({"radios": [...]}). Returns the first enabled radio, or the first
+    radio if none are enabled, or {} if no radios exist.
+    """
     try:
         async with AsyncSessionLocal() as db:
             result = await db.execute(select(Setting).where(Setting.key == "flexradio"))
             row = result.scalar_one_or_none()
-            return json.loads(row.value) if row else {}
+            if not row:
+                return {}
+            data = json.loads(row.value)
+            if "radios" not in data:
+                return data  # legacy single-radio format
+            radios = data["radios"]
+            for r in radios:
+                if r.get("enabled"):
+                    return r
+            return radios[0] if radios else {}
     except Exception as exc:
         logger.debug("FlexRadio settings read error: %s", exc)
         return {}
@@ -318,21 +335,85 @@ def _parse_kv(text: str) -> dict:
     return result
 
 
-async def _ping_once(ip: str) -> bool:
+async def _ping_once(ip: str) -> tuple[bool, float | None]:
     try:
         proc = await asyncio.create_subprocess_exec(
             "ping", "-c", "1", "-W", "2", ip,
-            stdout=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
         )
-        await asyncio.wait_for(proc.wait(), timeout=5.0)
-        return proc.returncode == 0
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+        success = proc.returncode == 0
+        match = re.search(r'time=(\d+\.?\d*)\s*ms', stdout.decode())
+        rtt_ms = round(float(match.group(1)), 2) if match else None
+        return success, rtt_ms
     except Exception:
-        return False
+        return False, None
+
+
+async def _send_flexradio_down_notification(settings: dict):
+    radio_name = settings.get("name", "FlexRadio")
+    ip = settings.get("ip", "")
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    message = f"Radio '{radio_name}' ({ip}) is not responding to pings.\nTime: {timestamp}"
+    title = f"Ham Shack Navigator — Radio Down: {radio_name}"
+    try:
+        async with AsyncSessionLocal() as db:
+            notif_row = await db.execute(select(Setting).where(Setting.key == "notifications"))
+            notif_row = notif_row.scalar_one_or_none()
+            notif = json.loads(notif_row.value) if notif_row else {}
+
+            if settings.get("notify_ntfy"):
+                try:
+                    from services.ntfy_service import _get_ntfy_configs, _publish
+                    for cfg in await _get_ntfy_configs(db):
+                        if not cfg.get("notify_flexradio_down", True):
+                            continue
+                        try:
+                            await _publish(cfg, title, message, priority="high", tags="warning,radio")
+                            logger.info("FlexRadio down ntfy sent to %s", cfg.get("topic"))
+                        except Exception as e:
+                            logger.error("FlexRadio down ntfy to %s failed: %s", cfg.get("topic"), e)
+                except Exception as e:
+                    logger.error("FlexRadio down ntfy error: %s", e)
+            if settings.get("notify_smtp") and notif.get("flexradio_down_email", True):
+                try:
+                    from services.email_service import _get_smtp_config, _send_email
+                    smtp = await _get_smtp_config(db)
+                    if smtp and smtp.get("host"):
+                        await _send_email(smtp, title, message)
+                        logger.info("FlexRadio down email sent")
+                except Exception as e:
+                    logger.error("FlexRadio down email error: %s", e)
+            if settings.get("notify_telegram") and notif.get("flexradio_down_telegram", True):
+                try:
+                    from services.telegram_service import _get_telegram_config, _send_message
+                    cfg = await _get_telegram_config(db)
+                    if cfg and cfg.get("enabled") and cfg.get("bot_token") and cfg.get("chat_id"):
+                        await _send_message(cfg["bot_token"], cfg["chat_id"],
+                                            f"<b>{title}</b>\n{message}")
+                        logger.info("FlexRadio down Telegram sent")
+                except Exception as e:
+                    logger.error("FlexRadio down Telegram error: %s", e)
+            if settings.get("notify_ifttt") and notif.get("flexradio_down_ifttt", True):
+                try:
+                    from services.ifttt_service import _get_ifttt_config, _post_event
+                    cfg = await _get_ifttt_config(db)
+                    if cfg and cfg.get("enabled") and cfg.get("webhook_key"):
+                        event_name = cfg.get("event_name_threshold", "ham_shack_alert")
+                        await _post_event(cfg["webhook_key"], event_name,
+                                          f"Radio Down: {radio_name}", ip, timestamp)
+                        logger.info("FlexRadio down IFTTT sent")
+                except Exception as e:
+                    logger.error("FlexRadio down IFTTT error: %s", e)
+    except Exception as e:
+        logger.error("FlexRadio down notification session error: %s", e)
 
 
 async def _ping_loop():
-    global _ping_status
+    global _ping_status, _ping_rtt_ms
+    _fail_streak = 0
+
     while True:
         settings = await _get_settings()
         ip = settings.get("ip", "").strip()
@@ -341,10 +422,36 @@ async def _ping_loop():
 
         if not enabled or not ip:
             _ping_status = None
+            _ping_rtt_ms = None
+            _fail_streak = 0
             await asyncio.sleep(30)
             continue
 
-        _ping_status = await _ping_once(ip)
+        if not settings.get("ping_enabled", True):
+            _ping_status = None
+            _ping_rtt_ms = None
+            _fail_streak = 0
+            await asyncio.sleep(interval)
+            continue
+
+        _ping_status, _ping_rtt_ms = await _ping_once(ip)
+
+        if _ping_status:
+            _fail_streak = 0
+        else:
+            _fail_streak += 1
+            threshold = max(1, int(settings.get("notify_consecutive_failures", 3)))
+            if _fail_streak >= threshold:
+                any_notify = any(settings.get(k, False) for k in (
+                    "notify_smtp", "notify_ntfy", "notify_telegram", "notify_ifttt"
+                ))
+                if any_notify:
+                    await _send_flexradio_down_notification(settings)
+                cooldown_sec = max(60, int(settings.get("notify_cooldown_min", 30)) * 60)
+                _fail_streak = 0
+                await asyncio.sleep(cooldown_sec)
+                continue
+
         await asyncio.sleep(interval)
 
 

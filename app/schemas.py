@@ -171,6 +171,10 @@ class NotificationSettings(BaseModel):
     threshold_telegram: bool = True
     shutdown_ntfy: bool = True
     threshold_ntfy: bool = True
+    flexradio_down_email: bool = True
+    flexradio_down_ntfy: bool = True
+    flexradio_down_telegram: bool = True
+    flexradio_down_ifttt: bool = True
 
 
 class IftttSettings(BaseModel):
@@ -188,10 +192,18 @@ class TelegramSettings(BaseModel):
 
 
 class NtfySettings(BaseModel):
+    name: str = "My ntfy Profile"
     server_url: str = "https://ntfy.sh"
     topic: Optional[str] = None
     token: Optional[str] = None
     enabled: bool = False
+    notify_shutdown: bool = True
+    notify_threshold: bool = True
+    notify_flexradio_down: bool = True
+
+
+class NtfyList(BaseModel):
+    profiles: list[NtfySettings] = []
 
 
 class HomeAssistantSettings(BaseModel):
@@ -225,14 +237,22 @@ class PskReporterSettings(BaseModel):
 
 
 class FlexRadioSettings(BaseModel):
+    name: str = "My FlexRadio"
     ip: str = ""
     enabled: bool = False
+    ping_enabled: bool = True
     ping_interval_sec: int = 30
     dax_enabled: bool = True
     dax_channel: int = 1
     freq_step_small_khz: float = 50.0
     freq_step_large_khz: float = 100.0
     tx_button_label: str = "MOX"
+    notify_smtp: bool = False
+    notify_ntfy: bool = False
+    notify_telegram: bool = False
+    notify_ifttt: bool = False
+    notify_consecutive_failures: int = 3
+    notify_cooldown_min: int = 30
 
     @field_validator("tx_button_label")
     @classmethod
@@ -241,6 +261,10 @@ class FlexRadioSettings(BaseModel):
         if not v:
             return "MOX"
         return v[:4]
+
+
+class FlexRadioList(BaseModel):
+    radios: list[FlexRadioSettings] = []
 
 
 # --- Rig Control ---

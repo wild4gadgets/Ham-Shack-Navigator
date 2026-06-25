@@ -1,10 +1,32 @@
 import { apiGet, apiPut, apiPost } from '../../api.js';
 
+function _notifEventsHtml(n) {
+  const chk = (id, val, label, hint) => `
+    <div class="form-check form-switch mb-2">
+      <input class="form-check-input" type="checkbox" id="${id}" ${val !== false ? 'checked' : ''}>
+      <label class="form-check-label" for="${id}">
+        <strong>${label}</strong>
+        <div class="form-text">${hint}</div>
+      </label>
+    </div>`;
+  return `
+    <hr style="border-color:#2a2a4a">
+    <h6 class="text-white-50 mb-2">Notification Events</h6>
+    <p class="form-text mb-3">Choose which events are sent via Telegram.</p>
+    ${chk('tg-evt-shutdown',       n.shutdown_telegram,       'Equipment shutdown',       'Send message when weather protection shuts down equipment.')}
+    ${chk('tg-evt-threshold',      n.threshold_telegram,      'Weather threshold alert',  'Send message when lightning or wind exceeds configured thresholds.')}
+    ${chk('tg-evt-flexradio-down', n.flexradio_down_telegram, 'FlexRadio down',           'Send message when a FlexRadio fails ping checks (also requires per-radio notification to be enabled).')}
+  `;
+}
+
 export async function renderTelegramTab(container) {
   container.innerHTML = '<div class="p-3" style="color:#e0e0e0">Loading...</div>';
-  let data;
+  let data, notif;
   try {
-    data = await apiGet('/settings/telegram');
+    [data, notif] = await Promise.all([
+      apiGet('/settings/telegram'),
+      apiGet('/settings/notifications'),
+    ]);
   } catch (err) {
     container.innerHTML = `<div class="alert alert-danger m-3">Failed to load Telegram settings: ${err.message}</div>`;
     return;
@@ -41,7 +63,10 @@ export async function renderTelegramTab(container) {
               <label class="form-check-label" for="tg-enabled">Enable Telegram notifications</label>
             </div>
           </div>
-          <div class="d-flex gap-2">
+
+          ${_notifEventsHtml(notif || {})}
+
+          <div class="d-flex gap-2 mt-3">
             <button type="submit" class="btn btn-primary">Save</button>
             <button type="button" class="btn btn-outline-info" id="btn-test-tg">Send Test Message</button>
           </div>
@@ -58,6 +83,12 @@ export async function renderTelegramTab(container) {
         bot_token: document.getElementById('tg-token').value || null,
         chat_id: document.getElementById('tg-chat-id').value || null,
         enabled: document.getElementById('tg-enabled').checked,
+      });
+      await apiPut('/settings/notifications', {
+        ...(notif || {}),
+        shutdown_telegram:       document.getElementById('tg-evt-shutdown').checked,
+        threshold_telegram:      document.getElementById('tg-evt-threshold').checked,
+        flexradio_down_telegram: document.getElementById('tg-evt-flexradio-down').checked,
       });
       msg.className = 'alert alert-success';
       msg.textContent = 'Telegram settings saved.';

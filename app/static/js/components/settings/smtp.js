@@ -1,8 +1,30 @@
 import { apiGet, apiPut, apiPost } from '../../api.js';
 
+function _notifEventsHtml(n) {
+  const chk = (id, val, label, hint) => `
+    <div class="form-check form-switch mb-2">
+      <input class="form-check-input" type="checkbox" id="${id}" ${val !== false ? 'checked' : ''}>
+      <label class="form-check-label" for="${id}">
+        <strong>${label}</strong>
+        <div class="form-text">${hint}</div>
+      </label>
+    </div>`;
+  return `
+    <hr style="border-color:#2a2a4a">
+    <h6 class="text-white-50 mb-2">Notification Events</h6>
+    <p class="form-text mb-3">Choose which events are sent via email.</p>
+    ${chk('smtp-evt-shutdown',       n.shutdown_email,       'Equipment shutdown',  'Send email when weather protection shuts down equipment.')}
+    ${chk('smtp-evt-digest',         n.digest_email,         'Daily digest',        'Send the morning weather and forecast digest email.')}
+    ${chk('smtp-evt-flexradio-down', n.flexradio_down_email, 'FlexRadio down',      'Send email when a FlexRadio fails ping checks (also requires per-radio notification to be enabled).')}
+  `;
+}
+
 export async function renderSmtpTab(container) {
   container.innerHTML = '<div class="text-muted p-3">Loading...</div>';
-  const data = await apiGet('/settings/smtp');
+  const [data, notif] = await Promise.all([
+    apiGet('/settings/smtp'),
+    apiGet('/settings/notifications'),
+  ]);
 
   container.innerHTML = `
     <div class="card">
@@ -53,7 +75,10 @@ export async function renderSmtpTab(container) {
               </div>
             </div>
           </div>
-          <div class="d-flex gap-2">
+
+          ${_notifEventsHtml(notif || {})}
+
+          <div class="d-flex gap-2 mt-3">
             <button type="submit" class="btn btn-primary">Save</button>
             <button type="button" class="btn btn-outline-info" id="btn-test-email">Send Test Email</button>
           </div>
@@ -75,6 +100,12 @@ export async function renderSmtpTab(container) {
         to_addr: document.getElementById('smtp-to').value,
         digest_time: document.getElementById('digest-time').value,
         digest_enabled: document.getElementById('digest-enabled').checked,
+      });
+      await apiPut('/settings/notifications', {
+        ...(notif || {}),
+        shutdown_email:       document.getElementById('smtp-evt-shutdown').checked,
+        digest_email:         document.getElementById('smtp-evt-digest').checked,
+        flexradio_down_email: document.getElementById('smtp-evt-flexradio-down').checked,
       });
       msg.className = 'alert alert-success';
       msg.textContent = 'SMTP settings saved.';

@@ -1,10 +1,32 @@
 import { apiGet, apiPut, apiPost } from '../../api.js';
 
+function _notifEventsHtml(n) {
+  const chk = (id, val, label, hint) => `
+    <div class="form-check form-switch mb-2">
+      <input class="form-check-input" type="checkbox" id="${id}" ${val !== false ? 'checked' : ''}>
+      <label class="form-check-label" for="${id}">
+        <strong>${label}</strong>
+        <div class="form-text">${hint}</div>
+      </label>
+    </div>`;
+  return `
+    <hr style="border-color:#2a2a4a">
+    <h6 class="text-white-50 mb-2">Notification Events</h6>
+    <p class="form-text mb-3">Choose which events trigger outgoing IFTTT webhooks.</p>
+    ${chk('ifttt-evt-shutdown',       n.shutdown_ifttt,       'Equipment shutdown',       'Fire webhook when weather protection shuts down equipment.')}
+    ${chk('ifttt-evt-threshold',      n.threshold_ifttt,      'Weather threshold alert',  'Fire webhook when lightning or wind exceeds configured thresholds.')}
+    ${chk('ifttt-evt-flexradio-down', n.flexradio_down_ifttt, 'FlexRadio down',           'Fire webhook when a FlexRadio fails ping checks (also requires per-radio notification to be enabled).')}
+  `;
+}
+
 export async function renderIftttTab(container) {
   container.innerHTML = '<div class="p-3" style="color:#e0e0e0">Loading...</div>';
-  let data;
+  let data, notif;
   try {
-    data = await apiGet('/settings/ifttt');
+    [data, notif] = await Promise.all([
+      apiGet('/settings/ifttt'),
+      apiGet('/settings/notifications'),
+    ]);
   } catch (err) {
     container.innerHTML = `<div class="alert alert-danger m-3">Failed to load IFTTT settings: ${err.message}</div>`;
     return;
@@ -61,7 +83,9 @@ export async function renderIftttTab(container) {
             </div>
           </div>
 
-          <div class="d-flex gap-2">
+          ${_notifEventsHtml(notif || {})}
+
+          <div class="d-flex gap-2 mt-3">
             <button type="submit" class="btn btn-primary">Save</button>
             <button type="button" class="btn btn-outline-info" id="btn-test-ifttt">Send Test Event</button>
           </div>
@@ -96,6 +120,12 @@ export async function renderIftttTab(container) {
         event_name_threshold: document.getElementById('ifttt-evt-threshold').value,
         enabled: document.getElementById('ifttt-enabled').checked,
         incoming_secret: document.getElementById('ifttt-secret').value || null,
+      });
+      await apiPut('/settings/notifications', {
+        ...(notif || {}),
+        shutdown_ifttt:       document.getElementById('ifttt-evt-shutdown').checked,
+        threshold_ifttt:      document.getElementById('ifttt-evt-threshold').checked,
+        flexradio_down_ifttt: document.getElementById('ifttt-evt-flexradio-down').checked,
       });
       msg.className = 'alert alert-success';
       msg.textContent = 'IFTTT settings saved.';

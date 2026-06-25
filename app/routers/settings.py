@@ -18,8 +18,8 @@ from models import User, Setting
 from services.monitoring_service import log_event
 from schemas import (
     LocationSettings, LocationProfile, ApiKeySettings, ThresholdSettings, SmtpSettings,
-    NotificationSettings, KasaSettings, IftttSettings, TelegramSettings, NtfySettings,
-    HomeAssistantSettings, DxclusterSettings, FlexRadioSettings, BlitzortungSettings,
+    NotificationSettings, KasaSettings, IftttSettings, TelegramSettings, NtfySettings, NtfyList,
+    HomeAssistantSettings, DxclusterSettings, FlexRadioSettings, FlexRadioList, BlitzortungSettings,
     FlrigSettings, RigControlSettings,
 )
 import scheduler as sched
@@ -504,20 +504,60 @@ async def test_telegram(db: AsyncSession = Depends(get_db), _: User = Depends(re
 async def get_ntfy(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     data = await _get_setting(db, "ntfy")
     if not data:
-        return {"server_url": "https://ntfy.sh", "topic": None, "token": None, "enabled": False}
-    if data.get("token"):
-        data["token"] = MASKED
-    return data
+        return {"profiles": []}
+    # Migrate old single-profile format
+    if isinstance(data, dict) and "profiles" not in data:
+        defaults = NtfySettings().model_dump()
+        profile = {**defaults, **data}
+        if not profile.get("name"):
+            profile["name"] = "My ntfy Profile"
+        if profile.get("token"):
+            profile["token"] = MASKED
+        return {"profiles": [profile]}
+    # New list format — mask tokens
+    profiles = data.get("profiles", [])
+    for p in profiles:
+        if p.get("token"):
+            p["token"] = MASKED
+    return {"profiles": profiles}
 
 
 @router.put("/ntfy")
-async def put_ntfy(body: NtfySettings, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
+async def put_ntfy(body: NtfyList, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     existing = await _get_setting(db, "ntfy") or {}
-    update = body.model_dump()
-    if update.get("token") == MASKED:
-        update["token"] = existing.get("token", "")
-    await _save_setting(db, "ntfy", update)
+    if "profiles" in existing:
+        existing_profiles = existing["profiles"]
+    elif existing:
+        existing_profiles = [existing]  # legacy single-profile
+    else:
+        existing_profiles = []
+
+    new_profiles = body.model_dump()["profiles"]
+    for i, profile in enumerate(new_profiles):
+        if profile.get("token") == MASKED:
+            old = existing_profiles[i] if i < len(existing_profiles) else {}
+            profile["token"] = old.get("token") or ""
+
+    await _save_setting(db, "ntfy", {"profiles": new_profiles})
     return {"detail": "Saved"}
+
+
+@router.post("/ntfy/test/{index}")
+async def test_ntfy_profile(index: int, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
+    from services.ntfy_service import _get_ntfy_config_by_index, _publish
+    from datetime import datetime, timezone
+    cfg = await _get_ntfy_config_by_index(db, index)
+    if cfg is None:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    if not cfg.get("topic"):
+        raise HTTPException(status_code=400, detail="No topic configured for this profile")
+    try:
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        await _publish(cfg, "Ham Shack Navigator", f"Test notification sent at {timestamp}", tags="white_check_mark")
+        return {"detail": "Test notification sent"}
+    except Exception as e:
+        logger.error("ntfy test failed for profile %d: %s", index, e)
+        raise HTTPException(status_code=500, detail=f"Test failed: {e}")
 
 
 @router.post("/ntfy/test")
@@ -609,18 +649,49 @@ async def put_dxcluster(body: DxclusterSettings, db: AsyncSession = Depends(get_
 @router.get("/flexradio")
 async def get_flexradio(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     data = await _get_setting(db, "flexradio")
-    # Merge stored values over schema defaults so new fields always appear
-    # even for DB rows saved before those fields were added.
-    defaults = FlexRadioSettings().model_dump()
-    return {**defaults, **(data or {})}
+    if data is None:
+        return {"radios": []}
+    # Migrate old single-radio dict format to list format
+    if isinstance(data, dict) and "radios" not in data:
+        defaults = FlexRadioSettings().model_dump()
+        radio = {**defaults, **data}
+        if not radio.get("name"):
+            radio["name"] = "My FlexRadio"
+        return {"radios": [radio]}
+    return data
 
 
 @router.put("/flexradio")
-async def put_flexradio(body: FlexRadioSettings, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
+async def put_flexradio(body: FlexRadioList, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     await _save_setting(db, "flexradio", body.model_dump())
     from services.flexradio_service import start_listener
     start_listener()
     return {"detail": "Saved"}
+
+
+@router.post("/flexradio/ping")
+async def ping_flexradio(body: dict, _: User = Depends(require_admin)):
+    import asyncio
+    ip = (body.get("ip") or "").strip()
+    if not ip:
+        raise HTTPException(status_code=400, detail="No IP address provided")
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "ping", "-c", "1", "-W", "2", ip,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+        output = stdout.decode()
+        success = proc.returncode == 0
+        match = _re.search(r'time=(\d+\.?\d*)\s*ms', output)
+        rtt_ms = round(float(match.group(1)), 2) if match else None
+        return {"success": success, "rtt_ms": rtt_ms}
+    except asyncio.TimeoutError:
+        return {"success": False, "rtt_ms": None}
+    except Exception as e:
+        logger.warning("Ping error for %s: %s", ip, e)
+        return {"success": False, "rtt_ms": None}
 
 
 # --- flrig ---

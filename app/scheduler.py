@@ -508,7 +508,10 @@ async def start_scheduler():
     from services.flrig_service import start_poller as _start_flrig
     _start_flrig()
 
-    logger.info("Scheduler, FlexRadio listener, and flrig poller started")
+    from services.smartlink_monitor_service import start_monitor as _start_smartlink
+    _start_smartlink()
+
+    logger.info("Scheduler, FlexRadio listener, flrig poller, and SmartLink monitor started")
 
 
 async def shutdown_scheduler():
@@ -519,6 +522,9 @@ async def shutdown_scheduler():
 
     from services.flexradio_service import stop_listener as _stop_flex
     _stop_flex()
+
+    from services.smartlink_monitor_service import stop_monitor as _stop_smartlink
+    _stop_smartlink()
 
     if _scheduler and _scheduler.running:
         _scheduler.shutdown(wait=False)

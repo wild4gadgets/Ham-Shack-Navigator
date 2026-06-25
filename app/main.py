@@ -58,6 +58,7 @@ from routers import (
     flexradio as flexradio_router,
     webhook as webhook_router,
     flrig as flrig_router,
+    smartlink_monitor as smartlink_monitor_router,
 )
 
 
@@ -132,6 +133,7 @@ app.include_router(qrz_router.router, prefix=prefix)
 app.include_router(flexradio_router.router, prefix=prefix)
 app.include_router(flrig_router.router, prefix=prefix)
 app.include_router(webhook_router.router, prefix=prefix)
+app.include_router(smartlink_monitor_router.router, prefix=prefix)
 
 
 @app.get("/api/v1/health")
