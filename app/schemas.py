@@ -122,6 +122,10 @@ class LocationSettings(BaseModel):
     units: str = "imperial"  # "imperial" or "metric"
     gridsquare: str = ""
     active_profile_id: str = ""
+    wind_display: str = "analog"  # "analog" or "digital"
+    temp_display: str = "analog"  # "analog" or "digital"
+    wind_font_scale: float = 1.0  # analog gauge text scale, 0.7-1.6
+    temp_font_scale: float = 1.0  # analog gauge text scale, 0.7-1.6
 
 
 class LocationProfile(BaseModel):
@@ -133,6 +137,10 @@ class LocationProfile(BaseModel):
     callsign: str = ""
     units: str = "imperial"
     gridsquare: str = ""
+    wind_display: str = "analog"  # "analog" or "digital"
+    temp_display: str = "analog"  # "analog" or "digital"
+    wind_font_scale: float = 1.0  # analog gauge text scale, 0.7-1.6
+    temp_font_scale: float = 1.0  # analog gauge text scale, 0.7-1.6
 
 
 class ApiKeySettings(BaseModel):

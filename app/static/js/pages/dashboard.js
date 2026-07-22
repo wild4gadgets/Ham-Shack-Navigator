@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut, apiDelete } from '../api.js';
+import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from '../api.js';
 import { getToken, isAdmin } from '../state.js';
 
 async function apiFetchXml(path) {
@@ -23,6 +23,7 @@ let radarAnimInterval = null;
 let radarPlaying = false;
 let radarHomeLat = null;
 let radarHomeLon = null;
+let radarUserMoved = false;
 let radarHomeZoom = 7;
 let pinData = { kasa: [], shelly: [] };
 let pinStates = {};
@@ -31,6 +32,13 @@ let blitzortungFlashTimer = null;
 let blitzortungMarkers = []; // {marker: L.CircleMarker, time: Date}
 let blitzortungCleanupTimer = null;
 let useMetric = false;
+let _windDisplayMode = 'analog'; // 'analog' | 'digital'
+let _tempDisplayMode = 'analog'; // 'analog' | 'digital'
+let _windFontScale = 1.0; // analog gauge text scale, 0.7-1.6
+let _tempFontScale = 1.0;
+const FONT_SCALE_MIN = 0.7, FONT_SCALE_MAX = 1.6, FONT_SCALE_STEP = 0.1;
+let _lastWindData = null; // cached inputs so the toggle can re-render without refetching
+let _lastTempData = null;
 let _nearestLightningKm = null;
 let _nearestLightningAt = 0; // epoch ms of last WS-sourced update
 const BLITZ_FADE_MS = 15 * 60 * 1000;
@@ -68,6 +76,42 @@ const _BAND_DEFAULTS = {
   '40m': 7.150, '30m': 10.125, '20m': 14.175,
   '17m': 18.118, '15m': 21.225, '12m': 24.940, '10m': 28.850,
 };
+
+function _updateDisplayToggleIcon(kind, mode) {
+  const btn = document.getElementById(`btn-${kind}-display-toggle`);
+  if (btn) {
+    const icon = btn.querySelector('i');
+    if (icon) icon.className = mode === 'digital' ? 'bi bi-toggle2-on' : 'bi bi-toggle2-off';
+    btn.title = mode === 'digital' ? 'Switch to analog display' : 'Switch to digital display';
+  }
+}
+
+async function _toggleTileDisplay(kind) {
+  const isWind = kind === 'wind';
+  const newMode = (isWind ? _windDisplayMode : _tempDisplayMode) === 'digital' ? 'analog' : 'digital';
+  if (isWind) { _windDisplayMode = newMode; renderWindTile(); }
+  else { _tempDisplayMode = newMode; renderTempTile(); }
+  _updateDisplayToggleIcon(kind, newMode);
+  try {
+    await apiPatch('/settings/location/display', { [`${kind}_display`]: newMode });
+  } catch (e) {
+    console.error('Failed to save display preference:', e);
+  }
+}
+
+async function _adjustTileFontScale(kind, delta) {
+  const isWind = kind === 'wind';
+  const current = isWind ? _windFontScale : _tempFontScale;
+  const next = Math.round(Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, current + delta)) * 100) / 100;
+  if (next === current) return;
+  if (isWind) { _windFontScale = next; renderWindTile(); }
+  else { _tempFontScale = next; renderTempTile(); }
+  try {
+    await apiPatch('/settings/location/display', { [`${kind}_font_scale`]: next });
+  } catch (e) {
+    console.error('Failed to save gauge font scale:', e);
+  }
+}
 
 function escHtml(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -118,7 +162,20 @@ export async function renderDashboard(container) {
         <div class="row g-3">
           <div class="col-12 col-md-4">
             <div class="card">
-              <div class="card-header"><i class="bi bi-wind me-2"></i>Wind</div>
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-wind me-2"></i>Wind</span>
+                <div class="d-flex align-items-center gap-2">
+                  <button id="btn-wind-font-dec" class="btn btn-sm btn-link text-white-50 p-0" title="Decrease gauge text size">
+                    <i class="bi bi-dash-circle"></i>
+                  </button>
+                  <button id="btn-wind-font-inc" class="btn btn-sm btn-link text-white-50 p-0" title="Increase gauge text size">
+                    <i class="bi bi-plus-circle"></i>
+                  </button>
+                  <button id="btn-wind-display-toggle" class="btn btn-sm btn-link text-white-50 p-0" title="Switch between analog and digital display">
+                    <i class="bi bi-toggle2-off"></i>
+                  </button>
+                </div>
+              </div>
               <div class="card-body p-1 weather-tile-body" id="wind-card" style="overflow:hidden">
                 <div class="text-muted text-center pt-3">Loading...</div>
               </div>
@@ -126,7 +183,20 @@ export async function renderDashboard(container) {
           </div>
           <div class="col-12 col-md-4">
             <div class="card">
-              <div class="card-header"><i class="bi bi-thermometer-half me-2"></i>Temperature</div>
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-thermometer-half me-2"></i>Temperature</span>
+                <div class="d-flex align-items-center gap-2">
+                  <button id="btn-temp-font-dec" class="btn btn-sm btn-link text-white-50 p-0" title="Decrease gauge text size">
+                    <i class="bi bi-dash-circle"></i>
+                  </button>
+                  <button id="btn-temp-font-inc" class="btn btn-sm btn-link text-white-50 p-0" title="Increase gauge text size">
+                    <i class="bi bi-plus-circle"></i>
+                  </button>
+                  <button id="btn-temp-display-toggle" class="btn btn-sm btn-link text-white-50 p-0" title="Switch between analog and digital display">
+                    <i class="bi bi-toggle2-off"></i>
+                  </button>
+                </div>
+              </div>
               <div class="card-body p-1 weather-tile-body" id="temp-card" style="overflow:hidden">
                 <div class="text-muted text-center pt-3">Loading...</div>
               </div>
@@ -743,6 +813,13 @@ export async function renderDashboard(container) {
     setTimeout(() => { btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Refresh'; }, 2500);
   });
 
+  document.getElementById('btn-wind-display-toggle')?.addEventListener('click', () => _toggleTileDisplay('wind'));
+  document.getElementById('btn-temp-display-toggle')?.addEventListener('click', () => _toggleTileDisplay('temp'));
+  document.getElementById('btn-wind-font-dec')?.addEventListener('click', () => _adjustTileFontScale('wind', -FONT_SCALE_STEP));
+  document.getElementById('btn-wind-font-inc')?.addEventListener('click', () => _adjustTileFontScale('wind', FONT_SCALE_STEP));
+  document.getElementById('btn-temp-font-dec')?.addEventListener('click', () => _adjustTileFontScale('temp', -FONT_SCALE_STEP));
+  document.getElementById('btn-temp-font-inc')?.addEventListener('click', () => _adjustTileFontScale('temp', FONT_SCALE_STEP));
+
   document.getElementById('btn-reset-layout')?.addEventListener('click', async () => {
     await apiPut('/settings/dashboard-layout', { order: DEFAULT_TILE_ORDER });
     cleanup();
@@ -1063,12 +1140,25 @@ async function loadMonitoringStatus() {
     const s = await apiGet('/monitoring/status');
     const area = document.getElementById('monitoring-status-area');
     if (!area) return;
-    let html = `<span id="monitoring-lightning-badge" style="display:none"></span>`;
+    const canToggle = isAdmin();
+    let html = `<span id="btn-armed-toggle" class="badge ${s.enabled ? 'bg-success' : 'bg-danger'} me-2"
+      style="${canToggle ? 'cursor:pointer' : ''}" title="${canToggle ? `Click to ${s.enabled ? 'stop' : 'start'} monitoring` : 'Admin access required'}">Monitoring ${s.enabled ? 'On' : 'Off'}</span>`;
+    html += `<span id="monitoring-lightning-badge" style="display:none"></span>`;
     if (s.in_cooldown) {
       html += `<span class="badge bg-info ms-1 me-2">Cooldown: ${s.cooldown_remaining_min.toFixed(0)} min remaining</span>`;
     }
     area.innerHTML = html;
     _updateLightningBannerBadge(_nearestLightningKm);
+
+    if (canToggle) {
+      document.getElementById('btn-armed-toggle').addEventListener('click', async () => {
+        const toggle = document.getElementById('btn-armed-toggle');
+        toggle.style.opacity = '0.5';
+        toggle.style.pointerEvents = 'none';
+        await (s.enabled ? apiPost('/monitoring/disable') : apiPost('/monitoring/enable'));
+        await loadMonitoringStatus();
+      });
+    }
   } catch (e) {
     console.error('Status load failed:', e);
   }
@@ -1481,9 +1571,13 @@ function _handleBlitzortungStrike(data) {
  *   unit            – string shown below the center value
  *   tickValues      – array of numbers for major tick labels
  *   legend          – [{color, label}] shown at the bottom
+ *   fontScale       – multiplier applied to all label font sizes (default 1)
  */
-function drawGauge({ min, max, value, markers = [], unit, tickValues = [], legend = [] }) {
+function drawGauge({ min, max, value, markers = [], unit, tickValues = [], legend = [], fontScale = 1 }) {
   const cx = 100, cy = 105, r = 78;
+  const tickFontSize = (9 * fontScale).toFixed(1);
+  const unitFontSize = (11 * fontScale).toFixed(1);
+  const legendFontSize = (11 * fontScale).toFixed(1);
   // Arc: 135° → 45° going clockwise (270° sweep). In SVG, 0°=east, +ve=clockwise.
   const START = 135, SWEEP = 270;
 
@@ -1508,7 +1602,7 @@ function drawGauge({ min, max, value, markers = [], unit, tickValues = [], legen
     const [ix, iy] = toXY(deg, r - 14);
     const [lx, ly] = toXY(deg, r - 27);
     ticksSVG += `<line x1="${f(ox)}" y1="${f(oy)}" x2="${f(ix)}" y2="${f(iy)}" stroke="#4a5568" stroke-width="2.5"/>`;
-    ticksSVG += `<text x="${f(lx)}" y="${f(ly)}" text-anchor="middle" dominant-baseline="middle" fill="#8899bb" font-size="9">${tv}</text>`;
+    ticksSVG += `<text x="${f(lx)}" y="${f(ly)}" text-anchor="middle" dominant-baseline="middle" fill="#8899bb" font-size="${tickFontSize}">${tv}</text>`;
   }
 
   // Minor ticks (between major ticks)
@@ -1549,21 +1643,21 @@ function drawGauge({ min, max, value, markers = [], unit, tickValues = [], legen
   // Legend: each item rendered inline as [dot][text], group centered at cx
   let legendSVG = '';
   if (legend.length) {
-    const charW = 5.2, dotR = 4, dotTextGap = 5, itemGap = 12;
+    const charW = 5.6 * fontScale, dotR = 4, dotTextGap = 5, itemGap = 12 * fontScale;
     const widths = legend.map(item => dotR * 2 + dotTextGap + item.label.length * charW);
     const totalW = widths.reduce((a, b) => a + b, 0) + itemGap * (legend.length - 1);
     let lx = cx - totalW / 2;
     legend.forEach((item, i) => {
       legendSVG += `
         <circle cx="${(lx + dotR).toFixed(1)}" cy="196" r="${dotR}" fill="${item.color}"/>
-        <text x="${(lx + dotR * 2 + dotTextGap).toFixed(1)}" y="196" fill="#aabbcc" font-size="11" dominant-baseline="middle">${item.label}</text>`;
+        <text x="${(lx + dotR * 2 + dotTextGap).toFixed(1)}" y="196" fill="#aabbcc" font-size="${legendFontSize}" dominant-baseline="middle">${item.label}</text>`;
       lx += widths[i] + (i < legend.length - 1 ? itemGap : 0);
     });
   }
 
   // Unit label centered in the bottom gap of the arc
   const unitSVG = unit
-    ? `<text x="${cx}" y="168" text-anchor="middle" fill="#8899bb" font-size="11">${unit}</text>`
+    ? `<text x="${cx}" y="168" text-anchor="middle" fill="#8899bb" font-size="${unitFontSize}">${unit}</text>`
     : '';
 
   return `<svg viewBox="0 0 200 205" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;display:block">
@@ -1574,6 +1668,93 @@ function drawGauge({ min, max, value, markers = [], unit, tickValues = [], legen
     ${unitSVG}
     ${legendSVG}
   </svg>`;
+}
+
+/**
+ * Draw a simple digital readout, mirroring drawGauge's props so callers can
+ * swap between the two without reshaping their data.
+ * @param {object} opts
+ *   value  – primary reading, shown large
+ *   unit   – string shown after the value
+ *   legend – [{color, label}] shown as rows below the value (e.g. Low/High, Gust)
+ *   fontScale – multiplier applied to the value and legend text sizes (default 1)
+ */
+function drawDigital({ value, unit, legend = [], fontScale = 1 }) {
+  const valueText = value != null && !isNaN(value) ? `${Math.round(value)}${unit ? ' ' + unit : ''}` : '--';
+  const legendRows = legend.map(item => `
+    <div style="color:${item.color};font-size:${(0.85 * fontScale).toFixed(2)}rem">${escHtml(item.label)}</div>
+  `).join('');
+  return `
+    <div class="d-flex flex-column align-items-center justify-content-center h-100">
+      <div class="weather-value" style="font-size:${(2.5 * fontScale).toFixed(2)}rem">${valueText}</div>
+      <div class="mt-2 d-flex flex-column align-items-center gap-1">${legendRows}</div>
+    </div>`;
+}
+
+function renderWindTile() {
+  const windCard = document.getElementById('wind-card');
+  if (!windCard || !_lastWindData) return;
+  const { windSpeed, gustSpeed, windUnit, wMax, wTicks } = _lastWindData;
+  if (_windDisplayMode === 'digital') {
+    windCard.innerHTML = drawDigital({
+      value: windSpeed,
+      unit: windUnit,
+      fontScale: _windFontScale,
+      legend: [
+        { color: 'white', label: `Wind ${windSpeed != null ? Math.round(windSpeed) + ' ' + windUnit : '--'}` },
+        ...(gustSpeed != null ? [{ color: '#fb923c', label: `Gust ${Math.round(gustSpeed) + ' ' + windUnit}` }] : []),
+      ],
+    });
+  } else {
+    windCard.innerHTML = drawGauge({
+      min: 0, max: wMax,
+      value: windSpeed,
+      unit: windUnit,
+      tickValues: wTicks,
+      fontScale: _windFontScale,
+      markers: [
+        { value: gustSpeed, color: '#fb923c', label: `Gust ${gustSpeed != null ? gustSpeed.toFixed(1) + windUnit : '--'}` },
+      ],
+      legend: [
+        { color: 'white',   label: `Wind ${windSpeed != null ? Math.round(windSpeed) + ' ' + windUnit : '--'}` },
+        ...(gustSpeed != null ? [{ color: '#fb923c', label: `Gust ${Math.round(gustSpeed) + ' ' + windUnit}` }] : []),
+      ],
+    });
+  }
+}
+
+function renderTempTile() {
+  const tempCard = document.getElementById('temp-card');
+  if (!tempCard || !_lastTempData) return;
+  const { currentTemp, tempUnit, tMin, tMax, tTicks, forecastMin, forecastMax } = _lastTempData;
+  if (_tempDisplayMode === 'digital') {
+    tempCard.innerHTML = drawDigital({
+      value: currentTemp,
+      unit: tempUnit,
+      fontScale: _tempFontScale,
+      legend: [
+        { color: '#60a5fa', label: `Low ${forecastMin != null ? Math.round(forecastMin) + tempUnit : '--'}` },
+        { color: '#f87171', label: `High ${forecastMax != null ? Math.round(forecastMax) + tempUnit : '--'}` },
+      ],
+    });
+  } else {
+    tempCard.innerHTML = drawGauge({
+      min: tMin, max: tMax,
+      value: currentTemp,
+      unit: tempUnit,
+      tickValues: tTicks,
+      fontScale: _tempFontScale,
+      markers: [
+        { value: forecastMin, color: '#60a5fa', label: `Low ${forecastMin != null ? Math.round(forecastMin) + tempUnit : '--'}` },
+        { value: forecastMax, color: '#f87171', label: `High ${forecastMax != null ? Math.round(forecastMax) + tempUnit : '--'}` },
+      ],
+      legend: [
+        { color: '#60a5fa', label: `Low ${forecastMin != null ? Math.round(forecastMin) + tempUnit : '--'}` },
+        { color: 'white',   label: `Now ${currentTemp != null ? Math.round(currentTemp) + tempUnit : '--'}` },
+        { color: '#f87171', label: `High ${forecastMax != null ? Math.round(forecastMax) + tempUnit : '--'}` },
+      ],
+    });
+  }
 }
 
 // ── 24-Hour Forecast strip ───────────────────────────────────────────────────
@@ -2153,6 +2334,12 @@ async function loadWeather() {
 
     const metric = (loc.units || 'imperial') === 'metric';
     useMetric = metric;
+    _windDisplayMode = loc.wind_display === 'digital' ? 'digital' : 'analog';
+    _tempDisplayMode = loc.temp_display === 'digital' ? 'digital' : 'analog';
+    _windFontScale = typeof loc.wind_font_scale === 'number' ? loc.wind_font_scale : 1.0;
+    _tempFontScale = typeof loc.temp_font_scale === 'number' ? loc.temp_font_scale : 1.0;
+    _updateDisplayToggleIcon('wind', _windDisplayMode);
+    _updateDisplayToggleIcon('temp', _tempDisplayMode);
 
     if (current.fetched_at) {
       const el = document.getElementById('weather-update-time');
@@ -2184,21 +2371,8 @@ async function loadWeather() {
       const tTicks = metric ? [-30, -20, -10, 0, 10, 20, 30, 40, 50]
                             : [-20, 0, 20, 40, 60, 80, 100, 120];
 
-      tempCard.innerHTML = drawGauge({
-        min: tMin, max: tMax,
-        value: currentTemp,
-        unit: tempUnit,
-        tickValues: tTicks,
-        markers: [
-          { value: forecastMin, color: '#60a5fa', label: `Low ${forecastMin != null ? Math.round(forecastMin) + tempUnit : '--'}` },
-          { value: forecastMax, color: '#f87171', label: `High ${forecastMax != null ? Math.round(forecastMax) + tempUnit : '--'}` },
-        ],
-        legend: [
-          { color: '#60a5fa', label: `Low ${forecastMin != null ? Math.round(forecastMin) + tempUnit : '--'}` },
-          { color: 'white',   label: `Now ${currentTemp != null ? Math.round(currentTemp) + tempUnit : '--'}` },
-          { color: '#f87171', label: `High ${forecastMax != null ? Math.round(forecastMax) + tempUnit : '--'}` },
-        ],
-      });
+      _lastTempData = { currentTemp, tempUnit, tMin, tMax, tTicks, forecastMin, forecastMax };
+      renderTempTile();
     }
 
     // ── Wind gauge ──
@@ -2212,19 +2386,8 @@ async function loadWeather() {
       const wMax = metric ? 120 : 80;
       const wTicks = metric ? [0, 20, 40, 60, 80, 100, 120] : [0, 10, 20, 30, 40, 50, 60, 70, 80];
 
-      windCard.innerHTML = drawGauge({
-        min: 0, max: wMax,
-        value: windSpeed,
-        unit: windUnit,
-        tickValues: wTicks,
-        markers: [
-          { value: gustSpeed, color: '#fb923c', label: `Gust ${gustSpeed != null ? gustSpeed.toFixed(1) + windUnit : '--'}` },
-        ],
-        legend: [
-          { color: 'white',   label: `Wind ${windSpeed != null ? Math.round(windSpeed) + ' ' + windUnit : '--'}` },
-          ...(gustSpeed != null ? [{ color: '#fb923c', label: `Gust ${Math.round(gustSpeed) + ' ' + windUnit}` }] : []),
-        ],
-      });
+      _lastWindData = { windSpeed, gustSpeed, windUnit, wMax, wTicks };
+      renderWindTile();
     }
 
     // ── Lightning ──
@@ -2319,12 +2482,14 @@ async function loadRadar() {
           btn.title = 'Recenter map';
           L.DomEvent.on(btn, 'click', (e) => {
             L.DomEvent.stopPropagation(e);
+            radarUserMoved = false;
             radarMap.setView([radarHomeLat, radarHomeLon], radarHomeZoom);
           });
           return btn;
         },
       });
       new HomeControl({ position: 'topleft' }).addTo(radarMap);
+      radarMap.on('moveend', () => { radarUserMoved = true; });
       L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>',
         subdomains: 'abcd',
@@ -2335,7 +2500,7 @@ async function loadRadar() {
         maxZoom: 19,
         pane: 'overlayPane',
       }).addTo(radarMap);
-    } else {
+    } else if (!radarUserMoved) {
       radarMap.setView([lat, lon], radarHomeZoom);
     }
 

@@ -148,6 +148,54 @@ async def put_location(body: LocationSettings, db: AsyncSession = Depends(get_db
     return {"detail": "Saved"}
 
 
+FONT_SCALE_MIN = 0.7
+FONT_SCALE_MAX = 1.6
+
+
+@router.patch("/location/display")
+async def update_display_prefs(
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Update wind/temperature tile display mode (analog gauge vs digital readout)
+    and/or the analog gauge font scale.
+
+    Persisted on the active location profile (if any) as well as the current
+    location settings, so the choice survives profile switches.
+    """
+    valid_modes = {"analog", "digital"}
+    updates = {}
+    for k in ("wind_display", "temp_display"):
+        if k in body and body[k] in valid_modes:
+            updates[k] = body[k]
+    for k in ("wind_font_scale", "temp_font_scale"):
+        if k in body:
+            try:
+                v = float(body[k])
+            except (TypeError, ValueError):
+                continue
+            updates[k] = max(FONT_SCALE_MIN, min(FONT_SCALE_MAX, v))
+    if not updates:
+        raise HTTPException(status_code=422, detail="No valid display fields provided")
+
+    location = await _get_setting(db, "location") or {}
+    location.update(updates)
+    await _save_setting(db, "location", location)
+
+    profile_id = location.get("active_profile_id")
+    if profile_id:
+        profiles = await _get_setting(db, "location_profiles")
+        if isinstance(profiles, list):
+            for p in profiles:
+                if p.get("id") == profile_id:
+                    p.update(updates)
+                    await _save_setting(db, "location_profiles", profiles)
+                    break
+
+    return {"detail": "Saved", **updates}
+
+
 # --- Location Lookup ---
 @router.get("/location/lookup")
 async def lookup_location(
