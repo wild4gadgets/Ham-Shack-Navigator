@@ -25,6 +25,7 @@ let radarHomeLat = null;
 let radarHomeLon = null;
 let radarUserMoved = false;
 let radarHomeZoom = 7;
+let cartoKey = null;
 let pinData = { kasa: [], shelly: [] };
 let pinStates = {};
 let pinPollTimer = null;
@@ -2469,6 +2470,10 @@ async function loadRadar() {
     radarHomeLat = lat;
     radarHomeLon = lon;
 
+    if (cartoKey === null) {
+      cartoKey = (await apiGet('/settings/api-keys/carto').catch(() => ({}))).carto_key || '';
+    }
+
     // Init map only once
     if (!radarMap) {
       radarMap = L.map('radar-map', { zoomControl: true, attributionControl: true, scrollWheelZoom: false }).setView([lat, lon], radarHomeZoom);
@@ -2490,12 +2495,13 @@ async function loadRadar() {
       });
       new HomeControl({ position: 'topleft' }).addTo(radarMap);
       radarMap.on('moveend', () => { radarUserMoved = true; });
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
+      const cartoKeyParam = cartoKey ? `?key=${encodeURIComponent(cartoKey)}` : '';
+      L.tileLayer(`https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png${cartoKeyParam}`, {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>',
         subdomains: 'abcd',
         maxZoom: 19,
       }).addTo(radarMap);
-      radarLabelsLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', {
+      radarLabelsLayer = L.tileLayer(`https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png${cartoKeyParam}`, {
         subdomains: 'abcd',
         maxZoom: 19,
         pane: 'overlayPane',

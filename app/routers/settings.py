@@ -396,6 +396,7 @@ async def get_api_keys(db: AsyncSession = Depends(get_db), _: User = Depends(get
         "owm_key": _mask_key(data.get("owm_key")),
         "tomorrow_key": _mask_key(data.get("tomorrow_key")),
         "accuweather_key": _mask_key(data.get("accuweather_key")),
+        "carto_key": _mask_key(data.get("carto_key")),
     }
 
 
@@ -409,8 +410,18 @@ async def put_api_keys(body: ApiKeySettings, db: AsyncSession = Depends(get_db),
         existing["tomorrow_key"] = body.tomorrow_key
     if body.accuweather_key and not body.accuweather_key.startswith(MASKED):
         existing["accuweather_key"] = body.accuweather_key
+    if body.carto_key and not body.carto_key.startswith(MASKED):
+        existing["carto_key"] = body.carto_key
     await _save_setting(db, "api_keys", existing)
     return {"detail": "Saved"}
+
+
+@router.get("/api-keys/carto")
+async def get_carto_key(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Returns the raw CARTO key, unmasked — needed client-side since the browser
+    requests basemap tiles from cartocdn.com directly rather than through our backend."""
+    data = await _get_setting(db, "api_keys")
+    return {"carto_key": data.get("carto_key")}
 
 
 # --- Thresholds ---

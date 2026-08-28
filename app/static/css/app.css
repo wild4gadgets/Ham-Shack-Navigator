@@ -213,6 +213,11 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25) !important;
 }
 
+input::placeholder, textarea::placeholder {
+  color: #6b7a90 !important;
+  opacity: 1 !important;
+}
+
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus {

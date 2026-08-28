@@ -147,6 +147,7 @@ class ApiKeySettings(BaseModel):
     owm_key: Optional[str] = None
     tomorrow_key: Optional[str] = None
     accuweather_key: Optional[str] = None
+    carto_key: Optional[str] = None
 
 
 class ThresholdSettings(BaseModel):

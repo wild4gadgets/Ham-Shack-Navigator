@@ -29,6 +29,11 @@ export async function renderApiKeysTab(container) {
             <input type="text" class="form-control font-monospace" id="accuweather-key" value="${data.accuweather_key || ''}" placeholder="Enter new key or leave masked" />
             <div class="form-text">Get key at <a href="https://developer.accuweather.com" target="_blank" class="text-info">developer.accuweather.com</a>. Provides thunderstorm probability via hourly forecast. Location key lookup uses 1 additional call on first run or location change.</div>
           </div>
+          <div class="mb-3">
+            <label class="form-label">CARTO API Key</label>
+            <input type="text" class="form-control font-monospace" id="carto-key" value="${data.carto_key || ''}" placeholder="Enter new key or leave masked" />
+            <div class="form-text">Get free key at <a href="https://carto.com/basemaps/apikey" target="_blank" class="text-info">carto.com/basemaps/apikey</a>. Used for the dark radar basemap tiles.</div>
+          </div>
 
           <hr style="border-color:#2a2a4a" />
           <h6 class="mb-3" style="color:#94a3b8"><i class="bi bi-person-badge me-2"></i>QRZ.com (XML Data subscription required)</h6>
@@ -66,6 +71,7 @@ export async function renderApiKeysTab(container) {
           owm_key: document.getElementById('owm-key').value,
           tomorrow_key: document.getElementById('tomorrow-key').value,
           accuweather_key: document.getElementById('accuweather-key').value,
+          carto_key: document.getElementById('carto-key').value,
         }),
         apiPut('/qrz/settings', {
           username: document.getElementById('qrz-username').value,
